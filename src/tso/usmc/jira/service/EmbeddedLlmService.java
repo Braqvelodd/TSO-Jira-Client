@@ -121,7 +121,12 @@ public class EmbeddedLlmService {
         tempPromptFile.delete();
 
         if (process.exitValue() != 0) {
-            throw new Exception("LLM process failed with exit code: " + process.exitValue());
+            int exitCode = process.exitValue();
+            if (exitCode == -1073741515) {
+                throw new Exception("LLM process failed (Exit Code: -1073741515). This usually means a required system DLL is missing. \n\n" +
+                                    "Please try installing the 'Microsoft Visual C++ Redistributable 2015-2022' (x64) or ensure your environment has the necessary MinGW runtimes.");
+            }
+            throw new Exception("LLM process failed with exit code: " + exitCode);
         }
 
         return output.toString().trim();
