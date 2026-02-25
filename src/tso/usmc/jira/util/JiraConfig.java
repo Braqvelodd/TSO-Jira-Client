@@ -57,51 +57,90 @@ public class JiraConfig {
     private void performUpgrade(String oldVersion) {
         synchronized (lock) {
             try {
-                List<String> lines = Files.readAllLines(configFile.toPath());
-                boolean versionFound = false;
+                // 1. Read existing lines
+                List<String> existingLines = Files.readAllLines(configFile.toPath());
                 
-                // Track which new keys we need to add if they are missing
-                Map<String, String> requiredKeys = new LinkedHashMap<>();
-                requiredKeys.put("tab.Reports.enabled", "true");
-                requiredKeys.put("tab.TaskBuilder.enabled", "true");
-                requiredKeys.put("tab.TemplateBuilder.enabled", "true");
-                requiredKeys.put("tab.Reconciliation.enabled", "true");
-                requiredKeys.put("tab.BulkActions.enabled", "true");
-                requiredKeys.put("tab.WorkflowAutomation.enabled", "true");
-                requiredKeys.put("tab.CommentSummarizer.enabled", "true");
-                requiredKeys.put("llama_cli_path", "C:\\\\llm\\\\llama-cli.exe");
-                requiredKeys.put("llama_model_path", "C:\\\\llm\\\\models\\\\llama-3-8b-instruct.Q4_K_M.gguf");
-
-                for (int i = 0; i < lines.size(); i++) {
-                    String line = lines.get(i).trim();
-                    if (line.startsWith("config_version")) {
-                        lines.set(i, "config_version = " + CURRENT_CONFIG_VERSION);
-                        versionFound = true;
-                    }
-                    // Remove keys from our "to add" list if they already exist
-                    for (String key : new HashSet<>(requiredKeys.keySet())) {
-                        if (line.startsWith(key + "=") || line.startsWith(key + " ")) {
-                            requiredKeys.remove(key);
+                // 2. Load default config lines from resources
+                List<String> defaultLines = new ArrayList<>();
+                try (InputStream in = JiraConfig.class.getResourceAsStream("/JiraConfig.ini")) {
+                    if (in != null) {
+                        java.util.Scanner scanner = new java.util.Scanner(in).useDelimiter("\\n");
+                        while (scanner.hasNext()) {
+                            defaultLines.add(scanner.next().replace("\r", ""));
                         }
                     }
                 }
 
-                if (!versionFound) {
-                    lines.add(0, "config_version = " + CURRENT_CONFIG_VERSION);
+                if (defaultLines.isEmpty()) {
+                    System.err.println("Could not load default config for comparison.");
+                    return;
                 }
 
-                // Add missing keys
-                if (!requiredKeys.isEmpty()) {
-                    lines.add("");
-                    lines.add("# Added during upgrade to version " + CURRENT_CONFIG_VERSION);
-                    for (Map.Entry<String, String> entry : requiredKeys.entrySet()) {
-                        lines.add(entry.getKey() + " = " + entry.getValue());
+                // 3. Map existing keys (both active and commented out)
+                Map<String, String> existingKeyMap = new LinkedHashMap<>(); // key -> full line
+                for (String line : existingLines) {
+                    String trimmed = line.trim();
+                    if (trimmed.isEmpty() || trimmed.startsWith("# ")) continue; // Skip general comments
+                    
+                    if (trimmed.startsWith("#")) {
+                        // Check if it's a commented out property: # key = value
+                        String content = trimmed.substring(1).trim();
+                        if (content.contains("=")) {
+                            String key = content.split("=", 2)[0].trim();
+                            if (!existingKeyMap.containsKey(key)) {
+                                existingKeyMap.put(key, line);
+                            }
+                        }
+                    } else if (trimmed.contains("=")) {
+                        String key = trimmed.split("=", 2)[0].trim();
+                        existingKeyMap.put(key, line);
                     }
                 }
 
-                Files.write(configFile.toPath(), lines);
-                loadProperties(); // Reload updated values
-                System.out.println("Upgrade to version " + CURRENT_CONFIG_VERSION + " complete.");
+                // 4. Identify missing variables from default config
+                List<String> toAdd = new ArrayList<>();
+                for (String defLine : defaultLines) {
+                    String trimmedDef = defLine.trim();
+                    if (trimmedDef.isEmpty() || (trimmedDef.startsWith("#") && !trimmedDef.substring(1).trim().contains("="))) {
+                        continue; 
+                    }
+
+                    String key;
+                    if (trimmedDef.startsWith("#")) {
+                        key = trimmedDef.substring(1).trim().split("=", 2)[0].trim();
+                    } else if (trimmedDef.contains("=")) {
+                        key = trimmedDef.split("=", 2)[0].trim();
+                    } else {
+                        continue;
+                    }
+
+                    if (!existingKeyMap.containsKey(key) && !key.equals("config_version")) {
+                        toAdd.add(defLine);
+                    }
+                }
+
+                // 5. Update version and write back
+                boolean versionUpdated = false;
+                for (int i = 0; i < existingLines.size(); i++) {
+                    if (existingLines.get(i).trim().startsWith("config_version")) {
+                        existingLines.set(i, "config_version = " + CURRENT_CONFIG_VERSION);
+                        versionUpdated = true;
+                        break;
+                    }
+                }
+                if (!versionUpdated) {
+                    existingLines.add(0, "config_version = " + CURRENT_CONFIG_VERSION);
+                }
+
+                if (!toAdd.isEmpty()) {
+                    existingLines.add("");
+                    existingLines.add("# Added missing variables from default config during upgrade to version " + CURRENT_CONFIG_VERSION);
+                    existingLines.addAll(toAdd);
+                }
+
+                Files.write(configFile.toPath(), existingLines);
+                loadProperties(); 
+                System.out.println("Upgrade to version " + CURRENT_CONFIG_VERSION + " complete. Added " + toAdd.size() + " missing variables.");
             } catch (IOException e) {
                 System.err.println("Failed to upgrade config file: " + e.getMessage());
             }
