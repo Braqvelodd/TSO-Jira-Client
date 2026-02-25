@@ -26,6 +26,18 @@ public class EmbeddedLlmService {
 
         // 1. Ensure resources are extracted
         ensureResourceExtracted("/bin/llama-cli.exe", cliPath, listener);
+        
+        // Extract required DLLs
+        String binDir = new File(cliPath).getParent();
+        String[] dlls = {
+            "llama.dll", "ggml.dll", "ggml-base.dll", "mtmd.dll", "ggml-rpc.dll",
+            "ggml-cpu-x64.dll", "ggml-cpu-sse42.dll", "libomp140.x86_64.dll"
+        };
+        
+        for (String dll : dlls) {
+            ensureResourceExtracted("/bin/" + dll, new File(binDir, dll).getAbsolutePath(), null);
+        }
+
         ensureResourceExtracted("/models/llama-3-8b.gguf", modelPath, listener);
 
         // 2. Validate paths

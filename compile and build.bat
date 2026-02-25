@@ -33,13 +33,10 @@ if not exist embedding\models\llama-3-8b.gguf (
 )
 
 :: Setting up embedding bin
-if not exist embedding\bin\llama-cli.exe (
-    echo Setting up embedding bin...
-    if not exist embedding\bin mkdir embedding\bin
-    copy lib\llama-cli.exe embedding\bin\llama-cli.exe >nul
-) else (
-    echo Embedding binary already set up, skipping...
-)
+if not exist embedding\bin mkdir embedding\bin
+copy lib\llama-cli.exe embedding\bin\llama-cli.exe >nul
+copy lib\*.dll embedding\bin\ >nul
+echo Embedding binaries and DLLs set up.
 
 :: Unzipping library
 echo Unzipping library...
