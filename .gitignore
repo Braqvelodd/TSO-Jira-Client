@@ -1,0 +1,25 @@
+# Java Compiled Class Files
+bin/
+*.class
+
+# Executables and Large Binaries (Embedded AI)
+embedding/bin/
+embedding/models/
+
+# Build Artifacts
+JiraApiClient.jar
+*.tmp
+*.log
+
+# IDE Specific
+.vscode/
+.idea/
+*.iml
+.project
+.classpath
+.settings/
+
+# OS Specific
+Thumbs.db
+desktop.ini
+.DS_Store

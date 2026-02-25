@@ -1,0 +1,17 @@
+src\tso\usmc\jira\app\JiraApiClientGui.java
+src\tso\usmc\jira\service\JiraApiService.java
+src\tso\usmc\jira\service\EmbeddedLlmService.java
+src\tso\usmc\jira\ui\RawApiPanel.java
+src\tso\usmc\jira\ui\ReportPanel.java
+src\tso\usmc\jira\ui\TaskBuilderPanel.java
+src\tso\usmc\jira\ui\JqlRunnerPanel.java
+src\tso\usmc\jira\ui\ReconciliationPanel.java
+src\tso\usmc\jira\ui\BulkActionPanel.java
+src\tso\usmc\jira\ui\TemplateExtractorPanel.java
+src\tso\usmc\jira\ui\WorkflowPanel.java
+src\tso\usmc\jira\ui\CommentSummarizerPanel.java
+src\tso\usmc\jira\util\JsonUtils.java
+src\tso\usmc\jira\util\JiraUtils.java
+src\tso\usmc\jira\util\JiraConfig.java
+src\tso\usmc\jira\util\ConfigChangeListener.java
+src\tso\usmc\jira\ui\AssigneeOption.java
