@@ -3,7 +3,7 @@
 [![Java Version](https://img.shields.io/badge/Java-8%2B-blue.svg)](https://www.oracle.com/java/technologies/javase/javase-jdk8-downloads.html)
 [![License](https://img.shields.io/badge/License-Proprietary-red.svg)](#license)
 
-A specialized, GUI-driven Java application designed for the USMC TSO (Tactical Systems Office) to automate and streamline complex Jira Data Center workflows. This tool integrates secure CAC (Common Access Card) authentication with a comprehensive suite of developer productivity tools and local AI capabilities.
+A specialized, GUI-driven Java application designed for the USMC TSO (Technology Services Orginization) to automate and streamline complex Jira Data Center workflows. This tool integrates secure CAC (Common Access Card) authentication with a comprehensive suite of developer productivity tools and local AI capabilities.
 
 ---
 
