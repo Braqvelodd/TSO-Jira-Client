@@ -24,14 +24,22 @@ cd /d "%ROOT_DIR%"
 if not exist bin mkdir bin
 
 :: Reassemble the model file from chunks
-echo Reassembling llama-3-8b.gguf from chunks...
-if not exist embedding\models mkdir embedding\models
-copy /b lib\llama-3-8b.gguf.part* embedding\models\llama-3-8b.gguf >nul
+if not exist embedding\models\llama-3-8b.gguf (
+    echo Reassembling llama-3-8b.gguf from chunks...
+    if not exist embedding\models mkdir embedding\models
+    copy /b lib\llama-3-8b.gguf.part* embedding\models\llama-3-8b.gguf >nul
+) else (
+    echo AI model already assembled, skipping...
+)
 
 :: Setting up embedding bin
-echo Setting up embedding bin...
-if not exist embedding\bin mkdir embedding\bin
-copy lib\llama-cli.exe embedding\bin\llama-cli.exe >nul
+if not exist embedding\bin\llama-cli.exe (
+    echo Setting up embedding bin...
+    if not exist embedding\bin mkdir embedding\bin
+    copy lib\llama-cli.exe embedding\bin\llama-cli.exe >nul
+) else (
+    echo Embedding binary already set up, skipping...
+)
 
 :: Unzipping library
 echo Unzipping library...
