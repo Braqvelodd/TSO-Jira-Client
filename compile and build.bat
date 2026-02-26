@@ -7,7 +7,8 @@ setlocal enabledelayedexpansion
 set "ROOT_DIR=%~dp0"
 if "%ROOT_DIR:~-1%"=="\" set "ROOT_DIR=%ROOT_DIR:~0,-1%"
 
-set ENV=HOME
+set ENV=WORK
+set EMBED_MODEL=NO
 
 if "%ENV%"=="WORK" (
     set "JDK_BIN=C:\Program Files\Java\jdk21\TSO\bin"
@@ -17,19 +18,25 @@ if "%ENV%"=="WORK" (
     set "SOURCES=@sources.txt"
 )
 
-echo Running in %ENV% mode...
+echo Running in %ENV% mode (Embed Model: %EMBED_MODEL%)...
 cd /d "%ROOT_DIR%"
 
 :: Ensure bin directory exists
 if not exist bin mkdir bin
 
-:: Reassemble the model file from chunks
-if not exist embedding\models\model.gguf (
-    echo Reassembling model.gguf from chunks...
-    if not exist embedding\models mkdir embedding\models
-    copy /b lib\model.gguf.part* embedding\models\model.gguf >nul
+:: Reassemble the model file from chunks (Only if EMBED_MODEL is YES)
+if "%EMBED_MODEL%"=="YES" (
+    if not exist embedding\models\model.gguf (
+        echo Reassembling model.gguf from chunks for production build...
+        if not exist embedding\models mkdir embedding\models
+        copy /b lib\model.gguf.part* embedding\models\model.gguf >nul
+    ) else (
+        echo AI model already assembled, skipping...
+    )
+    set "JAR_RESOURCES=-C bin . -C resources . -C embedding ."
 ) else (
-    echo AI model already assembled, skipping...
+    echo Skipping model assembly for fast build...
+    set "JAR_RESOURCES=-C bin . -C resources . -C embedding\bin ."
 )
 
 :: Setting up embedding bin
@@ -56,7 +63,15 @@ if %errorlevel% neq 0 (
 
 :: Create the JAR file
 echo Creating JAR file...
-"%JDK_BIN%\jar" cvfe JiraApiClient.jar tso.usmc.jira.app.JiraApiClientGui -C bin . -C resources . -C embedding .
+"%JDK_BIN%\jar" cvfe JiraApiClient.jar tso.usmc.jira.app.JiraApiClientGui %JAR_RESOURCES%
+
+if %errorlevel% neq 0 (
+    echo JAR creation failed!
+    exit /b %errorlevel%
+)
+
+echo Process completed successfully for %ENV% environment!
+pause
 
 if %errorlevel% neq 0 (
     echo JAR creation failed!

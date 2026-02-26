@@ -44,9 +44,10 @@ public class EmbeddedLlmService {
             ensureResourceExtracted("/bin/" + dll, new File(binDir, dll).getAbsolutePath(), null);
         }
 
+        // 2. Extract model from JAR if present (Full Prod Mode)
         ensureResourceExtracted("/models/model.gguf", modelPath, listener);
 
-        // 2. Validate paths
+        // 3. Validate paths
         File cliFile = new File(cliPath);
         if (!cliFile.exists()) {
             throw new FileNotFoundException("Llama CLI not found at: " + cliPath);
@@ -54,7 +55,9 @@ public class EmbeddedLlmService {
 
         File modelFile = new File(modelPath);
         if (!modelFile.exists()) {
-            throw new FileNotFoundException("Model file not found at: " + modelPath);
+            throw new FileNotFoundException("AI Model not found at: " + modelPath + "\n\n" +
+                "This build does not appear to include the embedded model.\n" +
+                "Please ensure 'model.gguf' is manually placed in the '.JiraApiClient/models/' folder.");
         }
     }
 
@@ -128,29 +131,30 @@ public class EmbeddedLlmService {
         Process process = pb.start();
         StringBuilder output = new StringBuilder();
 
+        // Use a separate thread to read output so we don't block
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
             String line;
             int lineCount = 0;
             while ((line = reader.readLine()) != null) {
-                // Many LLM logs go to stderr (now combined). We filter for display.
-                if (line.contains("load_model") || line.contains("system_info")) {
-                    if (listener != null) listener.onProgress("AI Engine: Loading model into memory...", -1);
-                } else if (line.contains("compute_buffer")) {
-                    if (listener != null) listener.onProgress("AI Engine: Preparing buffers...", -1);
-                } else if (!line.startsWith("llm_load") && !line.startsWith("llama_")) {
-                    // Check if this is the end-of-process performance line
-                    if (line.contains("Prompt") && line.contains("Generation") && line.contains("t/s")) {
-                        if (listener != null) listener.onProgress("AI Engine: Summarization Complete.", 100);
-                        continue; 
-                    }
+                String trimmed = line.trim();
+                // Filter out common llama.cpp log/stat lines from the final output string
+                if (trimmed.isEmpty() || trimmed.contains("load_model") || trimmed.contains("system_info") || 
+                    trimmed.contains("compute_buffer") || trimmed.startsWith("llm_load") || 
+                    trimmed.startsWith("llama_") || (trimmed.contains("Prompt") && trimmed.contains("t/s"))) {
                     
-                    output.append(line).append("\n");
-                    lineCount++;
                     if (listener != null) {
-                        listener.onPartialOutput(line + "\n");
-                        if (lineCount % 5 == 0) {
-                            listener.onProgress("AI Engine: Generating summary (" + lineCount + " lines)...", -1);
-                        }
+                        if (trimmed.contains("load_model")) listener.onProgress("AI Engine: Loading model...", -1);
+                        else if (trimmed.contains("Prompt")) listener.onProgress("AI Engine: Finalizing...", 100);
+                    }
+                    continue; 
+                }
+                
+                output.append(line).append("\n");
+                lineCount++;
+                if (listener != null) {
+                    listener.onPartialOutput(line + "\n");
+                    if (lineCount % 5 == 0) {
+                        listener.onProgress("AI Engine: Generating summary (" + lineCount + " lines)...", -1);
                     }
                 }
             }
