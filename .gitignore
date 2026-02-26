@@ -23,3 +23,6 @@ JiraApiClient.jar
 Thumbs.db
 desktop.ini
 .DS_Store
+
+# Local Tools
+tools/
