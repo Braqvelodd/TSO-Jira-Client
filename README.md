@@ -1,4 +1,4 @@
-# USMC TSO Jira Client (Refactor API)
+# USMC TSO Jira Client
 
 [![Java Version](https://img.shields.io/badge/Java-8%2B-blue.svg)](https://www.oracle.com/java/technologies/javase/javase-jdk8-downloads.html)
 [![License](https://img.shields.io/badge/License-Proprietary-red.svg)](#license)
@@ -41,6 +41,7 @@ This script reassembles the model, extracts libraries, compiles the source via `
 java -jar JiraApiClient.jar
 ```
 Or by double click
+
 *On first run, the app extracts the AI runtime and creates a default config at `%USERPROFILE%\.JiraApiClient\JiraConfig.ini`.*
 
 ---
