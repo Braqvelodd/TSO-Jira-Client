@@ -138,6 +138,12 @@ public class EmbeddedLlmService {
                 } else if (line.contains("compute_buffer")) {
                     if (listener != null) listener.onProgress("AI Engine: Preparing buffers...", -1);
                 } else if (!line.startsWith("llm_load") && !line.startsWith("llama_")) {
+                    // Check if this is the end-of-process performance line
+                    if (line.contains("Prompt") && line.contains("Generation") && line.contains("t/s")) {
+                        if (listener != null) listener.onProgress("AI Engine: Summarization Complete.", 100);
+                        continue; 
+                    }
+                    
                     output.append(line).append("\n");
                     lineCount++;
                     if (listener != null) {

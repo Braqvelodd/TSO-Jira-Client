@@ -210,10 +210,10 @@ public class CommentSummarizerPanel extends JPanel {
             @Override
             protected void done() {
                 try {
-                    String summary = get();
+                    String finalSummary = get();
+                    // Final UI Update: Use the full string returned by the service
                     summaryPane.setText("<html><body><h3>AI Summary for " + issueKey + "</h3>" +
-                            "<p>" + summary.replace("\n", "<br>") + "</p></body></html>");
-                    rawCommentsArea.setText(formattedRawComments);
+                            "<p>" + finalSummary.replace("\n", "<br>") + "</p></body></html>");
                     statusLabel.setText(" Summarization complete.");
                 } catch (Exception ex) {
                     StringWriter sw = new StringWriter();
