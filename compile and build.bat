@@ -72,11 +72,3 @@ if %errorlevel% neq 0 (
 
 echo Process completed successfully for %ENV% environment!
 pause
-
-if %errorlevel% neq 0 (
-    echo JAR creation failed!
-    exit /b %errorlevel%
-)
-
-echo Process completed successfully for %ENV% environment!
-pause
