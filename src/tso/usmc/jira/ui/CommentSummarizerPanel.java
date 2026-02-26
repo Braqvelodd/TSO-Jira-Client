@@ -137,13 +137,14 @@ public class CommentSummarizerPanel extends JPanel {
         rawCommentsArea.setText("");
         statusLabel.setText(" Fetching comments from Jira...");
 
-        new SwingWorker<String, Void>() {
+        new SwingWorker<String, String>() {
             private String rawTextForAI;
             private String formattedRawComments;
 
             @Override
             protected String doInBackground() throws Exception {
                 // 1. Fetch Comments
+                publish("Fetching data from Jira...");
                 JiraApiService api = mainFrame.getService();
                 String url = mainFrame.getBaseUrl() + "/rest/api/2/issue/" + issueKey + "/comment";
                 String response = api.executeRequest(url, "GET", null);
@@ -172,9 +173,18 @@ public class CommentSummarizerPanel extends JPanel {
                 this.formattedRawComments = displayRaw.toString();
                 this.rawTextForAI = aiInput.toString();
 
-                // 2. Run LLM
-                SwingUtilities.invokeLater(() -> statusLabel.setText(" Local AI is analyzing " + comments.length() + " comments..."));
-                return llmService.summarizeActions(rawTextForAI);
+                // 2. Run LLM with progress updates
+                publish("Local AI Engine: Starting analysis of " + comments.length() + " comments...");
+                return llmService.summarizeActions(rawTextForAI, (task, percent) -> {
+                    publish(task);
+                });
+            }
+
+            @Override
+            protected void process(java.util.List<String> statusUpdates) {
+                // Update the status label with the latest message from the worker
+                String latest = statusUpdates.get(statusUpdates.get(statusUpdates.size() - 1).isEmpty() ? 0 : statusUpdates.size() - 1);
+                statusLabel.setText(" " + latest);
             }
 
             @Override

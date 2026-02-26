@@ -93,7 +93,7 @@ public class EmbeddedLlmService {
         }
     }
 
-    public String summarizeActions(String text) throws Exception {
+    public String summarizeActions(String text, ProgressListener listener) throws Exception {
         File tempPromptFile = File.createTempFile("llama_prompt_", ".txt");
         try (PrintWriter pw = new PrintWriter(new OutputStreamWriter(new FileOutputStream(tempPromptFile), StandardCharsets.UTF_8))) {
             pw.println("You are a helpful assistant that summarizes Jira ticket comments.");
@@ -104,23 +104,40 @@ public class EmbeddedLlmService {
             pw.println("\nSummary:");
         }
 
+        int threads = Math.max(1, Runtime.getRuntime().availableProcessors() - 2);
+        
         ProcessBuilder pb = new ProcessBuilder(
             cliPath,
             "-m", modelPath,
             "-f", tempPromptFile.getAbsolutePath(),
             "--temp", "0.1",
             "-n", "512",
-            "--no-display-prompt",
-            "--log-disable"
+            "-t", String.valueOf(threads),
+            "--no-display-prompt"
         );
+        pb.redirectErrorStream(true); // Combine stdout and stderr to capture all output
 
+        if (listener != null) listener.onProgress("Starting LLM process...", 0);
+        
         Process process = pb.start();
         StringBuilder output = new StringBuilder();
 
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
             String line;
+            int lineCount = 0;
             while ((line = reader.readLine()) != null) {
-                output.append(line).append("\n");
+                // Many LLM logs go to stderr (now combined). We filter for display.
+                if (line.contains("load_model") || line.contains("system_info")) {
+                    if (listener != null) listener.onProgress("AI Engine: Loading model into memory...", -1);
+                } else if (line.contains("compute_buffer")) {
+                    if (listener != null) listener.onProgress("AI Engine: Preparing buffers...", -1);
+                } else if (!line.startsWith("llm_load") && !line.startsWith("llama_")) {
+                    output.append(line).append("\n");
+                    lineCount++;
+                    if (listener != null && lineCount % 5 == 0) {
+                        listener.onProgress("AI Engine: Generating summary (" + lineCount + " lines)...", -1);
+                    }
+                }
             }
         }
 
@@ -142,6 +159,10 @@ public class EmbeddedLlmService {
         }
 
         return output.toString().trim();
+    }
+
+    public String summarizeActions(String text) throws Exception {
+        return summarizeActions(text, null);
     }
 
     public void close() {}
