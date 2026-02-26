@@ -238,37 +238,65 @@ public class TaskBuilderPanel extends JPanel {
         resultsTableModel.setRowCount(0);
         parseInput(); // Ensure defaults are fresh before execution
         new Thread(() -> {
-            // --- MODIFIED: Get selected tasks directly from the JList ---
             List<JiraTask> selected = taskList.getSelectedValuesList();
 
             if (selected.isEmpty()) {
                 updateStatus("No tasks selected.");
                 return;
             }
+
             String parent = parentField.getText().trim().toUpperCase();
             String proj = parent.contains("-") ? parent.split("-")[0] : "PROJ";
             int total = selected.size();
-            for (int i = 0; i < total; i++) {
-                JiraTask t = selected.get(i);
-                updateStatus("Processing " + (i + 1) + " of " + total + ": " + t.summary);
-                try {
-                    String resp;
-                    if (MOCK_MODE) {
-                        Thread.sleep(400);
-                        resp = "{\"key\":\"" + proj + "-" + (100 + new Random().nextInt(900)) + "\"}";
-                    } else {
+            List<String> createdKeys = new ArrayList<>();
+
+            try {
+                if (total > 1 && !MOCK_MODE) {
+                    updateStatus("Creating " + total + " tasks in bulk...");
+                    List<String> taskJsons = new ArrayList<>();
+                    for (JiraTask t : selected) {
                         String assignee = t.assignee;
-                        // For specific issue types, the assignee must be null.
                         List<String> noAssigneeTypes = Arrays.asList("ST-PCU", "ST-Database", "ST-Interface");
                         if (t.type != null && noAssigneeTypes.contains(t.type)) {
-                            assignee = null; // Setting to null should prevent it from being added to the JSON payload.
+                            assignee = null;
                         }
-                        String createJson = JsonUtils.buildManualJson(proj, parent, t.summary, t.description, t.type, assignee, t.component, t.duedate);
-                        resp = mainFrame.getService().executeRequest(mainFrame.getBaseUrl() + "/rest/api/2/issue", "POST", createJson);
+                        taskJsons.add(JsonUtils.buildManualJson(proj, parent, t.summary, t.description, t.type, assignee, t.component, t.duedate));
                     }
-                    String key = JsonUtils.getFieldValue(resp, "key");
+                    String bulkJson = JsonUtils.buildBulkJson(taskJsons);
+                    String resp = mainFrame.getService().executeRequest(mainFrame.getBaseUrl() + "/rest/api/2/issue/bulk", "POST", bulkJson);
+                    
+                    JSONObject bulkResp = new JSONObject(resp);
+                    JSONArray issues = bulkResp.getJSONArray("issues");
+                    for (int i = 0; i < issues.length(); i++) {
+                        createdKeys.add(issues.getJSONObject(i).getString("key"));
+                    }
+                } else {
+                    // Single create or Mock mode
+                    for (int i = 0; i < total; i++) {
+                        JiraTask t = selected.get(i);
+                        if (MOCK_MODE) {
+                            Thread.sleep(400);
+                            createdKeys.add(proj + "-" + (100 + new Random().nextInt(900)));
+                        } else {
+                            String assignee = t.assignee;
+                            List<String> noAssigneeTypes = Arrays.asList("ST-PCU", "ST-Database", "ST-Interface");
+                            if (t.type != null && noAssigneeTypes.contains(t.type)) {
+                                assignee = null;
+                            }
+                            String createJson = JsonUtils.buildManualJson(proj, parent, t.summary, t.description, t.type, assignee, t.component, t.duedate);
+                            String resp = mainFrame.getService().executeRequest(mainFrame.getBaseUrl() + "/rest/api/2/issue", "POST", createJson);
+                            createdKeys.add(new JSONObject(resp).getString("key"));
+                        }
+                    }
+                }
+
+                // Now process transitions and notifications for the created issues
+                for (int i = 0; i < selected.size(); i++) {
+                    JiraTask t = selected.get(i);
+                    String key = createdKeys.get(i);
                     String link = mainFrame.getBaseUrl() + "/browse/" + key;
                     String status = "CREATED";
+
                     if (!t.transition.isEmpty()) {
                         updateStatus("Transitioning " + key + " to " + t.transition + "...");
                         try {
@@ -294,22 +322,18 @@ public class TaskBuilderPanel extends JPanel {
                             status = "CREATED (Trans. Failed: " + ex.getMessage() + ")";
                         }
                     }
-                    // --- MODIFIED NOTIFICATION LOGIC ---
+
                     if (t.notify != null && !t.notify.trim().isEmpty()) {
                         updateStatus("Notifying users for " + key + "...");
                         try {
                             if (MOCK_MODE) {
                                 Thread.sleep(200);
-                                System.out.println("Mock Notify for " + key + " to: " + t.notify);
                             } else {
-                                // 1. Build the JSON Payload for the /notify endpoint
                                 JSONObject notifyPayload = new JSONObject();
                                 notifyPayload.put("subject", "Task Created: " + t.summary);
                                 notifyPayload.put("textBody", "A new issue has been created that you were listed to be notified about.\n\n" +
                                         "Summary: " + t.summary + "\n" +
                                         "Link: " + link);
-                                
-                                // 2. Create the list of users
                                 JSONArray usersToNotify = new JSONArray();
                                 String[] userNames = t.notify.split("\\s*,\\s*");
                                 for (String userName : userNames) {
@@ -317,13 +341,8 @@ public class TaskBuilderPanel extends JPanel {
                                         usersToNotify.put(new JSONObject().put("name", userName.trim()));
                                     }
                                 }
-
-                                // 3. Add users to the payload
                                 notifyPayload.put("to", new JSONObject().put("users", usersToNotify));
-                                
-                                // 4. Execute the request
-                                String notifyUrl = mainFrame.getBaseUrl() + "/rest/api/2/issue/" + key + "/notify";
-                                mainFrame.getService().executeRequest(notifyUrl, "POST", notifyPayload.toString());
+                                mainFrame.getService().executeRequest(mainFrame.getBaseUrl() + "/rest/api/2/issue/" + key + "/notify", "POST", notifyPayload.toString());
                             }
                             status += " & NOTIFIED";
                         } catch (Exception notifyEx) {
@@ -331,11 +350,12 @@ public class TaskBuilderPanel extends JPanel {
                         }
                     }
                     addRow(t.summary, status, link);
-                } catch (Exception e) {
-                    addRow(t.summary, "FAILED: " + e.getMessage(), "N/A");
                 }
+                updateStatus("Execution Complete. " + total + " tasks processed.");
+            } catch (Exception e) {
+                updateStatus("Execution Failed: " + e.getMessage());
+                addRow("SYSTEM ERROR", e.getMessage(), "N/A");
             }
-            updateStatus("Execution Complete. " + total + " tasks processed.");
         }).start();
     }
 
