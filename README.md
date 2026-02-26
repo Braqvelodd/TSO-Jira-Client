@@ -26,8 +26,8 @@ A specialized, GUI-driven Java application designed for the USMC TSO (Technology
 *   **CAC Hardware:** A functional CAC reader and valid USMC CAC card.
 
 ### 2. Prepare the AI Model
-Due to file size limits, the `llama-3-8b.gguf` model is stored in the `lib/` directory as multiple 95MB split parts (`.part001`, `.part002`, etc.). 
-*   **Automatic:** The `compile and build.bat` script automatically reassembles these parts into `embedding/models/llama-3-8b.gguf` during the build process.
+Due to file size limits, the `model.gguf` model is stored in the `lib/` directory as multiple 95MB split parts (`.part001`, `.part002`, etc.). 
+*   **Automatic:** The `compile and build.bat` script automatically reassembles these parts into `embedding/models/model.gguf` during the build process.
 
 ### 3. Build the Application
 Open `compile and build.bat` and ensure your environment is set correctly (`set ENV=HOME` or `set ENV=WORK`) and your Java JDK path. Then run:

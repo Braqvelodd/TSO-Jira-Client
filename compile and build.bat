@@ -24,10 +24,10 @@ cd /d "%ROOT_DIR%"
 if not exist bin mkdir bin
 
 :: Reassemble the model file from chunks
-if not exist embedding\models\llama-3-8b.gguf (
-    echo Reassembling llama-3-8b.gguf from chunks...
+if not exist embedding\models\model.gguf (
+    echo Reassembling model.gguf from chunks...
     if not exist embedding\models mkdir embedding\models
-    copy /b lib\llama-3-8b.gguf.part* embedding\models\llama-3-8b.gguf >nul
+    copy /b lib\model.gguf.part* embedding\models\model.gguf >nul
 ) else (
     echo AI model already assembled, skipping...
 )

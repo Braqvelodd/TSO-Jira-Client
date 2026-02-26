@@ -329,7 +329,7 @@ public class JiraConfig {
         String path = getProperty("llama_model_path");
         if (path == null || path.trim().isEmpty()) {
             // Default to managed models folder in user home
-            return new File(configFile.getParentFile(), "models/llama-3-8b.gguf").getAbsolutePath();
+            return new File(configFile.getParentFile(), "models/model.gguf").getAbsolutePath();
         }
         return path;
     }

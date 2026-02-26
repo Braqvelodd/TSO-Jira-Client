@@ -42,7 +42,7 @@ public class EmbeddedLlmService {
             ensureResourceExtracted("/bin/" + dll, new File(binDir, dll).getAbsolutePath(), null);
         }
 
-        ensureResourceExtracted("/models/llama-3-8b.gguf", modelPath, listener);
+        ensureResourceExtracted("/models/model.gguf", modelPath, listener);
 
         // 2. Validate paths
         File cliFile = new File(cliPath);
