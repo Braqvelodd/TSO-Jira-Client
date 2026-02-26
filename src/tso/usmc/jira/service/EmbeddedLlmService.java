@@ -15,6 +15,8 @@ public class EmbeddedLlmService {
 
     public interface ProgressListener {
         void onProgress(String task, int percent);
+        /** Called when the AI generates a new piece of the summary text. */
+        default void onPartialOutput(String text) {}
     }
 
     private final String cliPath;
@@ -138,8 +140,11 @@ public class EmbeddedLlmService {
                 } else if (!line.startsWith("llm_load") && !line.startsWith("llama_")) {
                     output.append(line).append("\n");
                     lineCount++;
-                    if (listener != null && lineCount % 5 == 0) {
-                        listener.onProgress("AI Engine: Generating summary (" + lineCount + " lines)...", -1);
+                    if (listener != null) {
+                        listener.onPartialOutput(line + "\n");
+                        if (lineCount % 5 == 0) {
+                            listener.onProgress("AI Engine: Generating summary (" + lineCount + " lines)...", -1);
+                        }
                     }
                 }
             }

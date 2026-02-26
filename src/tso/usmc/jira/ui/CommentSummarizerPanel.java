@@ -137,14 +137,15 @@ public class CommentSummarizerPanel extends JPanel {
         rawCommentsArea.setText("");
         statusLabel.setText(" Fetching comments from Jira...");
 
-        new SwingWorker<String, String>() {
+        new SwingWorker<String, Object[]>() {
             private String rawTextForAI;
             private String formattedRawComments;
+            private final StringBuilder accumulatedSummary = new StringBuilder();
 
             @Override
             protected String doInBackground() throws Exception {
                 // 1. Fetch Comments
-                publish("Fetching data from Jira...");
+                publish(new Object[]{"STATUS", "Fetching data from Jira..."});
                 JiraApiService api = mainFrame.getService();
                 String url = mainFrame.getBaseUrl() + "/rest/api/2/issue/" + issueKey + "/comment";
                 String response = api.executeRequest(url, "GET", null);
@@ -172,19 +173,38 @@ public class CommentSummarizerPanel extends JPanel {
 
                 this.formattedRawComments = displayRaw.toString();
                 this.rawTextForAI = aiInput.toString();
+                
+                publish(new Object[]{"RAW_DATA", this.formattedRawComments});
 
                 // 2. Run LLM with progress updates
-                publish("Local AI Engine: Starting analysis of " + comments.length() + " comments...");
-                return llmService.summarizeActions(rawTextForAI, (task, percent) -> {
-                    publish(task);
+                publish(new Object[]{"STATUS", "Local AI Engine: Starting analysis of " + comments.length() + " comments..."});
+                return llmService.summarizeActions(rawTextForAI, new EmbeddedLlmService.ProgressListener() {
+                    @Override
+                    public void onProgress(String task, int percent) {
+                        publish(new Object[]{"STATUS", task});
+                    }
+                    @Override
+                    public void onPartialOutput(String text) {
+                        publish(new Object[]{"OUTPUT", text});
+                    }
                 });
             }
 
             @Override
-            protected void process(java.util.List<String> statusUpdates) {
-                // Update the status label with the latest message from the worker
-                String latest = statusUpdates.get(statusUpdates.get(statusUpdates.size() - 1).isEmpty() ? 0 : statusUpdates.size() - 1);
-                statusLabel.setText(" " + latest);
+            protected void process(java.util.List<Object[]> chunks) {
+                for (Object[] chunk : chunks) {
+                    String type = (String) chunk[0];
+                    String value = (String) chunk[1];
+                    if ("RAW_DATA".equals(type)) {
+                        rawCommentsArea.setText(value);
+                    } else if ("STATUS".equals(type)) {
+                        statusLabel.setText(" " + value);
+                    } else if ("OUTPUT".equals(type)) {
+                        accumulatedSummary.append(value);
+                        summaryPane.setText("<html><body><h3>AI Summary (Generating...)</h3>" +
+                                "<p>" + accumulatedSummary.toString().replace("\n", "<br>") + "</p></body></html>");
+                    }
+                }
             }
 
             @Override
