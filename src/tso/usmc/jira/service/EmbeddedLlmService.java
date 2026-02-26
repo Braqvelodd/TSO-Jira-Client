@@ -31,7 +31,11 @@ public class EmbeddedLlmService {
         String binDir = new File(cliPath).getParent();
         String[] dlls = {
             "llama.dll", "ggml.dll", "ggml-base.dll", "mtmd.dll", "ggml-rpc.dll",
-            "ggml-cpu-x64.dll", "ggml-cpu-sse42.dll", "libomp140.x86_64.dll"
+            "ggml-cpu-x64.dll", "ggml-cpu-sse42.dll", "libomp140.x86_64.dll",
+            "ggml-cpu-alderlake.dll", "ggml-cpu-cannonlake.dll", "ggml-cpu-cascadelake.dll",
+            "ggml-cpu-cooperlake.dll", "ggml-cpu-haswell.dll", "ggml-cpu-icelake.dll",
+            "ggml-cpu-ivybridge.dll", "ggml-cpu-piledriver.dll", "ggml-cpu-sandybridge.dll",
+            "ggml-cpu-sapphirerapids.dll", "ggml-cpu-skylakex.dll", "ggml-cpu-zen4.dll"
         };
         
         for (String dll : dlls) {
