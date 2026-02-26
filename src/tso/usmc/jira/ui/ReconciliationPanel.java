@@ -111,23 +111,34 @@ public class ReconciliationPanel extends JPanel {
     }
     
     private void performComparison() {
-        // ... (Parsing logic is unchanged) ...
+
         statusLabel.setText("Parsing ISPW report and performing comparison...");
         this.ispwTaskMap = new HashMap<>();
         String ispwText = ispwReportArea.getText();
+        
+        // Fetch bounds from config or use defaults
+        tso.usmc.jira.util.JiraConfig config = mainFrame.getJiraConfig();
+        int minLen = config.getIspwMinLineLength(65);
+        int[] typeBounds = config.getIspwColumnBounds("ci_type", new int[]{0, 4});
+        int[] nameBounds = config.getIspwColumnBounds("ci_name", new int[]{5, 13});
+        int[] srBounds = config.getIspwColumnBounds("sr", new int[]{30, 40});
+        int[] userBounds = config.getIspwColumnBounds("user", new int[]{41, 47});
+        int actionIdx = config.getIspwActionIndex(55);
+
         for (String line : ispwText.split("\n")) {
             try {
-                if (line.length() < 65) continue;
-                String col1 = line.substring(0, 4).trim();
-                String col2 = line.substring(5, 13).trim();
-                if (!col1.isEmpty() && !col2.isEmpty()) {
-                    String rawTaskName = col1 + " " + col2;
+                if (line.length() < minLen) continue;
+                String typePart = line.substring(typeBounds[0], typeBounds[1]).trim();
+                String namePart = line.substring(nameBounds[0], nameBounds[1]).trim();
+                
+                if (!typePart.isEmpty() && !namePart.isEmpty()) {
+                    String rawTaskName = typePart + " " + namePart;
                     String normalizedName = rawTaskName.trim().replaceAll("\\s+", " ");
                     IspwReconInfo info = new IspwReconInfo();
                     info.fullTaskName = normalizedName;
-                    info.srNumber = line.substring(30, 40).trim();
-                    info.userId = line.substring(41, 47).trim();
-                    char actionChar = line.charAt(55);
+                    info.srNumber = line.substring(srBounds[0], srBounds[1]).trim();
+                    info.userId = line.substring(userBounds[0], userBounds[1]).trim();
+                    char actionChar = line.charAt(actionIdx);
                     if (actionChar == 'C') info.action = "Compile-only";
                     else if (actionChar == 'D') info.action = "Delete";
                     else info.action = " ";

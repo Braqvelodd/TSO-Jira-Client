@@ -20,7 +20,7 @@ import javax.swing.JOptionPane;
  * Loads and provides access to configuration settings from the JiraConfig.ini file.
  */
 public class JiraConfig {
-    private static final String CURRENT_CONFIG_VERSION = "1.1";
+    private static final String CURRENT_CONFIG_VERSION = "1.2";
     private final Properties properties = new Properties();
     private final File configFile;
     private final List<ConfigChangeListener> listeners = new ArrayList<>();
@@ -392,5 +392,36 @@ public class JiraConfig {
             return false; // Default to disabled if the property is missing/commented out
         }
         return Boolean.parseBoolean(value.trim());
+    }
+
+    public int[] getIspwColumnBounds(String key, int[] defaultBounds) {
+        String val = getProperty("recon.ispw." + key + ".bounds");
+        if (val == null || !val.contains(",")) return defaultBounds;
+        try {
+            String[] parts = val.split(",");
+            return new int[]{Integer.parseInt(parts[0].trim()), Integer.parseInt(parts[1].trim())};
+        } catch (Exception e) {
+            return defaultBounds;
+        }
+    }
+
+    public int getIspwActionIndex(int defaultIndex) {
+        String val = getProperty("recon.ispw.action.index");
+        if (val == null) return defaultIndex;
+        try {
+            return Integer.parseInt(val.trim());
+        } catch (Exception e) {
+            return defaultIndex;
+        }
+    }
+
+    public int getIspwMinLineLength(int defaultMin) {
+        String val = getProperty("recon.ispw.min_line_length");
+        if (val == null) return defaultMin;
+        try {
+            return Integer.parseInt(val.trim());
+        } catch (Exception e) {
+            return defaultMin;
+        }
     }
 }
