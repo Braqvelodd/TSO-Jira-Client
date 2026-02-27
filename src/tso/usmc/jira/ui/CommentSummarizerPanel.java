@@ -133,7 +133,9 @@ public class CommentSummarizerPanel extends JPanel {
         }
 
         summarizeButton.setEnabled(false);
-        summaryPane.setText("<html><body><h3>Processing " + issueKey + "...</h3><p>Fetching data and running local AI model. This may take a minute.</p></body></html>");
+        summaryPane.setText("<html><body><h3>Processing " + issueKey + "...</h3>" +
+                "<p>The local AI model is currently analyzing the comments. This may take a minute.</p>" +
+                "<p><i>The final summary will be displayed here once analysis is complete.</i></p></body></html>");
         rawCommentsArea.setText("");
         statusLabel.setText(" Fetching comments from Jira...");
 

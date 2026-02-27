@@ -135,24 +135,40 @@ public class EmbeddedLlmService {
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
             String line;
             int lineCount = 0;
+            boolean capturing = false;
+            
             while ((line = reader.readLine()) != null) {
                 String trimmed = line.trim();
-                // Filter out common llama.cpp log/stat lines from the final output string
-                if (trimmed.isEmpty() || trimmed.contains("load_model") || trimmed.contains("system_info") || 
+                
+                // 1. Detect end of output stats and break to avoid hangs
+                if (trimmed.contains("Prompt") && trimmed.contains("t/s")) {
+                    if (listener != null) listener.onProgress("AI Engine: Finalizing...", 100);
+                    break; 
+                }
+
+                // 2. Filter out common llama.cpp log/stat lines
+                if (trimmed.contains("load_model") || trimmed.contains("system_info") || 
                     trimmed.contains("compute_buffer") || trimmed.startsWith("llm_load") || 
-                    trimmed.startsWith("llama_") || (trimmed.contains("Prompt") && trimmed.contains("t/s"))) {
+                    trimmed.startsWith("llama_")) {
                     
                     if (listener != null) {
                         if (trimmed.contains("load_model")) listener.onProgress("AI Engine: Loading model...", -1);
-                        else if (trimmed.contains("Prompt")) listener.onProgress("AI Engine: Finalizing...", 100);
                     }
                     continue; 
                 }
+
+                // 3. Skip echoed prompt text by waiting for the "Summary:" marker
+                if (!capturing) {
+                    if (trimmed.contains("Summary:")) {
+                        capturing = true;
+                    }
+                    continue;
+                }
                 
+                // 4. Capture actual summary text
                 output.append(line).append("\n");
                 lineCount++;
                 if (listener != null) {
-                    listener.onPartialOutput(line + "\n");
                     if (lineCount % 5 == 0) {
                         listener.onProgress("AI Engine: Generating summary (" + lineCount + " lines)...", -1);
                     }
