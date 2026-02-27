@@ -70,6 +70,8 @@ public class TaskBuilderPanel extends JPanel {
         addSyncListener(defTransField, "DEFAULT_TRANSITION");
         leftPanel.add(configPanel, BorderLayout.NORTH);
         inputArea.setFont(new Font("Monospaced", Font.PLAIN, 12));
+        inputArea.setSelectionColor(new Color(160, 200, 255)); // Slightly deeper blue
+        inputArea.setSelectedTextColor(Color.BLACK); // Keep text black when selected
         setupDragAndDrop();
         inputArea.getDocument().addDocumentListener(new DocumentListener() {
             public void insertUpdate(DocumentEvent e) { parseInput(); }
@@ -84,8 +86,30 @@ public class TaskBuilderPanel extends JPanel {
             @Override
             public void mouseClicked(java.awt.event.MouseEvent e) {
                 if (e.getClickCount() == 2) {
-                    JiraTask task = taskList.getSelectedValue();
-                    if (task != null) {
+                    int index = taskList.locationToIndex(e.getPoint());
+                    if (index != -1) {
+                        JiraTask task = taskListModel.getElementAt(index);
+                        
+                        // If Ctrl is NOT held, we want to clear other selections and select only this one.
+                        // Note: The JList already handles selection on the first click, 
+                        // but being explicit ensures the double-click behavior matches the request.
+                        if ((e.getModifiersEx() & java.awt.event.InputEvent.CTRL_DOWN_MASK) == 0) {
+                            taskList.setSelectedIndex(index);
+                        }
+                        
+                        // Scroll the task to the top of the text area
+                        try {
+                            Rectangle rect = inputArea.modelToView(task.startIndex);
+                            if (rect != null) {
+                                // To force the line to the top, we tell it to scroll to a rectangle 
+                                // that starts at our line and is as tall as the visible area.
+                                rect.height = inputArea.getVisibleRect().height;
+                                inputArea.scrollRectToVisible(rect);
+                            }
+                        } catch (Exception ex) {
+                            // Fallback if modelToView fails
+                        }
+                        
                         inputArea.setCaretPosition(task.startIndex);
                         inputArea.requestFocusInWindow();
                     }
@@ -129,7 +153,8 @@ public class TaskBuilderPanel extends JPanel {
     private void updateHighlights() {
         Highlighter h = inputArea.getHighlighter();
         h.removeAllHighlights();
-        Highlighter.HighlightPainter painter = new DefaultHighlighter.DefaultHighlightPainter(new Color(210, 230, 255));
+        // Use semi-transparent green (alpha 100 out of 255) so manual blue selection blends/shows through
+        Highlighter.HighlightPainter painter = new DefaultHighlighter.DefaultHighlightPainter(new Color(210, 255, 230, 150));
         
         for (JiraTask selectedTask : taskList.getSelectedValuesList()) {
             try {
@@ -427,15 +452,32 @@ public class TaskBuilderPanel extends JPanel {
         am.put("duplicateUp", new AbstractAction() {
             public void actionPerformed(java.awt.event.ActionEvent e) { duplicateLines(false); }
         });
+
+        im.put(KeyStroke.getKeyStroke("alt DOWN"), "moveDown");
+        am.put("moveDown", new AbstractAction() {
+            public void actionPerformed(java.awt.event.ActionEvent e) { moveLines(true); }
+        });
+
+        im.put(KeyStroke.getKeyStroke("alt UP"), "moveUp");
+        am.put("moveUp", new AbstractAction() {
+            public void actionPerformed(java.awt.event.ActionEvent e) { moveLines(false); }
+        });
+
+        im.put(KeyStroke.getKeyStroke("ctrl SLASH"), "toggleComment");
+        am.put("toggleComment", new AbstractAction() {
+            public void actionPerformed(java.awt.event.ActionEvent e) { toggleComments(); }
+        });
+
+        im.put(KeyStroke.getKeyStroke("ctrl D"), "deleteLines");
+        am.put("deleteLines", new AbstractAction() {
+            public void actionPerformed(java.awt.event.ActionEvent e) { deleteLines(); }
+        });
     }
 
     private void duplicateLines(boolean down) {
         try {
-            int caret = inputArea.getCaretPosition();
             int start = inputArea.getSelectionStart();
             int end = inputArea.getSelectionEnd();
-            
-            // Expand selection to full lines
             int lineStart = javax.swing.text.Utilities.getRowStart(inputArea, start);
             int lineEnd = javax.swing.text.Utilities.getRowEnd(inputArea, end);
             
@@ -444,15 +486,111 @@ public class TaskBuilderPanel extends JPanel {
 
             if (down) {
                 inputArea.insert("\n" + textToDuplicate, lineEnd);
-                // Adjust selection to the new copy if desired, or keep as is. 
-                // Standard IDE behavior usually keeps selection or moves it.
             } else {
                 inputArea.insert(textToDuplicate + "\n", lineStart);
-                inputArea.setCaretPosition(lineStart); // Keep focus at start of new block
+                inputArea.setCaretPosition(lineStart);
             }
-        } catch (Exception ex) {
-            ex.printStackTrace();
-        }
+        } catch (Exception ex) { ex.printStackTrace(); }
+    }
+
+    private void moveLines(boolean down) {
+        try {
+            int start = inputArea.getSelectionStart();
+            int end = inputArea.getSelectionEnd();
+            int lineStart = javax.swing.text.Utilities.getRowStart(inputArea, start);
+            int lineEnd = javax.swing.text.Utilities.getRowEnd(inputArea, end);
+            
+            int docLen = inputArea.getDocument().getLength();
+            // Include the newline character if it exists
+            int selectionEnd = (lineEnd < docLen) ? lineEnd + 1 : lineEnd;
+            String textToMove = inputArea.getText(lineStart, selectionEnd - lineStart);
+            
+            // Ensure the text to move ends with a newline unless it's at the very end of the document
+            if (!textToMove.endsWith("\n") && selectionEnd < docLen) {
+                textToMove += "\n";
+            }
+
+            if (down) {
+                if (selectionEnd >= docLen) return; // Already at the bottom
+                int nextLineEnd = javax.swing.text.Utilities.getRowEnd(inputArea, selectionEnd);
+                int nextSelectionEnd = (nextLineEnd < docLen) ? nextLineEnd + 1 : nextLineEnd;
+                String nextLine = inputArea.getText(selectionEnd, nextSelectionEnd - selectionEnd);
+                
+                if (!nextLine.endsWith("\n") && nextSelectionEnd < docLen) {
+                    nextLine += "\n";
+                }
+
+                inputArea.replaceRange(nextLine + textToMove, lineStart, nextSelectionEnd);
+                int newStart = lineStart + nextLine.length();
+                inputArea.setSelectionStart(newStart);
+                inputArea.setSelectionEnd(newStart + textToMove.length() - (textToMove.endsWith("\n") ? 1 : 0));
+            } else {
+                if (lineStart <= 0) return; // Already at the top
+                int prevLineStart = javax.swing.text.Utilities.getRowStart(inputArea, lineStart - 1);
+                String prevLine = inputArea.getText(prevLineStart, lineStart - prevLineStart);
+                
+                if (!prevLine.endsWith("\n")) {
+                    prevLine += "\n";
+                }
+
+                inputArea.replaceRange(textToMove + prevLine, prevLineStart, selectionEnd);
+                inputArea.setSelectionStart(prevLineStart);
+                inputArea.setSelectionEnd(prevLineStart + textToMove.length() - (textToMove.endsWith("\n") ? 1 : 0));
+            }
+        } catch (Exception ex) { ex.printStackTrace(); }
+    }
+
+    private void toggleComments() {
+        try {
+            int start = inputArea.getSelectionStart();
+            int end = inputArea.getSelectionEnd();
+            int lineStart = javax.swing.text.Utilities.getRowStart(inputArea, start);
+            int lineEnd = javax.swing.text.Utilities.getRowEnd(inputArea, end);
+            String selectedText = inputArea.getText(lineStart, lineEnd - lineStart);
+            
+            String[] lines = selectedText.split("\n", -1);
+            boolean allCommented = true;
+            for (String line : lines) {
+                if (!line.trim().isEmpty() && !line.trim().startsWith("--")) {
+                    allCommented = false;
+                    break;
+                }
+            }
+
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < lines.length; i++) {
+                String line = lines[i];
+                if (allCommented) {
+                    if (line.trim().startsWith("--")) {
+                        sb.append(line.replaceFirst("--\\s?", ""));
+                    } else {
+                        sb.append(line);
+                    }
+                } else {
+                    sb.append("-- ").append(line);
+                }
+                if (i < lines.length - 1) sb.append("\n");
+            }
+            
+            inputArea.replaceRange(sb.toString(), lineStart, lineEnd);
+            inputArea.setSelectionStart(lineStart);
+            inputArea.setSelectionEnd(lineStart + sb.length());
+        } catch (Exception ex) { ex.printStackTrace(); }
+    }
+
+    private void deleteLines() {
+        try {
+            int start = inputArea.getSelectionStart();
+            int end = inputArea.getSelectionEnd();
+            int lineStart = javax.swing.text.Utilities.getRowStart(inputArea, start);
+            int lineEnd = javax.swing.text.Utilities.getRowEnd(inputArea, end);
+            
+            int docLen = inputArea.getDocument().getLength();
+            // Include the trailing newline if it's not the last line
+            int deletionEnd = (lineEnd < docLen) ? lineEnd + 1 : lineEnd;
+            
+            inputArea.replaceRange("", lineStart, deletionEnd);
+        } catch (Exception ex) { ex.printStackTrace(); }
     }
 
     private void setupDragAndDrop() {

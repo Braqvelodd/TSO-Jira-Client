@@ -64,7 +64,22 @@ Or by double click
     *   Automatic JSON pretty-printing and smart execution buttons.
 *   **Enhanced Bulk Actions:** Perform mass updates including Transitions, Assignee changes, Comments, Labels, Priority, and Issue Linking.
 *   **Workflow Automation:** Automates the 5-step "Issue Processing" workflow including cloning, attachment migration, and SMARTS linking.
-*   **Task Builder:** Rapidly generate sub-tasks from templates. Includes a dynamic context menu in the JQL Runner.
+*   **Task Builder:** Rapidly generate sub-tasks from templates.
+    *   **JQL Integration:** Dynamic context menu in the **JQL Runner** results to instantly send tickets or templates to the builder.
+    *   **Dynamic Parsing:** Real-time parsing of task blocks separated by `***`.
+    *   **Interactive List:** Select specific tasks for execution; double-click a task to jump to its definition in the editor.
+    *   **Visual Highlighting:** Selected tasks are highlighted in the editor for easy identification.
+    *   **Advanced Syntax:**
+        *   `transition: [Status]`: Automatically move the task to a status after creation.
+        *   `notify: [user1, user2]`: Send Jira notifications to specific users.
+        *   `duedate: [YYYY-MM-DD]`: Set a specific due date.
+        *   `noassignee:`, `nocomponent:`, `notransition:`: Override defaults to leave fields empty.
+    *   **Editor Shortcuts:**
+        *   `Ctrl + Alt + ↑/↓`: Duplicate lines.
+        *   `Alt + ↑/↓`: Move lines.
+        *   `Ctrl + /`: Toggle comments (`--`).
+        *   `Ctrl + D`: Delete lines.
+    *   **Drag & Drop:** Drop text files directly into the editor to append templates.
 *   **Data Reconciliation:** Tools for comparing Jira sub-tasks against ISPW reports to ensure development synchronization.
 
 ---
