@@ -795,6 +795,41 @@ public class TaskBuilderPanel extends JPanel {
         am.put("deleteLines", new AbstractAction() {
             public void actionPerformed(java.awt.event.ActionEvent e) { deleteLines(); }
         });
+
+        im.put(KeyStroke.getKeyStroke("ctrl B"), "toggleBold");
+        am.put("toggleBold", new AbstractAction() {
+            public void actionPerformed(java.awt.event.ActionEvent e) { toggleFormat("*"); }
+        });
+
+        im.put(KeyStroke.getKeyStroke("ctrl I"), "toggleItalic");
+        am.put("toggleItalic", new AbstractAction() {
+            public void actionPerformed(java.awt.event.ActionEvent e) { toggleFormat("{_}"); }
+        });
+    }
+
+    private void toggleFormat(String symbol) {
+        try {
+            int start = inputArea.getSelectionStart();
+            int end = inputArea.getSelectionEnd();
+            if (start == end) return; // No selection
+
+            String selectedText = inputArea.getSelectedText();
+            if (selectedText == null) return;
+
+            if (selectedText.startsWith(symbol) && selectedText.endsWith(symbol)) {
+                // Remove format
+                String unformatted = selectedText.substring(symbol.length(), selectedText.length() - symbol.length());
+                inputArea.replaceSelection(unformatted);
+                inputArea.setSelectionStart(start);
+                inputArea.setSelectionEnd(start + unformatted.length());
+            } else {
+                // Add format
+                String formatted = symbol + selectedText + symbol;
+                inputArea.replaceSelection(formatted);
+                inputArea.setSelectionStart(start);
+                inputArea.setSelectionEnd(start + formatted.length());
+            }
+        } catch (Exception ex) { ex.printStackTrace(); }
     }
 
     private void duplicateLines(boolean down) {
