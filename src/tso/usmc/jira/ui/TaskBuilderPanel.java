@@ -6,8 +6,12 @@ import tso.usmc.jira.util.JsonUtils;
 import javax.swing.*;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
+import javax.swing.event.ListSelectionEvent;
+import javax.swing.event.ListSelectionListener;
 import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.DefaultTableModel;
+import javax.swing.text.DefaultHighlighter;
+import javax.swing.text.Highlighter;
 import java.awt.*;
 import java.awt.datatransfer.DataFlavor;
 import java.awt.dnd.*;
@@ -87,6 +91,14 @@ public class TaskBuilderPanel extends JPanel {
                 }
             }
         });
+        taskList.addListSelectionListener(new ListSelectionListener() {
+            @Override
+            public void valueChanged(ListSelectionEvent e) {
+                if (!e.getValueIsAdjusting()) {
+                    updateHighlights();
+                }
+            }
+        });
         rightPanel.add(new JScrollPane(taskList), BorderLayout.CENTER);
 
         JPanel actionButtonsPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 5, 5));
@@ -111,6 +123,25 @@ public class TaskBuilderPanel extends JPanel {
         selectAllBtn.addActionListener(e -> setAllTasksSelected(true));
         unselectAllBtn.addActionListener(e -> setAllTasksSelected(false));
         executeBtn.addActionListener(e -> executeTasks());
+    }
+
+    private void updateHighlights() {
+        Highlighter h = inputArea.getHighlighter();
+        h.removeAllHighlights();
+        Highlighter.HighlightPainter painter = new DefaultHighlighter.DefaultHighlightPainter(new Color(210, 230, 255));
+        
+        for (JiraTask selectedTask : taskList.getSelectedValuesList()) {
+            try {
+                // Ensure indices are within bounds to avoid BadLocationException
+                int start = Math.max(0, Math.min(selectedTask.startIndex, inputArea.getText().length()));
+                int end = Math.max(0, Math.min(selectedTask.endIndex, inputArea.getText().length()));
+                if (start < end) {
+                    h.addHighlight(start, end, painter);
+                }
+            } catch (Exception ex) {
+                // Silently ignore highlighting errors
+            }
+        }
     }
 
     private void updateStatus(String msg) { SwingUtilities.invokeLater(() -> statusBar.setText(" " + msg)); }
@@ -218,6 +249,7 @@ public class TaskBuilderPanel extends JPanel {
             if (summaryFound) {
                 applyDefaults(task);
                 task.description = desc.toString().trim();
+                task.endIndex = blockStart + block.length();
                 parsedTasks.add(task); // Keep the main list of all parsed tasks
                 taskListModel.addElement(task); // Add task to the model for the JList
             }
@@ -240,6 +272,7 @@ public class TaskBuilderPanel extends JPanel {
             indicesToSelect[i] = taskListModel.indexOf(tasksToSelect.get(i));
         }
         taskList.setSelectedIndices(indicesToSelect);
+        updateHighlights();
         
         isUpdating = false;
     }
@@ -411,7 +444,7 @@ public class TaskBuilderPanel extends JPanel {
     private class JiraTask {
         String summary = "", description = "", type = null, assignee = "", component = "", transition = "", duedate = null, notify = null;
         boolean overAssignee = false, overComp = false, overTrans = false;
-        int startIndex = 0;
+        int startIndex = 0, endIndex = 0;
     }
     public void setParentTicket(String issueKey) {
         // Replace 'parentTicketField' with the actual name of your parent ticket JTextField
