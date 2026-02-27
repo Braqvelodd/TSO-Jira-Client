@@ -169,6 +169,7 @@ public class EmbeddedLlmService {
                 output.append(line).append("\n");
                 lineCount++;
                 if (listener != null) {
+                    listener.onPartialOutput(line + "\n");
                     if (lineCount % 5 == 0) {
                         listener.onProgress("AI Engine: Generating summary (" + lineCount + " lines)...", -1);
                     }

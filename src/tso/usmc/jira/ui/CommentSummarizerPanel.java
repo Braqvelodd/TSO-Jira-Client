@@ -24,6 +24,7 @@ public class CommentSummarizerPanel extends JPanel {
     // UI Components
     private final JTextField issueKeyField = new JTextField(15);
     private final JButton summarizeButton = new JButton("Fetch & Summarize");
+    private final JButton resetButton = new JButton("Reset");
     private final JEditorPane summaryPane = new JEditorPane();
     private final JTextArea rawCommentsArea = new JTextArea();
     private final JLabel statusLabel = new JLabel(" Ready");
@@ -46,6 +47,7 @@ public class CommentSummarizerPanel extends JPanel {
         inputPanel.add(new JLabel("Jira Issue Key:"));
         inputPanel.add(issueKeyField);
         inputPanel.add(summarizeButton);
+        inputPanel.add(resetButton);
         
         // Progress Panel (Hidden by default, shown during extraction)
         progressPanel.setBorder(BorderFactory.createTitledBorder("One-time AI Setup"));
@@ -78,14 +80,24 @@ public class CommentSummarizerPanel extends JPanel {
 
         // --- Action Listeners ---
         summarizeButton.addActionListener(e -> startSummarization());
+        resetButton.addActionListener(e -> resetPanel());
 
         // Initialize LLM in background
         initializeLlm();
     }
 
+    private void resetPanel() {
+        issueKeyField.setText("");
+        summaryPane.setText("");
+        rawCommentsArea.setText("");
+        statusLabel.setText(" Ready");
+        summarizeButton.setEnabled(true);
+    }
+
     private void initializeLlm() {
         statusLabel.setText(" Initializing Offline LLM Engine...");
         summarizeButton.setEnabled(false);
+        resetButton.setEnabled(false);
         
         new SwingWorker<EmbeddedLlmService, Object[]>() {
             @Override
@@ -112,6 +124,7 @@ public class CommentSummarizerPanel extends JPanel {
                     llmService = get();
                     statusLabel.setText(" Offline LLM Ready.");
                     summarizeButton.setEnabled(true);
+                    resetButton.setEnabled(true);
                     progressPanel.setVisible(false);
                     revalidate();
                 } catch (Exception e) {
@@ -133,15 +146,15 @@ public class CommentSummarizerPanel extends JPanel {
         }
 
         summarizeButton.setEnabled(false);
-        summaryPane.setText("<html><body><h3>Processing " + issueKey + "...</h3>" +
-                "<p>The local AI model is currently analyzing the comments. This may take a minute.</p>" +
-                "<p><i>The final summary will be displayed here once analysis is complete.</i></p></body></html>");
+        resetButton.setEnabled(false);
+        summaryPane.setText("<html><body><h3>Processing " + issueKey + "...</h3><p>Fetching data and running local AI model. This may take a minute.</p></body></html>");
         rawCommentsArea.setText("");
         statusLabel.setText(" Fetching comments from Jira...");
 
         new SwingWorker<String, Object[]>() {
             private String rawTextForAI;
             private String formattedRawComments;
+            private final StringBuilder accumulatedSummary = new StringBuilder();
 
             @Override
             protected String doInBackground() throws Exception {
@@ -184,6 +197,10 @@ public class CommentSummarizerPanel extends JPanel {
                     public void onProgress(String task, int percent) {
                         publish(new Object[]{"STATUS", task});
                     }
+                    @Override
+                    public void onPartialOutput(String text) {
+                        publish(new Object[]{"OUTPUT", text});
+                    }
                 });
             }
 
@@ -196,6 +213,10 @@ public class CommentSummarizerPanel extends JPanel {
                         rawCommentsArea.setText(value);
                     } else if ("STATUS".equals(type)) {
                         statusLabel.setText(" " + value);
+                    } else if ("OUTPUT".equals(type)) {
+                        accumulatedSummary.append(value);
+                        summaryPane.setText("<html><body><h3>AI Summary (Generating...)</h3>" +
+                                "<p>" + accumulatedSummary.toString().replace("\n", "<br>") + "</p></body></html>");
                     }
                 }
             }
@@ -216,6 +237,7 @@ public class CommentSummarizerPanel extends JPanel {
                     statusLabel.setText(" Error during summarization.");
                 } finally {
                     summarizeButton.setEnabled(true);
+                    resetButton.setEnabled(true);
                 }
             }
         }.execute();
