@@ -75,6 +75,18 @@ public class TaskBuilderPanel extends JPanel {
         leftPanel.add(new JScrollPane(inputArea), BorderLayout.CENTER);
         JPanel rightPanel = new JPanel(new BorderLayout());
         taskList.setCellRenderer(new TaskCellRenderer()); // Use custom renderer to display HTML
+        taskList.addMouseListener(new java.awt.event.MouseAdapter() {
+            @Override
+            public void mouseClicked(java.awt.event.MouseEvent e) {
+                if (e.getClickCount() == 2) {
+                    JiraTask task = taskList.getSelectedValue();
+                    if (task != null) {
+                        inputArea.setCaretPosition(task.startIndex);
+                        inputArea.requestFocusInWindow();
+                    }
+                }
+            }
+        });
         rightPanel.add(new JScrollPane(taskList), BorderLayout.CENTER);
 
         JPanel actionButtonsPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 5, 5));
@@ -170,9 +182,15 @@ public class TaskBuilderPanel extends JPanel {
         taskListModel.clear();
 
         String text = inputArea.getText();
+        int currentOffset = 0;
         for (String block : text.split("\\*{3,}")) {
-            if (block.trim().isEmpty()) continue;
+            int blockStart = text.indexOf(block, currentOffset);
+            if (block.trim().isEmpty()) {
+                if (blockStart != -1) currentOffset = blockStart + block.length();
+                continue;
+            }
             JiraTask task = new JiraTask();
+            task.startIndex = blockStart;
             StringBuilder desc = new StringBuilder();
             boolean summaryFound = false;
 
@@ -203,6 +221,7 @@ public class TaskBuilderPanel extends JPanel {
                 parsedTasks.add(task); // Keep the main list of all parsed tasks
                 taskListModel.addElement(task); // Add task to the model for the JList
             }
+            if (blockStart != -1) currentOffset = blockStart + block.length();
         }
         
         // 3. Re-apply the saved state
@@ -392,6 +411,7 @@ public class TaskBuilderPanel extends JPanel {
     private class JiraTask {
         String summary = "", description = "", type = null, assignee = "", component = "", transition = "", duedate = null, notify = null;
         boolean overAssignee = false, overComp = false, overTrans = false;
+        int startIndex = 0;
     }
     public void setParentTicket(String issueKey) {
         // Replace 'parentTicketField' with the actual name of your parent ticket JTextField
