@@ -24,8 +24,16 @@ public class JsonUtils {
 
         if (component != null && !component.isEmpty()) {
             JSONArray components = new JSONArray();
-            components.put(new JSONObject().put("name", component));
-            fields.put("components", components);
+            String[] parts = component.split(",");
+            for (String part : parts) {
+                String trimmed = part.trim();
+                if (!trimmed.isEmpty()) {
+                    components.put(new JSONObject().put("name", trimmed));
+                }
+            }
+            if (components.length() > 0) {
+                fields.put("components", components);
+            }
         }
         
         // Add this new block to handle the due date
