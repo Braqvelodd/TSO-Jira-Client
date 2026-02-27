@@ -29,6 +29,9 @@ public class CommentSummarizerPanel extends JPanel {
     private final JTextArea rawCommentsArea = new JTextArea();
     private final JLabel statusLabel = new JLabel(" Ready");
 
+    // Tracking for active worker to allow cancellation
+    private SwingWorker<String, Object[]> summarizeWorker;
+
     // Progress components for extraction
     private final JPanel progressPanel = new JPanel(new BorderLayout(5, 5));
     private final JProgressBar progressBar = new JProgressBar(0, 100);
@@ -87,11 +90,18 @@ public class CommentSummarizerPanel extends JPanel {
     }
 
     private void resetPanel() {
+        if (summarizeWorker != null && !summarizeWorker.isDone()) {
+            summarizeWorker.cancel(true);
+            if (llmService != null) {
+                llmService.close(); // Ensure process is killed
+            }
+        }
         issueKeyField.setText("");
         summaryPane.setText("");
         rawCommentsArea.setText("");
         statusLabel.setText(" Ready");
         summarizeButton.setEnabled(true);
+        resetButton.setEnabled(true);
     }
 
     private void initializeLlm() {
@@ -146,12 +156,12 @@ public class CommentSummarizerPanel extends JPanel {
         }
 
         summarizeButton.setEnabled(false);
-        resetButton.setEnabled(false);
+        resetButton.setEnabled(true); // Ensure reset is functional during process
         summaryPane.setText("<html><body><h3>Processing " + issueKey + "...</h3><p>Fetching data and running local AI model. This may take a minute.</p></body></html>");
         rawCommentsArea.setText("");
         statusLabel.setText(" Fetching comments from Jira...");
 
-        new SwingWorker<String, Object[]>() {
+        summarizeWorker = new SwingWorker<String, Object[]>() {
             private String rawTextForAI;
             private String formattedRawComments;
             private final StringBuilder accumulatedSummary = new StringBuilder();
@@ -199,6 +209,7 @@ public class CommentSummarizerPanel extends JPanel {
                     }
                     @Override
                     public void onPartialOutput(String text) {
+                        if (isCancelled()) return;
                         publish(new Object[]{"OUTPUT", text});
                     }
                 });
@@ -206,6 +217,7 @@ public class CommentSummarizerPanel extends JPanel {
 
             @Override
             protected void process(java.util.List<Object[]> chunks) {
+                if (isCancelled()) return;
                 for (Object[] chunk : chunks) {
                     String type = (String) chunk[0];
                     String value = (String) chunk[1];
@@ -223,6 +235,10 @@ public class CommentSummarizerPanel extends JPanel {
 
             @Override
             protected void done() {
+                if (isCancelled()) {
+                    statusLabel.setText(" Summarization cancelled.");
+                    return;
+                }
                 try {
                     String finalSummary = get();
                     // Final UI Update: Use the full string returned by the service
@@ -240,6 +256,7 @@ public class CommentSummarizerPanel extends JPanel {
                     resetButton.setEnabled(true);
                 }
             }
-        }.execute();
+        };
+        summarizeWorker.execute();
     }
 }

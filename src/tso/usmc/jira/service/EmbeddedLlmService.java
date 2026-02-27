@@ -21,6 +21,7 @@ public class EmbeddedLlmService {
 
     private final String cliPath;
     private final String modelPath;
+    private Process currentProcess;
 
     public EmbeddedLlmService(JiraConfig config, ProgressListener listener) throws IOException {
         this.cliPath = config.getLlamaCliPath();
@@ -128,11 +129,11 @@ public class EmbeddedLlmService {
 
         if (listener != null) listener.onProgress("Starting LLM process...", 0);
         
-        Process process = pb.start();
+        this.currentProcess = pb.start();
         StringBuilder output = new StringBuilder();
 
         // Use a separate thread to read output so we don't block
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(currentProcess.getInputStream(), StandardCharsets.UTF_8))) {
             String line;
             int lineCount = 0;
             while ((line = reader.readLine()) != null) {
@@ -160,16 +161,16 @@ public class EmbeddedLlmService {
             }
         }
 
-        boolean finished = process.waitFor(5, TimeUnit.MINUTES); 
+        boolean finished = currentProcess.waitFor(5, TimeUnit.MINUTES); 
         if (!finished) {
-            process.destroyForcibly();
+            currentProcess.destroyForcibly();
             throw new Exception("LLM summarization timed out after 5 minutes.");
         }
 
         tempPromptFile.delete();
 
-        if (process.exitValue() != 0) {
-            int exitCode = process.exitValue();
+        if (currentProcess.exitValue() != 0) {
+            int exitCode = currentProcess.exitValue();
             if (exitCode == -1073741515) {
                 throw new Exception("LLM process failed (Exit Code: -1073741515). This usually means a required system DLL is missing. \n\n" +
                                     "Please try installing the 'Microsoft Visual C++ Redistributable 2015-2022' (x64) or ensure your environment has the necessary MinGW runtimes.");
@@ -184,5 +185,9 @@ public class EmbeddedLlmService {
         return summarizeActions(text, null);
     }
 
-    public void close() {}
+    public void close() {
+        if (currentProcess != null && currentProcess.isAlive()) {
+            currentProcess.destroyForcibly();
+        }
+    }
 }
