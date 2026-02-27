@@ -76,6 +76,7 @@ public class TaskBuilderPanel extends JPanel {
             public void removeUpdate(DocumentEvent e) { parseInput(); }
             public void changedUpdate(DocumentEvent e) { parseInput(); }
         });
+        setupInputAreaKeyBindings();
         leftPanel.add(new JScrollPane(inputArea), BorderLayout.CENTER);
         JPanel rightPanel = new JPanel(new BorderLayout());
         taskList.setCellRenderer(new TaskCellRenderer()); // Use custom renderer to display HTML
@@ -413,7 +414,48 @@ public class TaskBuilderPanel extends JPanel {
 
     private void addRow(String s, String st, String l) { SwingUtilities.invokeLater(() -> resultsTableModel.addRow(new Object[]{s, st, l})); }
     
-        private void setupDragAndDrop() {
+        private void setupInputAreaKeyBindings() {
+        InputMap im = inputArea.getInputMap(JComponent.WHEN_FOCUSED);
+        ActionMap am = inputArea.getActionMap();
+
+        im.put(KeyStroke.getKeyStroke("ctrl alt DOWN"), "duplicateDown");
+        am.put("duplicateDown", new AbstractAction() {
+            public void actionPerformed(java.awt.event.ActionEvent e) { duplicateLines(true); }
+        });
+
+        im.put(KeyStroke.getKeyStroke("ctrl alt UP"), "duplicateUp");
+        am.put("duplicateUp", new AbstractAction() {
+            public void actionPerformed(java.awt.event.ActionEvent e) { duplicateLines(false); }
+        });
+    }
+
+    private void duplicateLines(boolean down) {
+        try {
+            int caret = inputArea.getCaretPosition();
+            int start = inputArea.getSelectionStart();
+            int end = inputArea.getSelectionEnd();
+            
+            // Expand selection to full lines
+            int lineStart = javax.swing.text.Utilities.getRowStart(inputArea, start);
+            int lineEnd = javax.swing.text.Utilities.getRowEnd(inputArea, end);
+            
+            String textToDuplicate = inputArea.getText(lineStart, lineEnd - lineStart);
+            if (textToDuplicate.isEmpty()) return;
+
+            if (down) {
+                inputArea.insert("\n" + textToDuplicate, lineEnd);
+                // Adjust selection to the new copy if desired, or keep as is. 
+                // Standard IDE behavior usually keeps selection or moves it.
+            } else {
+                inputArea.insert(textToDuplicate + "\n", lineStart);
+                inputArea.setCaretPosition(lineStart); // Keep focus at start of new block
+            }
+        } catch (Exception ex) {
+            ex.printStackTrace();
+        }
+    }
+
+    private void setupDragAndDrop() {
         inputArea.setDropTarget(new DropTarget() {
             public synchronized void drop(DropTargetDropEvent e) {
                 try {
