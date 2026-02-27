@@ -140,7 +140,6 @@ public class CommentSummarizerPanel extends JPanel {
         new SwingWorker<String, Object[]>() {
             private String rawTextForAI;
             private String formattedRawComments;
-            private final StringBuilder accumulatedSummary = new StringBuilder();
 
             @Override
             protected String doInBackground() throws Exception {
@@ -183,10 +182,6 @@ public class CommentSummarizerPanel extends JPanel {
                     public void onProgress(String task, int percent) {
                         publish(new Object[]{"STATUS", task});
                     }
-                    @Override
-                    public void onPartialOutput(String text) {
-                        publish(new Object[]{"OUTPUT", text});
-                    }
                 });
             }
 
@@ -199,10 +194,6 @@ public class CommentSummarizerPanel extends JPanel {
                         rawCommentsArea.setText(value);
                     } else if ("STATUS".equals(type)) {
                         statusLabel.setText(" " + value);
-                    } else if ("OUTPUT".equals(type)) {
-                        accumulatedSummary.append(value);
-                        summaryPane.setText("<html><body><h3>AI Summary (Generating...)</h3>" +
-                                "<p>" + accumulatedSummary.toString().replace("\n", "<br>") + "</p></body></html>");
                     }
                 }
             }
