@@ -172,6 +172,10 @@ public class TaskBuilderPanel extends JPanel {
         JMenuItem addAssignee = new JMenuItem("Set Assignee...");
         addAssignee.addActionListener(e -> applyTaskOverride("assignee:"));
         menu.add(addAssignee);
+
+        JMenuItem addParent = new JMenuItem("Set Parent...");
+        addParent.addActionListener(e -> applyTaskOverride("parent:"));
+        menu.add(addParent);
         
         JMenu componentMenu = new JMenu("Set Component");
         String[] teamKeys = mainFrame.getJiraConfig().getWorkflowTeamKeys();
@@ -535,6 +539,7 @@ public class TaskBuilderPanel extends JPanel {
                 if (t.startsWith("component:")) { task.component = val(t); task.overComp = true; continue; }
                 if (t.startsWith("issue-type:")) { task.type = val(t); continue; }
                 if (t.startsWith("transition:")) { task.transition = val(t); task.overTrans = true; continue; }
+                if (t.startsWith("parent:")) { task.parent = val(t).toUpperCase(); continue; }
                 if (t.startsWith("duedate:")) { task.duedate = val(t); continue; }
                  if (t.startsWith("notify:")) { task.notify = val(t); continue; }
                 if (!summaryFound && !t.isEmpty()) { task.summary = t; summaryFound = true; }
@@ -638,8 +643,7 @@ public class TaskBuilderPanel extends JPanel {
                 return;
             }
 
-            String parent = parentField.getText().trim().toUpperCase();
-            String proj = parent.contains("-") ? parent.split("-")[0] : "PROJ";
+            String defaultParent = parentField.getText().trim().toUpperCase();
             int total = selected.size();
             List<String> createdKeys = new ArrayList<>();
 
@@ -648,6 +652,8 @@ public class TaskBuilderPanel extends JPanel {
                     updateStatus("Creating " + total + " tasks in bulk...");
                     List<String> taskJsons = new ArrayList<>();
                     for (JiraTask t : selected) {
+                        String parent = (t.parent != null && !t.parent.isEmpty()) ? t.parent : defaultParent;
+                        String proj = parent.contains("-") ? parent.split("-")[0] : "PROJ";
                         String assignee = t.assignee;
                         List<String> noAssigneeTypes = Arrays.asList("ST-PCU", "ST-Database", "ST-Interface");
                         if (t.type != null && noAssigneeTypes.contains(t.type)) {
@@ -667,6 +673,8 @@ public class TaskBuilderPanel extends JPanel {
                     // Single create or Mock mode
                     for (int i = 0; i < total; i++) {
                         JiraTask t = selected.get(i);
+                        String parent = (t.parent != null && !t.parent.isEmpty()) ? t.parent : defaultParent;
+                        String proj = parent.contains("-") ? parent.split("-")[0] : "PROJ";
                         if (MOCK_MODE) {
                             Thread.sleep(400);
                             createdKeys.add(proj + "-" + (100 + new Random().nextInt(900)));
@@ -937,7 +945,7 @@ public class TaskBuilderPanel extends JPanel {
     
     // JiraTask class is unchanged, but no longer needs a JCheckBox member
     private class JiraTask {
-        String summary = "", description = "", type = null, assignee = "", component = "", transition = "", duedate = null, notify = null;
+        String summary = "", description = "", type = null, assignee = "", component = "", transition = "", duedate = null, notify = null, parent = null;
         boolean overAssignee = false, overComp = false, overTrans = false;
         int startIndex = 0, endIndex = 0;
     }
