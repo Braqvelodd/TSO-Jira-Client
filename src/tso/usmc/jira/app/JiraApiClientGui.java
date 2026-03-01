@@ -81,6 +81,18 @@ public class JiraApiClientGui extends JFrame implements ConfigChangeListener {
         gbc.gridx = 3; gbc.weightx = 0;
         headerPanel.add(editConfigButton, gbc);
 
+        JButton editTemplatesButton = new JButton("Edit Templates");
+        editTemplatesButton.addActionListener(e -> {
+            try {
+                File templateFile = jiraConfig.getTemplateFile();
+                new ProcessBuilder("notepad.exe", templateFile.getAbsolutePath()).start();
+            } catch (IOException ex) {
+                JOptionPane.showMessageDialog(null, "Error opening template file: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+            }
+        });
+        gbc.gridx = 4; gbc.weightx = 0;
+        headerPanel.add(editTemplatesButton, gbc);
+
         // Row 1: Base URL
         gbc.gridx = 0; gbc.gridy = 1; gbc.weightx = 0;
         headerPanel.add(new JLabel("Jira Base URL:"), gbc);

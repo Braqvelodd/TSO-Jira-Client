@@ -23,6 +23,7 @@ public class JiraConfig {
     private static final String CURRENT_CONFIG_VERSION = "1.2";
     private final Properties properties = new Properties();
     private final File configFile;
+    private final File templateFile;
     private final List<ConfigChangeListener> listeners = new ArrayList<>();
     private final Object lock = new Object();
 
@@ -35,9 +36,11 @@ public class JiraConfig {
         String userHome = System.getProperty("user.home");
         File configDir = new File(userHome, ".JiraApiClient"); // Using a hidden folder is a common convention.
         this.configFile = new File(configDir, "JiraConfig.ini");
+        this.templateFile = new File(configDir, "jiratemplate.ini");
 
-        // 2. Ensure the configuration file exists on the file system.
+        // 2. Ensure the configuration files exist on the file system.
         ensureConfigFileExists();
+        ensureTemplateFileExists();
         loadProperties();
         
         // 3. Check for version mismatch and upgrade if needed
@@ -181,20 +184,71 @@ public class JiraConfig {
             }
         }
     }
+    private void ensureTemplateFileExists() {
+        if (!templateFile.exists()) {
+            try {
+                // Create parent directories if they don't exist.
+                File parentDir = templateFile.getParentFile();
+                if (!parentDir.exists()) {
+                    if (!parentDir.mkdirs()) {
+                        throw new IOException("Could not create parent directory: " + parentDir.getAbsolutePath());
+                    }
+                }
+
+                // Get the default config file from inside the JAR as a resource stream.
+                try (InputStream in = JiraConfig.class.getResourceAsStream("/jiratemplate.ini");
+                     OutputStream out = new FileOutputStream(templateFile)) {
+
+                    if (in == null) {
+                        // Create an empty file if the resource is not found
+                        templateFile.createNewFile();
+                    } else {
+                        // Write the default config from the JAR to the new file on the filesystem.
+                        byte[] buffer = new byte[1024];
+                        int length;
+                        while ((length = in.read(buffer)) > 0) {
+                            out.write(buffer, 0, length);
+                        }
+                    }
+                }
+            } catch (IOException ex) {
+                 System.err.println("Could not create the template file: " + ex.getMessage());
+            }
+        }
+    }
     // NEW: Centralized method for loading properties
     private void loadProperties() {
         synchronized (lock) {
+            properties.clear(); // Clear old properties before loading new ones
             try (InputStream input = new FileInputStream(this.configFile)) {
-                properties.clear(); // Clear old properties before loading new ones
                 properties.load(input);
                 System.out.println("Configuration reloaded from " + configFile.getName());
             } catch (IOException ex) {
                 System.err.println("Error reloading configuration: " + ex.getMessage());
             }
+
+            if (this.templateFile.exists()) {
+                try (InputStream input = new FileInputStream(this.templateFile)) {
+                    Properties tempProps = new Properties();
+                    tempProps.load(input);
+                    // Only merge template and api_template keys
+                    for (String key : tempProps.stringPropertyNames()) {
+                        if (key.startsWith("template.") || key.startsWith("api_template.")) {
+                            properties.setProperty(key, tempProps.getProperty(key));
+                        }
+                    }
+                    System.out.println("Templates reloaded from " + templateFile.getName());
+                } catch (IOException ex) {
+                    System.err.println("Error reloading templates: " + ex.getMessage());
+                }
+            }
         }
     }
     public File getConfigFile() {
         return this.configFile;
+    }
+    public File getTemplateFile() {
+        return this.templateFile;
     }
     // NEW: Method to start the file watcher background thread
     private void startFileWatcher() {
@@ -206,8 +260,9 @@ public class JiraConfig {
                 WatchKey key;
                 while ((key = watchService.take()) != null) {
                     for (WatchEvent<?> event : key.pollEvents()) {
-                        // Check if the modified file is our config file
-                        if (event.context().toString().equals(this.configFile.getName())) {
+                        String fileName = event.context().toString();
+                        // Check if the modified file is our config file or template file
+                        if (fileName.equals(this.configFile.getName()) || fileName.equals(this.templateFile.getName())) {
                             // File has been modified, trigger reload
                             reload();
                         }
@@ -348,27 +403,32 @@ public class JiraConfig {
      */
     private String[] getKeysByPrefix(String prefix) {
         List<String> keys = new ArrayList<>();
-        try {
-            // Read the file lines to preserve the order as they appear in the config
-            List<String> lines = Files.readAllLines(configFile.toPath());
-            for (String line : lines) {
-                line = line.trim();
-                // Ignore comments and look for our prefix
-                if (!line.startsWith("#") && line.startsWith(prefix)) {
-                    // Extract the key part before the '='
-                    String fullKey = line.split("=", 2)[0].trim();
-                    // Extract the identifier part after the prefix
-                    String remainder = fullKey.substring(prefix.length());
-                    // If it's template.key.label, we only want the 'key' part
-                    String shortKey = remainder.contains(".") ? remainder.split("\\.")[0] : remainder;
-                    
-                    if (!keys.contains(shortKey)) {
-                        keys.add(shortKey);
+        // Helper to process a file and extract keys
+        java.util.function.Consumer<File> processFile = (file) -> {
+            if (file == null || !file.exists()) return;
+            try {
+                List<String> lines = Files.readAllLines(file.toPath());
+                for (String line : lines) {
+                    line = line.trim();
+                    if (!line.startsWith("#") && line.startsWith(prefix)) {
+                        String fullKey = line.split("=", 2)[0].trim();
+                        String remainder = fullKey.substring(prefix.length());
+                        String shortKey = remainder.contains(".") ? remainder.split("\\.")[0] : remainder;
+                        if (!keys.contains(shortKey)) {
+                            keys.add(shortKey);
+                        }
                     }
                 }
-            }
-        } catch (IOException e) {
-            // Fallback to the properties object if file reading fails (will be unordered)
+            } catch (IOException ignored) {}
+        };
+
+        processFile.accept(configFile);
+        if (prefix.startsWith("template.") || prefix.startsWith("api_template.")) {
+            processFile.accept(templateFile);
+        }
+
+        if (keys.isEmpty()) {
+            // Fallback to the properties object if file reading fails or finds nothing (will be unordered)
             synchronized (lock) {
                 for (Object keyObj : properties.keySet()) {
                     String key = keyObj.toString();
