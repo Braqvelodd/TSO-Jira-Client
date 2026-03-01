@@ -233,7 +233,7 @@ public class JiraConfig {
                     tempProps.load(input);
                     // Only merge template and api_template keys
                     for (String key : tempProps.stringPropertyNames()) {
-                        if (key.startsWith("template.") || key.startsWith("api_template.")) {
+                        if (key.startsWith("template.") || key.startsWith("api_template.") || key.startsWith("workflow.")) {
                             properties.setProperty(key, tempProps.getProperty(key));
                         }
                     }
@@ -423,7 +423,7 @@ public class JiraConfig {
         };
 
         processFile.accept(configFile);
-        if (prefix.startsWith("template.") || prefix.startsWith("api_template.")) {
+        if (prefix.startsWith("template.") || prefix.startsWith("api_template.") || prefix.startsWith("workflow.")) {
             processFile.accept(templateFile);
         }
 

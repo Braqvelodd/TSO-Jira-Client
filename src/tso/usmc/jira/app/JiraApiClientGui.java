@@ -18,6 +18,7 @@ import tso.usmc.jira.ui.ReconciliationPanel;
 import tso.usmc.jira.ui.ReportPanel; // --- NEW: Import Certificate
 import tso.usmc.jira.ui.TaskBuilderPanel;
 import tso.usmc.jira.ui.TemplateExtractorPanel;
+import tso.usmc.jira.ui.WorkflowOrchestratorPanel;
 import tso.usmc.jira.ui.WorkflowPanel;
 import tso.usmc.jira.util.ConfigChangeListener;
 import tso.usmc.jira.util.JiraConfig; 
@@ -135,6 +136,10 @@ public class JiraApiClientGui extends JFrame implements ConfigChangeListener {
 
         if (jiraConfig.isTabEnabled("WorkflowAutomation")) {
             tabs.addTab("Workflow Automation", new WorkflowPanel(this, this.jiraConfig));
+        }
+
+        if (jiraConfig.isTabEnabled("WorkflowOrchestrator")) {
+            tabs.addTab("Workflow Orchestrator", new WorkflowOrchestratorPanel(this));
         }
 
         // Layout Assembly
