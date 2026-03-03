@@ -5,7 +5,8 @@ import org.json.JSONObject;
 public class CloneStep extends WorkflowStep {
     private boolean copyAttachments = true;
     private boolean copyLinks = true;
-    private String sourceIssueToken = "{{issue.key}}"; // Usually the current issue
+    private String sourceIssueToken = "{{issue.key}}";
+    private String targetIssueToken = "{{last_key}}";
 
     public CloneStep() {
         super(StepType.CLONE);
@@ -20,6 +21,9 @@ public class CloneStep extends WorkflowStep {
     public String getSourceIssueToken() { return sourceIssueToken; }
     public void setSourceIssueToken(String sourceIssueToken) { this.sourceIssueToken = sourceIssueToken; }
 
+    public String getTargetIssueToken() { return targetIssueToken; }
+    public void setTargetIssueToken(String targetIssueToken) { this.targetIssueToken = targetIssueToken; }
+
     @Override
     public JSONObject toJson() {
         JSONObject json = new JSONObject();
@@ -29,6 +33,7 @@ public class CloneStep extends WorkflowStep {
         json.put("copyAttachments", copyAttachments);
         json.put("copyLinks", copyLinks);
         json.put("sourceIssueToken", sourceIssueToken);
+        json.put("targetIssueToken", targetIssueToken);
         return json;
     }
 
@@ -37,6 +42,7 @@ public class CloneStep extends WorkflowStep {
         step.setCopyAttachments(json.optBoolean("copyAttachments", true));
         step.setCopyLinks(json.optBoolean("copyLinks", true));
         step.setSourceIssueToken(json.optString("sourceIssueToken", "{{issue.key}}"));
+        step.setTargetIssueToken(json.optString("targetIssueToken", "{{last_key}}"));
         return step;
     }
 }

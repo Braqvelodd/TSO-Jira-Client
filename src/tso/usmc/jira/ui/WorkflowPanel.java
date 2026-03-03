@@ -139,16 +139,24 @@ public class WorkflowPanel extends JPanel implements tso.usmc.jira.util.ConfigCh
 
     private void populateAssigneeOptions() {
         assigneeComboBox.removeAllItems();
-        String unassignedAssigneeId = jiraConfig.getUnassignedBacklogAssignee();
-        assigneeComboBox.addItem(new AssigneeOption("Unassigned backlog", unassignedAssigneeId, null, null));
 
         String[] teamKeys = jiraConfig.getWorkflowTeamKeys();
         for (String key : teamKeys) {
-            String details = jiraConfig.getTeamDetails(key);
-            if (details != null) {
-                String[] parts = details.split("\\|");
-                if (parts.length == 4) {
-                    assigneeComboBox.addItem(new AssigneeOption(parts[0], parts[1], parts[2], parts[3]));
+            String name = jiraConfig.getTeamProperty(key, "name");
+            String lead = jiraConfig.getTeamProperty(key, "lead");
+            String component = jiraConfig.getTeamProperty(key, "component");
+            String id = jiraConfig.getTeamProperty(key, "id");
+
+            if (name != null && lead != null) {
+                assigneeComboBox.addItem(new AssigneeOption(name, lead, component, id));
+            } else {
+                // Fallback to old pipe-delimited format if hierarchical not found
+                String details = jiraConfig.getTeamDetails(key);
+                if (details != null) {
+                    String[] parts = details.split("\\|");
+                    if (parts.length == 4) {
+                        assigneeComboBox.addItem(new AssigneeOption(parts[0], parts[1], parts[2], parts[3]));
+                    }
                 }
             }
         }

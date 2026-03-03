@@ -31,6 +31,8 @@ public class StepEditorPanel extends JPanel {
     private JTextField inwardField;
     private JTextField linkTypeField;
     private JTextField outwardField;
+    private JTextField sourceTokenField;
+    private JTextField targetTokenField;
 
     public StepEditorPanel(WorkflowStep step, Map<String, String> fieldOptions, Runnable onRemove) {
         this.step = step;
@@ -46,11 +48,13 @@ public class StepEditorPanel extends JPanel {
         header.setBackground(new Color(230, 230, 230));
         header.add(new JLabel("[" + step.getType() + "] Label:"));
         labelField = new JTextField(step.getLabel(), 20);
+        tso.usmc.jira.util.JiraUtils.setupExpandedView(labelField);
         header.add(labelField);
         
         if (step instanceof TransitionStep) {
             header.add(new JLabel("Target Status:"));
             JTextField targetField = new JTextField(((TransitionStep)step).getTargetStatus(), 15);
+            tso.usmc.jira.util.JiraUtils.setupExpandedView(targetField);
             targetField.getDocument().addDocumentListener(new SimpleDocumentListener(() -> ((TransitionStep)step).setTargetStatus(targetField.getText())));
             header.add(targetField);
         }
@@ -59,9 +63,11 @@ public class StepEditorPanel extends JPanel {
             CreateStep cs = (CreateStep) step;
             header.add(new JLabel("Project:"));
             projField = new JTextField(cs.getProjectKey(), 5);
+            tso.usmc.jira.util.JiraUtils.setupExpandedView(projField);
             header.add(projField);
             header.add(new JLabel("Type:"));
             typeField = new JTextField(cs.getIssueType(), 10);
+            tso.usmc.jira.util.JiraUtils.setupExpandedView(typeField);
             header.add(typeField);
         }
 
@@ -69,17 +75,30 @@ public class StepEditorPanel extends JPanel {
             LinkStep ls = (LinkStep) step;
             header.add(new JLabel("Inward:"));
             inwardField = new JTextField(ls.getInwardIssueToken(), 10);
+            tso.usmc.jira.util.JiraUtils.setupExpandedView(inwardField);
             header.add(inwardField);
             header.add(new JLabel("Type:"));
             linkTypeField = new JTextField(ls.getLinkType(), 10);
+            tso.usmc.jira.util.JiraUtils.setupExpandedView(linkTypeField);
             header.add(linkTypeField);
             header.add(new JLabel("Outward:"));
             outwardField = new JTextField(ls.getOutwardIssueToken(), 10);
+            tso.usmc.jira.util.JiraUtils.setupExpandedView(outwardField);
             header.add(outwardField);
         }
 
         if (step instanceof CloneStep) {
             CloneStep cs = (CloneStep) step;
+            header.add(new JLabel("From:"));
+            sourceTokenField = new JTextField(cs.getSourceIssueToken(), 10);
+            tso.usmc.jira.util.JiraUtils.setupExpandedView(sourceTokenField);
+            header.add(sourceTokenField);
+            
+            header.add(new JLabel("To:"));
+            targetTokenField = new JTextField(cs.getTargetIssueToken(), 10);
+            tso.usmc.jira.util.JiraUtils.setupExpandedView(targetTokenField);
+            header.add(targetTokenField);
+            
             JCheckBox att = new JCheckBox("Attachments", cs.isCopyAttachments());
             att.addActionListener(e -> cs.setCopyAttachments(att.isSelected()));
             JCheckBox links = new JCheckBox("Links", cs.isCopyLinks());
@@ -131,6 +150,10 @@ public class StepEditorPanel extends JPanel {
             ((LinkStep)step).setInwardIssueToken(inwardField.getText());
             ((LinkStep)step).setLinkType(linkTypeField.getText());
             ((LinkStep)step).setOutwardIssueToken(outwardField.getText());
+        }
+        if (step instanceof CloneStep) {
+            ((CloneStep)step).setSourceIssueToken(sourceTokenField.getText());
+            ((CloneStep)step).setTargetIssueToken(targetTokenField.getText());
         }
         
         step.getFieldActions().clear();

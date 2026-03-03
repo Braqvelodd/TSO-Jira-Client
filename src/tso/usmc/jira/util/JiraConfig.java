@@ -310,12 +310,13 @@ public class JiraConfig {
      * @return The assignee's JIRA user ID.
      */
     public String getUnassignedBacklogAssignee() {
-        String assignee = getProperty("unassigned_backlog_assignee_id");
+        String assignee = getTeamProperty("unassigned", "lead");
+        if (assignee == null) assignee = getProperty("unassigned_backlog_assignee_id");
+        
         if (assignee == null || assignee.trim().isEmpty()) {
-            // This is a required field, so throw an error if it's missing.
-            throw new IllegalStateException("The 'unassigned_backlog_assignee_id' is missing or empty in the JiraConfig.ini file.");
+            return "LINCOLN.TODD.ALAN"; // Default fallback
         }
-        return assignee;
+        return assignee.trim();
     }
 
     /**
@@ -350,8 +351,27 @@ public class JiraConfig {
         return getKeysByPrefix("team.");
     }
 
+    public String getTeamProperty(String teamKey, String subKey) {
+        return getProperty("team." + teamKey + "." + subKey);
+    }
+
     public String getTeamDetails(String key) {
-        return getProperty("team." + key);
+        String direct = getProperty("team." + key);
+        if (direct != null) return direct;
+        
+        // If not found directly, try to reconstruct from hierarchical subkeys for backward compatibility
+        String name = getTeamProperty(key, "name");
+        String lead = getTeamProperty(key, "lead");
+        String component = getTeamProperty(key, "component");
+        String id = getTeamProperty(key, "id");
+        
+        if (name != null || lead != null || component != null || id != null) {
+            return (name != null ? name : "") + "|" + 
+                   (lead != null ? lead : "") + "|" + 
+                   (component != null ? component : "") + "|" + 
+                   (id != null ? id : "");
+        }
+        return null;
     }
 
     public String[] getTemplateKeys() {
@@ -427,7 +447,7 @@ public class JiraConfig {
         };
 
         processFile.accept(configFile);
-        if (prefix.startsWith("template.") || prefix.startsWith("api_template.") || prefix.startsWith("workflow.")) {
+        if (prefix.startsWith("template.") || prefix.startsWith("api_template.") || prefix.startsWith("workflow.") || prefix.startsWith("team.")) {
             processFile.accept(templateFile);
         }
 

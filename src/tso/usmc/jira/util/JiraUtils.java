@@ -41,4 +41,23 @@ public class JiraUtils {
     }
 
     // You can add other static utility methods here in the future
+    public static void setupExpandedView(javax.swing.JTextField field) {
+        field.addMouseListener(new java.awt.event.MouseAdapter() {
+            @Override
+            public void mouseClicked(java.awt.event.MouseEvent e) {
+                if (e.getClickCount() == 2) {
+                    javax.swing.JTextArea area = new javax.swing.JTextArea(15, 50);
+                    area.setText(field.getText());
+                    area.setLineWrap(true);
+                    area.setWrapStyleWord(true);
+                    int result = javax.swing.JOptionPane.showConfirmDialog(field, new javax.swing.JScrollPane(area), 
+                        "Expanded Input", javax.swing.JOptionPane.OK_CANCEL_OPTION, javax.swing.JOptionPane.PLAIN_MESSAGE);
+                    if (result == javax.swing.JOptionPane.OK_OPTION) {
+                        field.setText(area.getText());
+                    }
+                }
+            }
+        });
+        field.setToolTipText("Double-click to expand");
+    }
 }

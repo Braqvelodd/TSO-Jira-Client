@@ -11,7 +11,8 @@ public class FieldActionPanel extends JPanel {
     private final JPanel valuePanel;
     private final JTextField staticField;
     private final JTextField variableField;
-    private final JTextField promptField;
+    private final JTextField promptQuestionField;
+    private final JTextField promptOptionsField;
     private final CardLayout cardLayout;
     private Map<String, String> currentOptions;
 
@@ -41,12 +42,31 @@ public class FieldActionPanel extends JPanel {
         
         staticField = new JTextField(15);
         variableField = new JTextField("{{issue.key}}", 15);
-        promptField = new JTextField("Enter prompt question...", 15);
+        
+        // Prompt Panel: Question + Optional Options
+        JPanel promptPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 2, 0));
+        promptQuestionField = new JTextField("Question?", 10);
+        promptQuestionField.setToolTipText("The label/question for the prompt");
+        promptOptionsField = new JTextField("", 10);
+        promptOptionsField.setToolTipText("Optional: Comma-separated list of selection values");
+        promptPanel.add(promptQuestionField);
+        promptPanel.add(new JLabel("Opts:"));
+        promptPanel.add(promptOptionsField);
+
+        tso.usmc.jira.util.JiraUtils.setupExpandedView(staticField);
+        tso.usmc.jira.util.JiraUtils.setupExpandedView(variableField);
+        tso.usmc.jira.util.JiraUtils.setupExpandedView(promptQuestionField);
+        tso.usmc.jira.util.JiraUtils.setupExpandedView(promptOptionsField);
         
         valuePanel.add(staticField, FieldAction.MappingMode.STATIC.toString());
         valuePanel.add(variableField, FieldAction.MappingMode.VARIABLE.toString());
-        valuePanel.add(promptField, FieldAction.MappingMode.PROMPT.toString());
+        valuePanel.add(promptPanel, FieldAction.MappingMode.PROMPT.toString());
         
+        modeCombo.addActionListener(e -> {
+            FieldAction.MappingMode mode = (FieldAction.MappingMode) modeCombo.getSelectedItem();
+            cardLayout.show(valuePanel, mode.toString());
+        });
+
         add(new JLabel("Field:"));
         add(keyCombo);
         add(new JLabel("Mode:"));
@@ -56,15 +76,13 @@ public class FieldActionPanel extends JPanel {
         // Init values
         if (action != null) {
             modeCombo.setSelectedItem(action.getMode());
-            if (action.getMode() == FieldAction.MappingMode.STATIC) staticField.setText(action.getValue().toString());
-            if (action.getMode() == FieldAction.MappingMode.VARIABLE) variableField.setText(action.getValue().toString());
-            if (action.getMode() == FieldAction.MappingMode.PROMPT) promptField.setText(action.getPromptLabel());
+            if (action.getMode() == FieldAction.MappingMode.STATIC && action.getValue() != null) staticField.setText(action.getValue().toString());
+            if (action.getMode() == FieldAction.MappingMode.VARIABLE && action.getValue() != null) variableField.setText(action.getValue().toString());
+            if (action.getMode() == FieldAction.MappingMode.PROMPT) {
+                promptQuestionField.setText(action.getPromptLabel());
+                if (action.getValue() != null) promptOptionsField.setText(action.getValue().toString());
+            }
         }
-
-        modeCombo.addActionListener(e -> {
-            FieldAction.MappingMode mode = (FieldAction.MappingMode) modeCombo.getSelectedItem();
-            cardLayout.show(valuePanel, mode.toString());
-        });
     }
 
     public FieldAction getFieldAction() {
@@ -72,8 +90,6 @@ public class FieldActionPanel extends JPanel {
         Object selected = keyCombo.getSelectedItem();
         String selectedStr = selected != null ? selected.toString() : "";
         
-        // Resolve ID: If the label is in our map, use the mapped ID. 
-        // Otherwise, use the raw text (which might already be an ID).
         String fieldId = selectedStr;
         if (currentOptions != null && currentOptions.containsKey(selectedStr)) {
             fieldId = currentOptions.get(selectedStr);
@@ -84,7 +100,10 @@ public class FieldActionPanel extends JPanel {
         
         if (action.getMode() == FieldAction.MappingMode.STATIC) action.setValue(staticField.getText());
         if (action.getMode() == FieldAction.MappingMode.VARIABLE) action.setValue(variableField.getText());
-        if (action.getMode() == FieldAction.MappingMode.PROMPT) action.setPromptLabel(promptField.getText());
+        if (action.getMode() == FieldAction.MappingMode.PROMPT) {
+            action.setPromptLabel(promptQuestionField.getText());
+            action.setValue(promptOptionsField.getText());
+        }
         
         return action;
     }
