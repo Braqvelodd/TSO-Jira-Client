@@ -64,6 +64,19 @@ Or by double click
     *   Automatic JSON pretty-printing and smart execution buttons.
 *   **Enhanced Bulk Actions:** Perform mass updates including Transitions, Assignee changes, Comments, Labels, Priority, and Issue Linking.
 *   **Workflow Automation:** Automates the 5-step "Issue Processing" workflow including cloning, attachment migration, and SMARTS linking.
+*   **Workflow Orchestrator (v2.0):** Build, save, and execute complex "Workflow Recipes" without touching JSON.
+    *   **Designer Tab:** A visual builder to stack automated steps.
+        *   **Dynamic Metadata:** Fetch live Jira field definitions to populate step editors with real field names.
+        *   **Mapping Modes:** Every field supports **Static** values, **Variable** tokens, or **Runtime Prompts** (pauses execution to ask the user for input).
+    *   **Smart Token Engine:** Use recursive tokens like `{{fields.summary}}`, `{{fields.reporter.name}}`, or root-level `{{key}}` to dynamically populate data.
+    *   **Variable Chaining:** Capture the key of a newly created issue and reference it in later steps using `{{last_key}}` (e.g., for linking or updating).
+    *   **Advanced Step Types:**
+        *   **CREATE:** Spawn new issues with dynamic field mapping.
+        *   **UPDATE:** Perform mass field updates using tokens or prompts.
+        *   **TRANSITION:** Move issues through the workflow.
+        *   **LINK:** Create links between original and newly created issues.
+        *   **CLONE:** Migrate all attachments and issue links between tickets.
+    *   **Persistent Recipes:** Recipes are stored as JSON in `%USERPROFILE%\.JiraApiClient\workflows\` for easy sharing and re-use.
 *   **Task Builder:** Rapidly generate sub-tasks from templates.
     *   **JQL Integration:** Dynamic context menu in the **JQL Runner** results to instantly send tickets or templates to the builder.
     *   **Dynamic Parsing:** Real-time parsing of task blocks separated by `***`.
@@ -97,9 +110,12 @@ Or by double click
 
 ## ⚙️ Configuration
 
-The application is fully configurable via `%USERPROFILE%\.JiraApiClient\JiraConfig.ini`.
+The application is fully configurable via files located in `%USERPROFILE%\.JiraApiClient\`.
 
-*   **Dynamic Discovery:** Teams, Task Templates, and API Templates are automatically discovered from the config file.
+*   **`JiraConfig.ini`**: Main configuration for URLs, Teams, and Feature Toggles.
+*   **`jiratemplate.ini`**: Dedicated storage for Task Templates, Raw API Templates, and "baked-in" Workflow Recipes.
+*   **`workflows/`**: A directory containing custom Workflow Recipes saved via the Orchestrator.
+*   **Dynamic Discovery:** Teams, Task Templates, and API Templates are automatically discovered from the config files.
 *   **Feature Toggles:** Enable or disable optional tabs by toggling `tab.[Name].enabled = true`.
 *   **Auto-Upgrade:** The app detects the `config_version` and automatically appends missing required keys during updates.
 *   **Live Reloading:** Most settings refresh automatically in the GUI when the `.ini` file is saved.

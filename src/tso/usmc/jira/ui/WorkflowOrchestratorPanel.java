@@ -1,290 +1,453 @@
 package tso.usmc.jira.ui;
 
-import org.json.JSONArray;
-import org.json.JSONObject;
 import tso.usmc.jira.app.JiraApiClientGui;
-import tso.usmc.jira.util.JiraConfig;
-import tso.usmc.jira.util.JsonUtils;
+import tso.usmc.jira.ui.workflow.StepEditorPanel;
+import tso.usmc.jira.workflow.*;
+import tso.usmc.jira.service.JiraMetadataHelper;
+import tso.usmc.jira.util.JiraUtils;
+import org.json.JSONObject;
+import org.json.JSONArray;
 
 import javax.swing.*;
-import javax.swing.table.DefaultTableModel;
 import java.awt.*;
-import java.io.File;
-import java.nio.file.Files;
+import java.io.IOException;
 import java.util.*;
 import java.util.List;
 
 public class WorkflowOrchestratorPanel extends JPanel {
 
     private final JiraApiClientGui mainFrame;
-    private final JiraConfig jiraConfig;
+    private final WorkflowManager workflowManager;
+    private final Map<String, String> cachedFieldOptions = new HashMap<>();
+    
+    // Designer Components
+    private final DefaultListModel<String> recipeListModel = new DefaultListModel<>();
+    private final JList<String> recipeList = new JList<>(recipeListModel);
+    private final JTextField recipeNameField = new JTextField(20);
+    private final JTextField jqlField = new JTextField(30);
+    private final JTextField contextIssueField = new JTextField(10); 
+    private final JPanel stepsContainer = new JPanel();
+    
+    // Runner Components
+    private final JComboBox<String> runnerRecipeCombo = new JComboBox<>();
+    private final JTextArea runnerLog = new JTextArea();
+    private final JButton runBtn = new JButton("Run Workflow");
 
-    private final DefaultListModel<String> workflowListModel = new DefaultListModel<>();
-    private final JList<String> workflowList = new JList<>(workflowListModel);
-    
-    private final DefaultTableModel stepsTableModel = new DefaultTableModel(new String[]{"Action", "Method", "Endpoint", "Body"}, 0);
-    private final JTable stepsTable = new JTable(stepsTableModel);
-    
-    private final JTextArea logArea = new JTextArea();
-    private final JTextField workflowNameField = new JTextField(20);
+    // Execution Variables
+    private final Map<String, String> executionVars = new HashMap<>();
 
     public WorkflowOrchestratorPanel(JiraApiClientGui mainFrame) {
         this.mainFrame = mainFrame;
-        this.jiraConfig = mainFrame.getJiraConfig();
+        this.workflowManager = new WorkflowManager();
         setLayout(new BorderLayout());
 
-        // --- LEFT: Workflow List ---
-        JPanel leftPanel = new JPanel(new BorderLayout());
-        leftPanel.setBorder(BorderFactory.createTitledBorder("Saved Workflows"));
-        leftPanel.setPreferredSize(new Dimension(250, 0));
-        leftPanel.add(new JScrollPane(workflowList), BorderLayout.CENTER);
+        JTabbedPane mainTabs = new JTabbedPane();
+        mainTabs.addTab("Designer", createDesignerPanel());
+        mainTabs.addTab("Runner", createRunnerPanel());
         
-        JPanel listButtons = new JPanel(new FlowLayout());
-        JButton deleteBtn = new JButton("Delete");
-        listButtons.add(deleteBtn);
-        leftPanel.add(listButtons, BorderLayout.SOUTH);
-
-        // --- CENTER: Builder ---
-        JPanel centerPanel = new JPanel(new BorderLayout());
-        centerPanel.setBorder(BorderFactory.createTitledBorder("Workflow Builder"));
+        add(mainTabs, BorderLayout.CENTER);
         
-        JPanel namePanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
-        namePanel.add(new JLabel("Workflow Name:"));
-        namePanel.add(workflowNameField);
-        JButton saveBtn = new JButton("Save Workflow");
-        namePanel.add(saveBtn);
-        centerPanel.add(namePanel, BorderLayout.NORTH);
+        refreshRecipeList();
+    }
 
-        centerPanel.add(new JScrollPane(stepsTable), BorderLayout.CENTER);
+    private JPanel createDesignerPanel() {
+        JPanel panel = new JPanel(new BorderLayout());
         
-        JPanel stepButtons = new JPanel(new FlowLayout(FlowLayout.LEFT));
-        JButton addStepBtn = new JButton("Add Step from API Template");
-        JButton removeStepBtn = new JButton("Remove Step");
-        JButton moveUpBtn = new JButton("Move Up");
-        JButton moveDownBtn = new JButton("Move Down");
-        stepButtons.add(addStepBtn);
-        stepButtons.add(removeStepBtn);
-        stepButtons.add(moveUpBtn);
-        stepButtons.add(moveDownBtn);
-        centerPanel.add(stepButtons, BorderLayout.SOUTH);
-
-        // --- BOTTOM: Log and Execute ---
-        JPanel bottomPanel = new JPanel(new BorderLayout());
-        bottomPanel.setPreferredSize(new Dimension(0, 200));
-        logArea.setEditable(false);
-        logArea.setFont(new Font("Monospaced", Font.PLAIN, 12));
-        bottomPanel.add(new JScrollPane(logArea), BorderLayout.CENTER);
+        // Left: List
+        JPanel left = new JPanel(new BorderLayout());
+        left.setBorder(BorderFactory.createTitledBorder("Recipes"));
+        left.setPreferredSize(new Dimension(200, 0));
+        left.add(new JScrollPane(recipeList), BorderLayout.CENTER);
         
-        JButton executeBtn = new JButton("Execute Workflow");
-        executeBtn.setFont(executeBtn.getFont().deriveFont(Font.BOLD, 14f));
-        executeBtn.setBackground(new Color(200, 255, 200));
-        bottomPanel.add(executeBtn, BorderLayout.SOUTH);
+        JPanel leftButtons = new JPanel(new FlowLayout());
+        JButton newBtn = new JButton("New");
+        JButton delBtn = new JButton("Delete");
+        leftButtons.add(newBtn);
+        leftButtons.add(delBtn);
+        left.add(leftButtons, BorderLayout.SOUTH);
+        
+        panel.add(left, BorderLayout.WEST);
+        
+        // Center: Editor
+        JPanel center = new JPanel(new BorderLayout());
+        
+        // Editor Header
+        JPanel header = new JPanel(new GridBagLayout());
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.insets = new Insets(5,5,5,5);
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        
+        gbc.gridx=0; gbc.gridy=0; header.add(new JLabel("Recipe Name:"), gbc);
+        gbc.gridx=1; gbc.weightx=1.0; header.add(recipeNameField, gbc);
+        
+        gbc.gridx=0; gbc.gridy=1; gbc.weightx=0; header.add(new JLabel("JQL Query:"), gbc);
+        gbc.gridx=1; gbc.weightx=1.0; header.add(jqlField, gbc);
+        
+        gbc.gridx=0; gbc.gridy=2; gbc.weightx=0; header.add(new JLabel("Context Issue (for metadata):"), gbc);
+        gbc.gridx=1; gbc.weightx=1.0; header.add(contextIssueField, gbc);
+        JButton fetchMetaBtn = new JButton("Fetch Metadata");
+        gbc.gridx=2; gbc.weightx=0; header.add(fetchMetaBtn, gbc);
 
-        // --- Layout Assembly ---
-        JSplitPane mainSplit = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, leftPanel, centerPanel);
-        add(mainSplit, BorderLayout.CENTER);
-        add(bottomPanel, BorderLayout.SOUTH);
-
-        // --- Action Listeners ---
-        addStepBtn.addActionListener(e -> addStepFromTemplate());
-        removeStepBtn.addActionListener(e -> {
-            int row = stepsTable.getSelectedRow();
-            if (row != -1) stepsTableModel.removeRow(row);
+        JButton saveBtn = new JButton("Save Recipe");
+        gbc.gridy=0; gbc.gridx=2; header.add(saveBtn, gbc);
+        
+        center.add(header, BorderLayout.NORTH);
+        
+        // Editor Steps
+        stepsContainer.setLayout(new BoxLayout(stepsContainer, BoxLayout.Y_AXIS));
+        center.add(new JScrollPane(stepsContainer), BorderLayout.CENTER);
+        
+        // Editor Footer (Add Step)
+        JPanel footer = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        JButton addTransBtn = new JButton("Add Transition");
+        JButton addUpdateBtn = new JButton("Add Update");
+        JButton addCreateBtn = new JButton("Add Create");
+        JButton addLinkBtn = new JButton("Add Link");
+        JButton addCloneBtn = new JButton("Add Clone (Links/Att)");
+        footer.add(addTransBtn);
+        footer.add(addUpdateBtn);
+        footer.add(addCreateBtn);
+        footer.add(addLinkBtn);
+        footer.add(addCloneBtn);
+        center.add(footer, BorderLayout.SOUTH);
+        
+        panel.add(center, BorderLayout.CENTER);
+        
+        // Listeners
+        recipeList.addListSelectionListener(e -> {
+            if (!e.getValueIsAdjusting()) loadRecipe(recipeList.getSelectedValue());
         });
-        moveUpBtn.addActionListener(e -> moveStep(-1));
-        moveDownBtn.addActionListener(e -> moveStep(1));
-        saveBtn.addActionListener(e -> saveWorkflow());
-        executeBtn.addActionListener(e -> executeWorkflow());
-        workflowList.addListSelectionListener(e -> {
-            if (!e.getValueIsAdjusting()) loadWorkflow(workflowList.getSelectedValue());
-        });
-        deleteBtn.addActionListener(e -> deleteWorkflow());
-
-        loadWorkflowNames();
-    }
-
-    private void addStepFromTemplate() {
-        String[] templates = jiraConfig.getRawApiTemplateKeys();
-        if (templates.length == 0) {
-            JOptionPane.showMessageDialog(this, "No API templates found in configuration.");
-            return;
-        }
         
-        String selected = (String) JOptionPane.showInputDialog(this, "Select Template", "Add Step",
-                JOptionPane.QUESTION_MESSAGE, null, templates, templates[0]);
+        newBtn.addActionListener(e -> clearEditor());
+        delBtn.addActionListener(e -> deleteRecipe());
+        saveBtn.addActionListener(e -> saveRecipe());
+        fetchMetaBtn.addActionListener(e -> fetchLiveMetadata());
         
-        if (selected != null) {
-            String val = jiraConfig.getRawApiTemplate(selected);
-            String[] parts = val.split("\\|");
-            if (parts.length >= 3) {
-                String label = parts[0];
-                String method = parts[1];
-                String endpoint = parts[2];
-                String body = (parts.length > 3) ? parts[3] : "";
-                stepsTableModel.addRow(new Object[]{label, method, endpoint, body});
-            }
-        }
-    }
-
-    private void moveStep(int direction) {
-        int row = stepsTable.getSelectedRow();
-        if (row == -1) return;
-        int target = row + direction;
-        if (target >= 0 && target < stepsTableModel.getRowCount()) {
-            stepsTableModel.moveRow(row, row, target);
-            stepsTable.setRowSelectionInterval(target, target);
-        }
-    }
-
-    private void saveWorkflow() {
-        String name = workflowNameField.getText().trim();
-        if (name.isEmpty()) {
-            JOptionPane.showMessageDialog(this, "Please enter a workflow name.");
-            return;
-        }
-
-        JSONArray steps = new JSONArray();
-        for (int i = 0; i < stepsTableModel.getRowCount(); i++) {
-            JSONObject step = new JSONObject();
-            step.put("label", stepsTableModel.getValueAt(i, 0));
-            step.put("method", stepsTableModel.getValueAt(i, 1));
-            step.put("endpoint", stepsTableModel.getValueAt(i, 2));
-            step.put("body", stepsTableModel.getValueAt(i, 3));
-            steps.put(step);
-        }
-
-        String key = "workflow." + name.replace(" ", "_");
-        String encoded = steps.toString().replace("\n", "\\n");
+        addTransBtn.addActionListener(e -> addStep(new TransitionStep()));
+        addUpdateBtn.addActionListener(e -> addStep(new UpdateStep()));
+        addCreateBtn.addActionListener(e -> addStep(new CreateStep()));
+        addLinkBtn.addActionListener(e -> addStep(new LinkStep()));
+        addCloneBtn.addActionListener(e -> addStep(new CloneStep()));
         
-        try {
-            File iniFile = jiraConfig.getTemplateFile();
-            List<String> lines = Files.readAllLines(iniFile.toPath());
-            boolean updated = false;
-            for (int i = 0; i < lines.size(); i++) {
-                if (lines.get(i).startsWith(key + " =")) {
-                    lines.set(i, key + " = " + encoded);
-                    updated = true;
-                    break;
-                }
-            }
-            if (!updated) {
-                lines.add(key + " = " + encoded);
-            }
-            Files.write(iniFile.toPath(), lines);
-            jiraConfig.reload();
-            loadWorkflowNames();
-            JOptionPane.showMessageDialog(this, "Workflow saved successfully.");
-        } catch (Exception ex) {
-            JOptionPane.showMessageDialog(this, "Error saving workflow: " + ex.getMessage());
-        }
+        return panel;
     }
 
-    private void loadWorkflowNames() {
-        workflowListModel.clear();
-        try {
-            File iniFile = jiraConfig.getTemplateFile();
-            List<String> lines = Files.readAllLines(iniFile.toPath());
-            for (String line : lines) {
-                if (line.startsWith("workflow.")) {
-                    String name = line.split("=")[0].substring(9).trim().replace("_", " ");
-                    workflowListModel.addElement(name);
-                }
-            }
-        } catch (Exception ignored) {}
+    private JPanel createRunnerPanel() {
+        JPanel panel = new JPanel(new BorderLayout());
+        JPanel top = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        top.add(new JLabel("Select Recipe:"));
+        top.add(runnerRecipeCombo);
+        panel.add(top, BorderLayout.NORTH);
+        runnerLog.setEditable(false);
+        runnerLog.setFont(new Font("Monospaced", Font.PLAIN, 12));
+        panel.add(new JScrollPane(runnerLog), BorderLayout.CENTER);
+        JPanel bottom = new JPanel(new FlowLayout());
+        runBtn.setBackground(new Color(200, 255, 200));
+        bottom.add(runBtn);
+        panel.add(bottom, BorderLayout.SOUTH);
+        runBtn.addActionListener(e -> runWorkflow());
+        return panel;
     }
 
-    private void loadWorkflow(String name) {
-        if (name == null) return;
-        workflowNameField.setText(name);
-        stepsTableModel.setRowCount(0);
-        
-        String key = "workflow." + name.replace(" ", "_");
-        String val = jiraConfig.getProperty(key);
-        if (val != null) {
-            try {
-                JSONArray steps = new JSONArray(val.replace("\\n", "\n"));
-                for (int i = 0; i < steps.length(); i++) {
-                    JSONObject s = steps.getJSONObject(i);
-                    stepsTableModel.addRow(new Object[]{
-                        s.optString("label"),
-                        s.optString("method"),
-                        s.optString("endpoint"),
-                        s.optString("body")
-                    });
-                }
-            } catch (Exception ex) {
-                ex.printStackTrace();
-            }
-        }
-    }
-
-    private void deleteWorkflow() {
-        String selected = workflowList.getSelectedValue();
-        if (selected == null) return;
-        
-        int choice = JOptionPane.showConfirmDialog(this, "Delete workflow '" + selected + "'?", "Confirm", JOptionPane.YES_NO_OPTION);
-        if (choice != JOptionPane.YES_OPTION) return;
-        
-        String key = "workflow." + selected.replace(" ", "_");
-        try {
-            File iniFile = jiraConfig.getTemplateFile();
-            List<String> lines = Files.readAllLines(iniFile.toPath());
-            lines.removeIf(line -> line.startsWith(key + " ="));
-            Files.write(iniFile.toPath(), lines);
-            jiraConfig.reload();
-            loadWorkflowNames();
-            stepsTableModel.setRowCount(0);
-            workflowNameField.setText("");
-        } catch (Exception ex) {
-            JOptionPane.showMessageDialog(this, "Error deleting workflow: " + ex.getMessage());
-        }
-    }
-
-    private void executeWorkflow() {
-        logArea.setText("Starting execution of '" + workflowNameField.getText() + "'...\n");
+    private void fetchLiveMetadata() {
+        String key = contextIssueField.getText().trim();
+        if (key.isEmpty()) return;
         new Thread(() -> {
-            Map<String, String> variables = new HashMap<>();
-            
-            for (int i = 0; i < stepsTableModel.getRowCount(); i++) {
-                String label = (String) stepsTableModel.getValueAt(i, 0);
-                String method = (String) stepsTableModel.getValueAt(i, 1);
-                String endpoint = (String) stepsTableModel.getValueAt(i, 2);
-                String body = (String) stepsTableModel.getValueAt(i, 3);
-                
-                // Replace variables in endpoint and body
-                for (Map.Entry<String, String> var : variables.entrySet()) {
-                    endpoint = endpoint.replace("{" + var.getKey() + "}", var.getValue());
-                    body = body.replace("{" + var.getKey() + "}", var.getValue());
+            try {
+                JiraMetadataHelper helper = new JiraMetadataHelper(mainFrame.getService(), mainFrame.getBaseUrl());
+                Map<String, JSONObject> meta = helper.getEditMetadata(key);
+                cachedFieldOptions.clear();
+                for (String fieldId : meta.keySet()) {
+                    cachedFieldOptions.put(meta.get(fieldId).getString("name") + " (" + fieldId + ")", fieldId);
                 }
-                
-                log("Step " + (i+1) + " [" + label + "]: " + method + " " + endpoint);
-                
-                try {
-                    String response = mainFrame.getService().executeRequest(mainFrame.getBaseUrl() + endpoint, method, body.isEmpty() ? null : body);
-                    log("Response: " + (response.length() > 200 ? response.substring(0, 200) + "..." : response));
-                    
-                    // Basic variable extraction (key or id)
-                    if (response.startsWith("{")) {
-                        JSONObject json = new JSONObject(response);
-                        if (json.has("key")) variables.put("last_key", json.getString("key"));
-                        if (json.has("id")) variables.put("last_id", json.getString("id"));
+                SwingUtilities.invokeLater(() -> {
+                    for (Component c : stepsContainer.getComponents()) {
+                        if (c instanceof StepEditorPanel) {
+                            ((StepEditorPanel) c).refreshMetadata(cachedFieldOptions);
+                        }
                     }
-                    
-                } catch (Exception ex) {
-                    log("ERROR: " + ex.getMessage());
-                    int choice = JOptionPane.showConfirmDialog(this, "Step failed: " + ex.getMessage() + "\nContinue with next step?", "Error", JOptionPane.YES_NO_OPTION);
-                    if (choice != JOptionPane.YES_OPTION) break;
-                }
-                log("------------------------------------------");
+                    JOptionPane.showMessageDialog(this, "Fetched " + cachedFieldOptions.size() + " fields.");
+                });
+            } catch (Exception ex) {
+                SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(this, "Metadata error: " + ex.getMessage()));
             }
-            log("Workflow Execution Complete.");
         }).start();
     }
 
-    private void log(String msg) {
-        SwingUtilities.invokeLater(() -> {
-            logArea.append(msg + "\n");
-            logArea.setCaretPosition(logArea.getDocument().getLength());
+    private void addStep(WorkflowStep step) {
+        step.setLabel("New " + step.getType() + " Step");
+        addStepUI(step);
+    }
+
+    private void addStepUI(WorkflowStep step) {
+        StepEditorPanel panel = new StepEditorPanel(step, cachedFieldOptions, () -> {
+            stepsContainer.remove(getStepPanel(step));
+            stepsContainer.revalidate();
+            stepsContainer.repaint();
         });
+        stepsContainer.add(panel);
+        stepsContainer.revalidate();
+        stepsContainer.repaint();
+    }
+
+    private Component getStepPanel(WorkflowStep step) {
+        for (Component c : stepsContainer.getComponents()) {
+            if (c instanceof StepEditorPanel && ((StepEditorPanel)c).getStep() == step) return c;
+        }
+        return null;
+    }
+
+    private void loadRecipe(String name) {
+        if (name == null) return;
+        try {
+            System.out.println("Loading recipe: " + name);
+            WorkflowRecipe recipe = workflowManager.loadWorkflow(name);
+            if (recipe == null) {
+                // Try loading from JiraConfig
+                String key = "workflow." + name;
+                String val = mainFrame.getJiraConfig().getProperty(key);
+                if (val != null) {
+                    System.out.println("Found recipe in config: " + key);
+                    recipe = WorkflowRecipe.fromJson(val);
+                }
+            }
+
+            if (recipe != null) {
+                recipeNameField.setText(recipe.getRecipeName());
+                jqlField.setText(recipe.getJqlQuery());
+                stepsContainer.removeAll();
+                for (WorkflowStep step : recipe.getSteps()) {
+                    addStepUI(step);
+                }
+                stepsContainer.revalidate();
+                stepsContainer.repaint();
+                System.out.println("Populated " + recipe.getSteps().size() + " steps.");
+            } else {
+                System.err.println("Recipe not found: " + name);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+            JOptionPane.showMessageDialog(this, "Error loading recipe '" + name + "': " + e.getMessage());
+        }
+    }
+
+    private void refreshRecipeList() {
+        Set<String> names = new TreeSet<>(workflowManager.listWorkflows());
+        // Add recipes from JiraConfig
+        String[] configRecipes = mainFrame.getJiraConfig().getWorkflowRecipeKeys();
+        if (configRecipes != null) {
+            names.addAll(Arrays.asList(configRecipes));
+        }
+
+        recipeListModel.clear();
+        runnerRecipeCombo.removeAllItems();
+        for (String name : names) {
+            recipeListModel.addElement(name);
+            runnerRecipeCombo.addItem(name);
+        }
+    }
+
+    private void saveRecipe() {
+        String name = recipeNameField.getText().trim();
+        if (name.isEmpty()) return;
+        WorkflowRecipe recipe = new WorkflowRecipe();
+        recipe.setRecipeName(name);
+        recipe.setJqlQuery(jqlField.getText());
+        for (Component c : stepsContainer.getComponents()) {
+            if (c instanceof StepEditorPanel) {
+                ((StepEditorPanel) c).saveToStep();
+                recipe.addStep(((StepEditorPanel) c).getStep());
+            }
+        }
+        try {
+            workflowManager.saveWorkflow(recipe);
+            refreshRecipeList();
+            JOptionPane.showMessageDialog(this, "Recipe saved!");
+        } catch (IOException e) {
+            JOptionPane.showMessageDialog(this, "Error saving: " + e.getMessage());
+        }
+    }
+
+    private void clearEditor() {
+        recipeNameField.setText(""); jqlField.setText(""); stepsContainer.removeAll();
+        stepsContainer.revalidate(); stepsContainer.repaint(); recipeList.clearSelection();
+    }
+
+    private void deleteRecipe() {
+        String selected = recipeList.getSelectedValue();
+        if (selected == null) return;
+        workflowManager.deleteWorkflow(selected);
+        refreshRecipeList(); clearEditor();
+    }
+
+    private void runWorkflow() {
+        String recipeName = (String) runnerRecipeCombo.getSelectedItem();
+        if (recipeName == null) return;
+        runnerLog.setText("Starting " + recipeName + "...\n");
+        new Thread(() -> {
+            try {
+                WorkflowRecipe recipe = workflowManager.loadWorkflow(recipeName);
+                if (recipe == null) return;
+                String encodedJql = java.net.URLEncoder.encode(recipe.getJqlQuery(), "UTF-8");
+                String searchUrl = mainFrame.getBaseUrl() + "/rest/api/2/search?jql=" + encodedJql + "&expand=names,renderedFields&fields=*all,attachment,issuelinks";
+                String searchResp = mainFrame.getService().executeRequest(searchUrl, "GET", null);
+                JSONArray issues = new JSONObject(searchResp).getJSONArray("issues");
+                
+                log("Found " + issues.length() + " issues.");
+                for (int i = 0; i < issues.length(); i++) {
+                    JSONObject issue = issues.getJSONObject(i);
+                    String key = issue.getString("key");
+                    log("--- Processing " + key + " ---");
+                    executionVars.clear();
+                    executionVars.put("issue.key", key);
+                    executionVars.put("key", key); // Shortcut
+                    
+                    for (WorkflowStep step : recipe.getSteps()) {
+                        log("Step: " + step.getLabel());
+                        executeStep(step, issue);
+                    }
+                }
+                log("Workflow Execution Complete.");
+            } catch (Exception e) {
+                log("FATAL ERROR: " + e.getMessage());
+                e.printStackTrace();
+            }
+        }).start();
+    }
+
+    private void executeStep(WorkflowStep step, JSONObject issue) throws Exception {
+        String baseUrl = mainFrame.getBaseUrl();
+        String currentKey = issue.getString("key");
+
+        if (step instanceof CreateStep) {
+            CreateStep cs = (CreateStep) step;
+            JSONObject fields = buildFields(step, issue);
+            fields.put("project", new JSONObject().put("key", cs.getProjectKey()));
+            fields.put("issuetype", new JSONObject().put("name", cs.getIssueType()));
+            String resp = mainFrame.getService().executeRequest(baseUrl + "/rest/api/2/issue", "POST", new JSONObject().put("fields", fields).toString());
+            String newKey = new JSONObject(resp).getString("key");
+            executionVars.put("last_key", newKey);
+            log("  > Created " + newKey);
+        } else if (step instanceof UpdateStep) {
+            JSONObject fields = buildFields(step, issue);
+            mainFrame.getService().executeRequest(baseUrl + "/rest/api/2/issue/" + currentKey, "PUT", new JSONObject().put("fields", fields).toString());
+            log("  > Updated fields.");
+        } else if (step instanceof TransitionStep) {
+            TransitionStep ts = (TransitionStep) step;
+            String transUrl = baseUrl + "/rest/api/2/issue/" + currentKey + "/transitions";
+            String transMeta = mainFrame.getService().executeRequest(transUrl, "GET", null);
+            String tid = JiraUtils.findTransitionIdByName(transMeta, ts.getTargetStatus());
+            if (tid != null) {
+                mainFrame.getService().executeRequest(transUrl, "POST", new JSONObject().put("transition", new JSONObject().put("id", tid)).toString());
+                log("  > Transitioned to " + ts.getTargetStatus());
+            } else log("  > ERROR: Transition '" + ts.getTargetStatus() + "' not found.");
+        } else if (step instanceof LinkStep) {
+            LinkStep ls = (LinkStep) step;
+            String inward = resolveTokens(ls.getInwardIssueToken(), issue);
+            String outward = resolveTokens(ls.getOutwardIssueToken(), issue);
+            JSONObject body = new JSONObject();
+            body.put("type", new JSONObject().put("name", ls.getLinkType()));
+            body.put("inwardIssue", new JSONObject().put("key", inward));
+            body.put("outwardIssue", new JSONObject().put("key", outward));
+            mainFrame.getService().executeRequest(baseUrl + "/rest/api/2/issueLink", "POST", body.toString());
+            log("  > Linked " + inward + " to " + outward);
+        } else if (step instanceof CloneStep) {
+            CloneStep cls = (CloneStep) step;
+            String targetKey = resolveTokens(cls.getSourceIssueToken(), issue);
+            
+            if (cls.isCopyAttachments()) {
+                cloneAttachments(issue, targetKey);
+            }
+            if (cls.isCopyLinks()) {
+                cloneLinks(issue, targetKey);
+            }
+        }
+    }
+
+    private void cloneAttachments(JSONObject sourceIssue, String targetKey) throws Exception {
+        if (!sourceIssue.getJSONObject("fields").has("attachment")) return;
+        JSONArray attachments = sourceIssue.getJSONObject("fields").getJSONArray("attachment");
+        for (int i = 0; i < attachments.length(); i++) {
+            JSONObject att = attachments.getJSONObject(i);
+            String filename = att.getString("filename");
+            String contentUrl = att.getString("content");
+            java.io.File tempFile = mainFrame.getService().downloadAttachmentToTempFile(contentUrl, filename);
+            try {
+                mainFrame.getService().uploadAttachment(mainFrame.getBaseUrl() + "/rest/api/2/issue/" + targetKey + "/attachments", tempFile, filename);
+                log("  > Cloned attachment: " + filename);
+            } finally {
+                if (tempFile != null) tempFile.delete();
+            }
+        }
+    }
+
+    private void cloneLinks(JSONObject sourceIssue, String targetKey) throws Exception {
+        if (!sourceIssue.getJSONObject("fields").has("issuelinks")) return;
+        JSONArray links = sourceIssue.getJSONObject("fields").getJSONArray("issuelinks");
+        String sourceKey = sourceIssue.getString("key");
+        
+        for (int i = 0; i < links.length(); i++) {
+            JSONObject link = links.getJSONObject(i);
+            String typeName = link.getJSONObject("type").getString("name");
+            
+            String otherKey = null;
+            boolean isInward = false;
+            
+            if (link.has("inwardIssue")) {
+                otherKey = link.getJSONObject("inwardIssue").getString("key");
+                isInward = true;
+            } else if (link.has("outwardIssue")) {
+                otherKey = link.getJSONObject("outwardIssue").getString("key");
+            }
+            
+            if (otherKey == null) continue;
+
+            JSONObject body = new JSONObject().put("type", new JSONObject().put("name", typeName));
+            if (isInward) {
+                body.put("inwardIssue", new JSONObject().put("key", targetKey));
+                body.put("outwardIssue", new JSONObject().put("key", otherKey));
+            } else {
+                body.put("inwardIssue", new JSONObject().put("key", otherKey));
+                body.put("outwardIssue", new JSONObject().put("key", targetKey));
+            }
+            
+            try {
+                mainFrame.getService().executeRequest(mainFrame.getBaseUrl() + "/rest/api/2/issueLink", "POST", body.toString());
+                log("  > Cloned link: " + typeName + " to " + otherKey);
+            } catch (Exception e) {
+                log("  > Warning: Could not clone link to " + otherKey);
+            }
+        }
+    }
+
+    private JSONObject buildFields(WorkflowStep step, JSONObject issue) {
+        JSONObject fields = new JSONObject();
+        for (FieldAction fa : step.getFieldActions().values()) {
+            String val = resolveValue(fa, issue);
+            if (val == null || val.equalsIgnoreCase("null")) fields.put(fa.getFieldId(), JSONObject.NULL);
+            else fields.put(fa.getFieldId(), val);
+        }
+        return fields;
+    }
+
+    private String resolveTokens(String input, JSONObject issue) {
+        String result = TokenEngine.replaceTokens(input, issue);
+        for (String var : executionVars.keySet()) {
+            result = result.replace("{{" + var + "}}", executionVars.get(var));
+        }
+        return result;
+    }
+
+    private String resolveValue(FieldAction fa, JSONObject issue) {
+        if (fa.getMode() == FieldAction.MappingMode.STATIC) return fa.getValue().toString();
+        if (fa.getMode() == FieldAction.MappingMode.VARIABLE) return resolveTokens(fa.getValue().toString(), issue);
+        if (fa.getMode() == FieldAction.MappingMode.PROMPT) {
+            return JOptionPane.showInputDialog(this, fa.getPromptLabel(), "Runtime Prompt", JOptionPane.QUESTION_MESSAGE);
+        }
+        return "";
+    }
+
+    private void log(String msg) {
+        SwingUtilities.invokeLater(() -> { runnerLog.append(msg + "\n"); runnerLog.setCaretPosition(runnerLog.getDocument().getLength()); });
     }
 }

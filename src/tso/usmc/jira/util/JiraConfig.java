@@ -397,6 +397,10 @@ public class JiraConfig {
         return getProperty("api_template." + key);
     }
 
+    public String[] getWorkflowRecipeKeys() {
+        return getKeysByPrefix("workflow.");
+    }
+
     /**
      * Helper to find all keys with a specific prefix in the config file, 
      * preserving the order they appear in.
