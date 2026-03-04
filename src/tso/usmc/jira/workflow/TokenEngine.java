@@ -12,17 +12,52 @@ public class TokenEngine {
      * Supports nested paths (e.g., {{fields.summary}}, {{fields.issuetype.name}}).
      */
     public static String replaceTokens(String input, JSONObject issueJson) {
+        return replaceTokens(input, issueJson, null);
+    }
+
+    public static String replaceTokens(String input, JSONObject issueJson, java.util.Map<String, String> variables) {
         if (input == null || !input.contains("{{")) return input;
 
         Matcher matcher = TOKEN_PATTERN.matcher(input);
         StringBuffer sb = new StringBuffer();
         while (matcher.find()) {
-            String path = matcher.group(1).trim();
-            String value = resolvePath(issueJson, path);
+            String fullContent = matcher.group(1).trim();
+            String value = null;
             
-            // If not found in root, try looking inside the "fields" object automatically
-            if (value == null && !path.startsWith("fields.")) {
-                value = resolvePath(issueJson, "fields." + path);
+            if (fullContent.startsWith("COALESCE(") && fullContent.endsWith(")")) {
+                String argsStr = fullContent.substring(9, fullContent.length() - 1);
+                String[] args = argsStr.split(",");
+                for (String arg : args) {
+                    String path = arg.trim();
+                    
+                    // 1. Check for quoted literals
+                    if ((path.startsWith("\"") && path.endsWith("\"")) || (path.startsWith("'") && path.endsWith("'"))) {
+                        value = path.substring(1, path.length() - 1);
+                        break;
+                    }
+                    
+                    // 2. Check Issue JSON
+                    value = resolvePath(issueJson, path);
+                    if (value == null && !path.startsWith("fields.")) {
+                        value = resolvePath(issueJson, "fields." + path);
+                    }
+                    
+                    // 3. Check Variables (Prompts)
+                    if ((value == null || value.isEmpty() || value.equalsIgnoreCase("null")) && variables != null) {
+                        value = variables.get(path);
+                    }
+
+                    if (value != null && !value.isEmpty() && !value.equalsIgnoreCase("null")) break;
+                }
+            } else {
+                String path = fullContent;
+                value = resolvePath(issueJson, path);
+                if (value == null && !path.startsWith("fields.")) {
+                    value = resolvePath(issueJson, "fields." + path);
+                }
+                if ((value == null || value.isEmpty() || value.equalsIgnoreCase("null")) && variables != null) {
+                    value = variables.get(path);
+                }
             }
 
             matcher.appendReplacement(sb, Matcher.quoteReplacement(value != null ? value : matcher.group(0)));

@@ -1,5 +1,6 @@
 package tso.usmc.jira.workflow;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -53,13 +54,22 @@ public abstract class WorkflowStep {
         if (json.has("label")) step.setLabel(json.getString("label"));
         
         if (json.has("fields")) {
-            JSONObject fields = json.getJSONObject("fields");
-            for (String key : fields.keySet()) {
-                FieldAction fa = FieldAction.fromJson(fields.getJSONObject(key));
-                if (fa.getFieldId() == null || fa.getFieldId().isEmpty()) {
-                    fa.setFieldId(key);
+            Object fieldsObj = json.get("fields");
+            if (fieldsObj instanceof JSONArray) {
+                JSONArray fieldsArr = (JSONArray) fieldsObj;
+                for (int i = 0; i < fieldsArr.length(); i++) {
+                    FieldAction fa = FieldAction.fromJson(fieldsArr.getJSONObject(i));
+                    step.addFieldAction(fa);
                 }
-                step.addFieldAction(fa);
+            } else if (fieldsObj instanceof JSONObject) {
+                JSONObject fields = (JSONObject) fieldsObj;
+                for (String key : fields.keySet()) {
+                    FieldAction fa = FieldAction.fromJson(fields.getJSONObject(key));
+                    if (fa.getFieldId() == null || fa.getFieldId().isEmpty()) {
+                        fa.setFieldId(key);
+                    }
+                    step.addFieldAction(fa);
+                }
             }
         }
         return step;

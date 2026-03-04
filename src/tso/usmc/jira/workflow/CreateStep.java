@@ -1,5 +1,6 @@
 package tso.usmc.jira.workflow;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 public class CreateStep extends WorkflowStep {
@@ -25,9 +26,9 @@ public class CreateStep extends WorkflowStep {
         json.put("projectKey", projectKey);
         json.put("issueType", issueType);
         
-        JSONObject fields = new JSONObject();
-        for (String key : fieldActions.keySet()) {
-            fields.put(key, fieldActions.get(key).toJson());
+        JSONArray fields = new JSONArray();
+        for (FieldAction action : fieldActions.values()) {
+            fields.put(action.toJson());
         }
         json.put("fields", fields);
         return json;

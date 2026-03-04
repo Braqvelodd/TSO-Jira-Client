@@ -91,10 +91,10 @@ public class WorkflowOrchestratorPanel extends JPanel {
         
         panel.add(left, BorderLayout.WEST);
         
-        // Right: Tokens
+        // Right: Tokens (now within SplitPane)
         JPanel right = new JPanel(new BorderLayout());
         right.setBorder(BorderFactory.createTitledBorder("Token Browser"));
-        right.setPreferredSize(new Dimension(250, 0));
+        right.setMinimumSize(new Dimension(0, 0)); // Important for full collapse
         
         JPanel tokenSearchPanel = new JPanel(new BorderLayout());
         tokenSearchPanel.add(new JLabel(" Search: "), BorderLayout.WEST);
@@ -106,10 +106,9 @@ public class WorkflowOrchestratorPanel extends JPanel {
         tokenList.setToolTipText("Double-click to copy token");
         right.add(new JScrollPane(tokenList), BorderLayout.CENTER);
         
-        panel.add(right, BorderLayout.EAST);
-        
         // Center: Editor
         JPanel center = new JPanel(new BorderLayout());
+        center.setMinimumSize(new Dimension(300, 0));
         
         // Editor Header
         JPanel header = new JPanel(new GridBagLayout());
@@ -130,6 +129,9 @@ public class WorkflowOrchestratorPanel extends JPanel {
 
         JButton saveBtn = new JButton("Save Recipe");
         gbc.gridy=0; gbc.gridx=2; header.add(saveBtn, gbc);
+
+        JButton toggleTokensBtn = new JButton("Toggle Tokens");
+        gbc.gridy=1; gbc.gridx=2; header.add(toggleTokensBtn, gbc);
         
         center.add(header, BorderLayout.NORTH);
         
@@ -150,8 +152,24 @@ public class WorkflowOrchestratorPanel extends JPanel {
         footer.add(addLinkBtn);
         footer.add(addCloneBtn);
         center.add(footer, BorderLayout.SOUTH);
+
+        // Split Editor and Tokens
+        JSplitPane split = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, center, right);
+        split.setResizeWeight(1.0);
+        split.setOneTouchExpandable(true);
+        split.setDividerLocation(1.0); // Start collapsed
         
-        panel.add(center, BorderLayout.CENTER);
+        panel.add(split, BorderLayout.CENTER);
+        
+        toggleTokensBtn.addActionListener(e -> {
+            int location = split.getDividerLocation();
+            int max = split.getMaximumDividerLocation();
+            if (location >= max - 50) {
+                split.setDividerLocation(max - 250);
+            } else {
+                split.setDividerLocation(max);
+            }
+        });
         
         // Listeners
         recipeList.addListSelectionListener(e -> {
@@ -480,7 +498,10 @@ public class WorkflowOrchestratorPanel extends JPanel {
                     } else {
                         String val = mainFrame.getJiraConfig().getProperty(key);
                         if (val != null) {
-                            if (val.contains(",")) return new JComboBox<>(val.split(","));
+                            if (val.contains(",")) {
+                                String[] opts = smartSplit(val);
+                                return new JComboBox<>(opts);
+                            }
                             return new JTextField(val);
                         }
                     }
@@ -492,12 +513,36 @@ public class WorkflowOrchestratorPanel extends JPanel {
         
         // Handle Static Options from Designer
         if (staticOptions != null && !staticOptions.trim().isEmpty() && staticOptions.contains(",")) {
-            String[] opts = staticOptions.split(",");
-            for (int i = 0; i < opts.length; i++) opts[i] = opts[i].trim();
+            String[] opts = smartSplit(staticOptions);
             return new JComboBox<>(opts);
         }
         
         return new JTextField();
+    }
+
+    private String[] smartSplit(String input) {
+        List<String> result = new ArrayList<>();
+        StringBuilder current = new StringBuilder();
+        int braceDepth = 0;
+        for (int i = 0; i < input.length(); i++) {
+            char c = input.charAt(i);
+            if (c == '{' && i + 1 < input.length() && input.charAt(i + 1) == '{') {
+                braceDepth++;
+                current.append("{{");
+                i++;
+            } else if (c == '}' && i + 1 < input.length() && input.charAt(i + 1) == '}') {
+                braceDepth--;
+                current.append("}}");
+                i++;
+            } else if (c == ',' && braceDepth == 0) {
+                result.add(current.toString().trim());
+                current = new StringBuilder();
+            } else {
+                current.append(c);
+            }
+        }
+        result.add(current.toString().trim());
+        return result.toArray(new String[0]);
     }
 
     private static class ConfigOption {
@@ -719,18 +764,21 @@ public class WorkflowOrchestratorPanel extends JPanel {
             executionVars.put("last_key", newKey);
             log("  > Created " + newKey);
         } else if (step instanceof UpdateStep) {
+            UpdateStep us = (UpdateStep) step;
+            String targetKey = resolveTokens(us.getTargetIssueToken(), issue);
             JSONObject fields = buildFields(step, issue, prompts, metaSnap);
-            mainFrame.getService().executeRequest(baseUrl + "/rest/api/2/issue/" + currentKey, "PUT", new JSONObject().put("fields", fields).toString());
-            log("  > Updated fields.");
+            mainFrame.getService().executeRequest(baseUrl + "/rest/api/2/issue/" + targetKey, "PUT", new JSONObject().put("fields", fields).toString());
+            log("  > Updated " + targetKey);
         } else if (step instanceof TransitionStep) {
             TransitionStep ts = (TransitionStep) step;
-            String transUrl = baseUrl + "/rest/api/2/issue/" + currentKey + "/transitions";
+            String targetKey = resolveTokens(ts.getTargetIssueToken(), issue);
+            String transUrl = baseUrl + "/rest/api/2/issue/" + targetKey + "/transitions";
             String transMeta = mainFrame.getService().executeRequest(transUrl, "GET", null);
             String tid = JiraUtils.findTransitionIdByName(transMeta, ts.getTargetStatus());
             if (tid != null) {
                 mainFrame.getService().executeRequest(transUrl, "POST", new JSONObject().put("transition", new JSONObject().put("id", tid)).toString());
-                log("  > Transitioned to " + ts.getTargetStatus());
-            } else log("  > ERROR: Transition '" + ts.getTargetStatus() + "' not found.");
+                log("  > Transitioned " + targetKey + " to " + ts.getTargetStatus());
+            } else log("  > ERROR: Transition '" + ts.getTargetStatus() + "' not found on " + targetKey);
         } else if (step instanceof LinkStep) {
             LinkStep ls = (LinkStep) step;
             String inward = resolveTokens(ls.getInwardIssueToken(), issue);
@@ -917,11 +965,7 @@ public class WorkflowOrchestratorPanel extends JPanel {
     }
 
     private String resolveTokens(String input, JSONObject issue) {
-        String result = TokenEngine.replaceTokens(input, issue);
-        for (String var : executionVars.keySet()) {
-            result = result.replace("{{" + var + "}}", executionVars.get(var));
-        }
-        return result;
+        return TokenEngine.replaceTokens(input, issue, executionVars);
     }
 
     private String resolveValue(FieldAction fa, JSONObject issue, Map<String, String> prompts) {

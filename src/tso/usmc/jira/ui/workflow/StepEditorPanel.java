@@ -32,7 +32,7 @@ public class StepEditorPanel extends JPanel {
     private final List<FieldActionPanel> actionPanels = new ArrayList<>();
     private final Map<String, String> fieldOptions; // Label -> ID mapping
 
-    // Specific fields for specialized steps
+    private JTextField targetIssueField;
     private JTextField projField;
     private JTextField typeField;
     private JTextField inwardField;
@@ -59,11 +59,24 @@ public class StepEditorPanel extends JPanel {
         tso.usmc.jira.util.JiraUtils.setupExpandedView(labelField);
         header.add(labelField);
         
+        if (step instanceof UpdateStep) {
+            header.add(new JLabel("Target Issue:"));
+            targetIssueField = new JTextField(((UpdateStep)step).getTargetIssueToken(), 10);
+            tso.usmc.jira.util.JiraUtils.setupExpandedView(targetIssueField);
+            header.add(targetIssueField);
+        }
+
         if (step instanceof TransitionStep) {
+            TransitionStep ts = (TransitionStep) step;
+            header.add(new JLabel("Target Issue:"));
+            targetIssueField = new JTextField(ts.getTargetIssueToken(), 10);
+            tso.usmc.jira.util.JiraUtils.setupExpandedView(targetIssueField);
+            header.add(targetIssueField);
+            
             header.add(new JLabel("Target Status:"));
-            JTextField targetField = new JTextField(((TransitionStep)step).getTargetStatus(), 15);
+            JTextField targetField = new JTextField(ts.getTargetStatus(), 15);
             tso.usmc.jira.util.JiraUtils.setupExpandedView(targetField);
-            targetField.getDocument().addDocumentListener(new SimpleDocumentListener(() -> ((TransitionStep)step).setTargetStatus(targetField.getText())));
+            targetField.getDocument().addDocumentListener(new SimpleDocumentListener(() -> ts.setTargetStatus(targetField.getText())));
             header.add(targetField);
         }
 
@@ -200,6 +213,12 @@ public class StepEditorPanel extends JPanel {
 
     public void saveToStep() {
         step.setLabel(labelField.getText());
+        if (step instanceof UpdateStep) {
+            ((UpdateStep)step).setTargetIssueToken(targetIssueField.getText());
+        }
+        if (step instanceof TransitionStep) {
+            ((TransitionStep)step).setTargetIssueToken(targetIssueField.getText());
+        }
         if (step instanceof CreateStep) {
             ((CreateStep)step).setProjectKey(projField.getText());
             ((CreateStep)step).setIssueType(typeField.getText());
