@@ -151,6 +151,58 @@ public class JqlRunnerPanel extends JPanel implements tso.usmc.jira.util.ConfigC
                             }
                         }
 
+                        // ORCHESTRATOR WORKFLOWS
+                        if (jiraConfig.isTabEnabled("WorkflowOrchestrator")) {
+                            contextMenu.addSeparator();
+                            JMenu workflowMenu = new JMenu("Run Workflow");
+                            tso.usmc.jira.workflow.WorkflowManager wm = new tso.usmc.jira.workflow.WorkflowManager();
+                            java.util.List<String> recipes = wm.listWorkflows();
+                            
+                            for (String rName : recipes) {
+                                try {
+                                    tso.usmc.jira.workflow.WorkflowRecipe recipe = wm.loadWorkflow(rName);
+                                    if (recipe != null && (recipe.getJqlQuery() == null || recipe.getJqlQuery().trim().isEmpty())) {
+                                        JMenuItem item = new JMenuItem(rName);
+                                        item.addActionListener(al -> {
+                                            boolean hasPrompts = false;
+                                            for (tso.usmc.jira.workflow.WorkflowStep step : recipe.getSteps()) {
+                                                if (step instanceof tso.usmc.jira.workflow.CreateStep) {
+                                                    tso.usmc.jira.workflow.CreateStep cs = (tso.usmc.jira.workflow.CreateStep) step;
+                                                    if (cs.getProjectKey().contains(",") || cs.getProjectKey().contains("[config:") ||
+                                                        cs.getIssueType().contains(",") || cs.getIssueType().contains("[config:")) {
+                                                        hasPrompts = true; break;
+                                                    }
+                                                }
+                                                for (tso.usmc.jira.workflow.FieldAction fa : step.getFieldActions().values()) {
+                                                    if (fa.getMode() == tso.usmc.jira.workflow.FieldAction.MappingMode.PROMPT) {
+                                                        hasPrompts = true; break;
+                                                    }
+                                                }
+                                                if (hasPrompts) break;
+                                            }
+
+                                            if (hasPrompts) {
+                                                mainFrame.showPanel("Workflow Orchestrator");
+                                                WorkflowOrchestratorPanel wop = mainFrame.getWorkflowOrchestratorPanel();
+                                                if (wop != null) {
+                                                    wop.setRunnerIssueKey(rName, selectedIssueKey);
+                                                }
+                                            } else {
+                                                WorkflowOrchestratorPanel wop = mainFrame.getWorkflowOrchestratorPanel();
+                                                if (wop != null) {
+                                                    wop.runWorkflowDirectly(rName, selectedIssueKey);
+                                                }
+                                            }
+                                        });
+                                        workflowMenu.add(item);
+                                    }
+                                } catch (Exception ignored) {}
+                            }
+                            if (workflowMenu.getItemCount() > 0) {
+                                contextMenu.add(workflowMenu);
+                            }
+                        }
+
                         if (contextMenu.getComponentCount() > 0) {
                             contextMenu.show(e.getComponent(), e.getX(), e.getY());
                         }

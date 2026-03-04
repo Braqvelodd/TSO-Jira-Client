@@ -213,6 +213,63 @@ public class WorkflowOrchestratorPanel extends JPanel {
         return panel;
     }
 
+    public void setRunnerIssueKey(String recipeName, String key) {
+        runnerRecipeCombo.setSelectedItem(recipeName);
+        runnerJqlField.setText(key);
+        updateRunnerInputs(); // Ensure inputs match the selected recipe
+    }
+
+    public void runWorkflowDirectly(String recipeName, String issueKey) {
+        // Switch to Runner tab and select the recipe
+        SwingUtilities.invokeLater(() -> {
+            mainFrame.showPanel("Workflow Orchestrator");
+            // Assuming the JTabbedPane is the first child or we can find it
+            for (Component c : getComponents()) {
+                if (c instanceof JTabbedPane) {
+                    ((JTabbedPane) c).setSelectedIndex(1); // 1 is Runner
+                    break;
+                }
+            }
+            runnerRecipeCombo.setSelectedItem(recipeName);
+            runnerJqlField.setText(issueKey);
+        });
+
+        new Thread(() -> {
+            try {
+                WorkflowRecipe recipe = workflowManager.loadWorkflow(recipeName);
+                if (recipe == null) {
+                    String val = mainFrame.getJiraConfig().getProperty("workflow." + recipeName);
+                    if (val != null) recipe = WorkflowRecipe.fromJson(val);
+                }
+                if (recipe == null) {
+                    log("ERROR: Recipe not found: " + recipeName);
+                    return;
+                }
+
+                // Fetch the issue data
+                log("Executing " + recipeName + " on " + issueKey);
+                String searchUrl = mainFrame.getBaseUrl() + "/rest/api/2/issue/" + issueKey + "?expand=names,renderedFields&fields=*all,attachment,issuelinks";
+                String resp = mainFrame.getService().executeRequest(searchUrl, "GET", null);
+                JSONObject issue = new JSONObject(resp);
+                
+                JSONObject metaSnap = recipe.getMetadataSnapshot();
+                
+                executionVars.clear();
+                executionVars.put("issue.key", issueKey);
+                executionVars.put("key", issueKey);
+
+                for (WorkflowStep step : recipe.getSteps()) {
+                    log("Step: " + step.getLabel());
+                    executeStep(step, issue, new HashMap<>(), metaSnap);
+                }
+                log("Workflow Execution Complete.");
+            } catch (Exception e) {
+                log("Execution Error: " + e.getMessage());
+                e.printStackTrace();
+            }
+        }).start();
+    }
+
     private JPanel createRunnerPanel() {
         JPanel panel = new JPanel(new BorderLayout());
         
@@ -299,6 +356,7 @@ public class WorkflowOrchestratorPanel extends JPanel {
                         runnerTableModel.addRow(new Object[]{key, summary, status, assignee});
                     }
                     log("Found " + issues.length() + " issues.");
+                    updateRunnerInputs(); // Refresh prompts to resolve tokens against results
                 });
             } catch (Exception e) {
                 log("Search Error: " + e.getMessage());
@@ -411,19 +469,29 @@ public class WorkflowOrchestratorPanel extends JPanel {
             }
             
             if (recipe != null) {
-                runnerJqlField.setText(recipe.getJqlQuery());
+                if (runnerJqlField.getText().isEmpty()) runnerJqlField.setText(recipe.getJqlQuery());
+                
+                // Determine context issue for token resolution in prompts
+                JSONObject contextIssue = null;
+                int selected = runnerTable.getSelectedRow();
+                if (selected >= 0 && selected < currentSearchIssues.size()) {
+                    contextIssue = currentSearchIssues.get(runnerTable.convertRowIndexToModel(selected));
+                } else if (!currentSearchIssues.isEmpty()) {
+                    contextIssue = currentSearchIssues.get(0);
+                }
+
                 Set<String> labels = new HashSet<>();
                 for (WorkflowStep step : recipe.getSteps()) {
                     // Check for dynamic properties in CreateStep
                     if (step instanceof CreateStep) {
                         CreateStep cs = (CreateStep) step;
-                        addDynamicPrompt(labels, "Project (" + step.getLabel() + ")", cs.getProjectKey());
-                        addDynamicPrompt(labels, "Issue Type (" + step.getLabel() + ")", cs.getIssueType());
+                        addDynamicPrompt(labels, "Project (" + step.getLabel() + ")", cs.getProjectKey(), contextIssue);
+                        addDynamicPrompt(labels, "Issue Type (" + step.getLabel() + ")", cs.getIssueType(), contextIssue);
                     }
                     
                     for (FieldAction fa : step.getFieldActions().values()) {
                         if (fa.getMode() == FieldAction.MappingMode.PROMPT) {
-                            addDynamicPrompt(labels, fa.getPromptLabel(), fa.getValue() != null ? fa.getValue().toString() : null);
+                            addDynamicPrompt(labels, fa.getPromptLabel(), fa.getValue() != null ? fa.getValue().toString() : null, contextIssue);
                         }
                     }
                 }
@@ -436,12 +504,18 @@ public class WorkflowOrchestratorPanel extends JPanel {
         runnerInputsPanel.repaint();
     }
 
-    private void addDynamicPrompt(Set<String> labels, String label, String value) {
+    private void addDynamicPrompt(Set<String> labels, String label, String value, JSONObject contextIssue) {
         if (label == null || label.trim().isEmpty()) return;
         
         // Clean label for storage/lookup
         String cleanLabel = label.replaceAll("\\[.*?\\]", "").trim();
         
+        // Resolve tokens in the default value if we have context
+        String resolvedValue = value;
+        if (contextIssue != null && value != null && value.contains("{{")) {
+            resolvedValue = TokenEngine.replaceTokens(value, contextIssue);
+        }
+
         // Treat as dynamic if either label or value contains a tag/list
         boolean isDynamic = (value != null && (value.contains(",") || value.contains("[config:"))) || label.contains("[config:");
         
@@ -449,7 +523,7 @@ public class WorkflowOrchestratorPanel extends JPanel {
             if (!labels.contains(cleanLabel)) {
                 labels.add(cleanLabel);
                 runnerInputsPanel.add(new JLabel(cleanLabel + ":"));
-                JComponent input = createPromptInput(label, value);
+                JComponent input = createPromptInput(label, value, contextIssue);
                 runnerInputsPanel.add(input);
                 promptFields.put(cleanLabel, input);
             }
@@ -460,14 +534,14 @@ public class WorkflowOrchestratorPanel extends JPanel {
             if (!labels.contains(cleanLabel)) {
                 labels.add(cleanLabel);
                 runnerInputsPanel.add(new JLabel(cleanLabel + ":"));
-                JComponent input = createPromptInput(label, null);
+                JComponent input = new JTextField(resolvedValue != null ? resolvedValue : "");
                 runnerInputsPanel.add(input);
                 promptFields.put(cleanLabel, input);
             }
         }
     }
 
-    private JComponent createPromptInput(String label, String staticOptions) {
+    private JComponent createPromptInput(String label, String staticOptions, JSONObject contextIssue) {
         String tagSource = null;
         if (staticOptions != null && staticOptions.contains("[config:")) tagSource = staticOptions;
         else if (label != null && label.contains("[config:")) tagSource = label;
@@ -500,9 +574,17 @@ public class WorkflowOrchestratorPanel extends JPanel {
                         if (val != null) {
                             if (val.contains(",")) {
                                 String[] opts = smartSplit(val);
+                                // Resolve tokens in each option
+                                if (contextIssue != null) {
+                                    for (int i = 0; i < opts.length; i++) {
+                                        opts[i] = TokenEngine.replaceTokens(opts[i], contextIssue);
+                                    }
+                                }
                                 return new JComboBox<>(opts);
                             }
-                            return new JTextField(val);
+                            String resolved = val;
+                            if (contextIssue != null) resolved = TokenEngine.replaceTokens(val, contextIssue);
+                            return new JTextField(resolved);
                         }
                     }
                 }
@@ -514,6 +596,12 @@ public class WorkflowOrchestratorPanel extends JPanel {
         // Handle Static Options from Designer
         if (staticOptions != null && !staticOptions.trim().isEmpty() && staticOptions.contains(",")) {
             String[] opts = smartSplit(staticOptions);
+            // Resolve tokens in each option
+            if (contextIssue != null) {
+                for (int i = 0; i < opts.length; i++) {
+                    opts[i] = TokenEngine.replaceTokens(opts[i], contextIssue);
+                }
+            }
             return new JComboBox<>(opts);
         }
         

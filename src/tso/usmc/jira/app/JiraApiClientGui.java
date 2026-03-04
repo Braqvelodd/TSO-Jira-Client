@@ -31,6 +31,7 @@ public class JiraApiClientGui extends JFrame implements ConfigChangeListener {
     private final JiraConfig jiraConfig;
     private JTabbedPane tabs;
     private TaskBuilderPanel taskBuilderPanel;
+    private WorkflowOrchestratorPanel workflowOrchestratorPanel;
 
     public JiraApiClientGui() {
         this.jiraConfig = new JiraConfig();
@@ -139,7 +140,8 @@ public class JiraApiClientGui extends JFrame implements ConfigChangeListener {
         }
 
         if (jiraConfig.isTabEnabled("WorkflowOrchestrator")) {
-            tabs.addTab("Workflow Orchestrator", new WorkflowOrchestratorPanel(this));
+            this.workflowOrchestratorPanel = new WorkflowOrchestratorPanel(this);
+            tabs.addTab("Workflow Orchestrator", this.workflowOrchestratorPanel);
         }
 
         // Layout Assembly
@@ -152,6 +154,9 @@ public class JiraApiClientGui extends JFrame implements ConfigChangeListener {
     }
     public TaskBuilderPanel getTaskBuilderPanel() {
         return this.taskBuilderPanel;
+    }
+    public WorkflowOrchestratorPanel getWorkflowOrchestratorPanel() {
+        return this.workflowOrchestratorPanel;
     }
     public JiraConfig getJiraConfig() {
         return this.jiraConfig;
