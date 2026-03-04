@@ -1,6 +1,8 @@
 package tso.usmc.jira.workflow;
 
 import org.json.JSONObject;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -9,13 +11,28 @@ public class TokenEngine {
 
     /**
      * Replaces tokens with values from the issue JSON.
-     * Supports nested paths (e.g., {{fields.summary}}, {{fields.issuetype.name}}).
      */
     public static String replaceTokens(String input, JSONObject issueJson) {
         return replaceTokens(input, issueJson, null);
     }
 
-    public static String replaceTokens(String input, JSONObject issueJson, java.util.Map<String, String> variables) {
+    /**
+     * Replaces tokens with values from the issue JSON and variables.
+     */
+    public static String replaceTokens(String input, JSONObject issueJson, Map<String, String> variables) {
+        Map<String, JSONObject> contexts = new HashMap<>();
+        if (issueJson != null) {
+            contexts.put("issue", issueJson);
+        }
+        return replaceTokens(input, contexts, variables);
+    }
+
+    /**
+     * More robust replacement supporting multiple JSON contexts.
+     * Prefixes like {{issue.summary}} or {{last.key}} can be used.
+     * If no prefix is used, it defaults to the 'issue' context.
+     */
+    public static String replaceTokens(String input, Map<String, JSONObject> contexts, Map<String, String> variables) {
         if (input == null || !input.contains("{{")) return input;
 
         Matcher matcher = TOKEN_PATTERN.matcher(input);
@@ -28,42 +45,53 @@ public class TokenEngine {
                 String argsStr = fullContent.substring(9, fullContent.length() - 1);
                 String[] args = argsStr.split(",");
                 for (String arg : args) {
-                    String path = arg.trim();
-                    
-                    // 1. Check for quoted literals
-                    if ((path.startsWith("\"") && path.endsWith("\"")) || (path.startsWith("'") && path.endsWith("'"))) {
-                        value = path.substring(1, path.length() - 1);
-                        break;
-                    }
-                    
-                    // 2. Check Issue JSON
-                    value = resolvePath(issueJson, path);
-                    if (value == null && !path.startsWith("fields.")) {
-                        value = resolvePath(issueJson, "fields." + path);
-                    }
-                    
-                    // 3. Check Variables (Prompts)
-                    if ((value == null || value.isEmpty() || value.equalsIgnoreCase("null")) && variables != null) {
-                        value = variables.get(path);
-                    }
-
+                    value = resolveToken(arg.trim(), contexts, variables);
                     if (value != null && !value.isEmpty() && !value.equalsIgnoreCase("null")) break;
                 }
             } else {
-                String path = fullContent;
-                value = resolvePath(issueJson, path);
-                if (value == null && !path.startsWith("fields.")) {
-                    value = resolvePath(issueJson, "fields." + path);
-                }
-                if ((value == null || value.isEmpty() || value.equalsIgnoreCase("null")) && variables != null) {
-                    value = variables.get(path);
-                }
+                value = resolveToken(fullContent, contexts, variables);
             }
 
             matcher.appendReplacement(sb, Matcher.quoteReplacement(value != null ? value : matcher.group(0)));
         }
         matcher.appendTail(sb);
         return sb.toString();
+    }
+
+    private static String resolveToken(String path, Map<String, JSONObject> contexts, Map<String, String> variables) {
+        // 1. Check for quoted literals
+        if ((path.startsWith("\"") && path.endsWith("\"")) || (path.startsWith("'") && path.endsWith("'"))) {
+            return path.substring(1, path.length() - 1);
+        }
+
+        String value = null;
+        String resolvedPath = path;
+        JSONObject targetContext = contexts.get("issue"); // Default context
+
+        // 2. Check for explicit context prefix (e.g., issue.summary, last.key)
+        for (String contextName : contexts.keySet()) {
+            if (path.startsWith(contextName + ".")) {
+                targetContext = contexts.get(contextName);
+                resolvedPath = path.substring(contextName.length() + 1);
+                break;
+            }
+        }
+
+        // 3. Resolve in JSON context
+        if (targetContext != null) {
+            value = resolvePath(targetContext, resolvedPath);
+            // Fallback to fields.path if not found and not already prefixed with fields.
+            if (value == null && !resolvedPath.startsWith("fields.")) {
+                value = resolvePath(targetContext, "fields." + resolvedPath);
+            }
+        }
+
+        // 4. Check Variables (Prompts/Execution Vars) if not found in JSON or if explicitly requested
+        if ((value == null || value.isEmpty() || value.equalsIgnoreCase("null")) && variables != null) {
+            value = variables.get(path);
+        }
+
+        return value;
     }
 
     private static String resolvePath(JSONObject json, String path) {

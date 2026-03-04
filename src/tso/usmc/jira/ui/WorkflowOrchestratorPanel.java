@@ -48,6 +48,7 @@ public class WorkflowOrchestratorPanel extends JPanel {
 
     // Execution Variables
     private final Map<String, String> executionVars = new HashMap<>();
+    private final Map<String, JSONObject> jsonContexts = new HashMap<>();
 
     private final Map<String, JSONObject> cachedFullMeta = new HashMap<>();
     private final List<String> allTokens = new ArrayList<>();
@@ -255,8 +256,10 @@ public class WorkflowOrchestratorPanel extends JPanel {
                 JSONObject metaSnap = recipe.getMetadataSnapshot();
                 
                 executionVars.clear();
+                jsonContexts.clear();
                 executionVars.put("issue.key", issueKey);
                 executionVars.put("key", issueKey);
+                jsonContexts.put("issue", issue);
 
                 for (WorkflowStep step : recipe.getSteps()) {
                     log("Step: " + step.getLabel());
@@ -423,8 +426,10 @@ public class WorkflowOrchestratorPanel extends JPanel {
                     String key = issue.getString("key");
                     log("--- Processing " + key + " ---");
                     executionVars.clear();
+                    jsonContexts.clear();
                     executionVars.put("issue.key", key);
                     executionVars.put("key", key);
+                    jsonContexts.put("issue", issue);
                     
                     // Inject tokens
                     for(String pLabel : promptValues.keySet()) {
@@ -659,8 +664,10 @@ public class WorkflowOrchestratorPanel extends JPanel {
                 cachedFieldOptions.clear();
                 
                 List<String> tokens = new ArrayList<>();
-                tokens.add("Issue Key ({{key}})");
-                tokens.add("Last Created Issue ({{last_key}})");
+                tokens.add("Current Issue Key ({{issue.key}})");
+                tokens.add("Current Summary ({{issue.fields.summary}})");
+                tokens.add("Last Created/Mod Key ({{last.key}})");
+                tokens.add("Last Created/Mod ID ({{last.id}})");
                 tokens.add("Selected Team Name ({{team.name}})");
                 tokens.add("Selected Team Lead ({{team.lead}})");
                 tokens.add("Selected Team Component ({{team.component}})");
@@ -669,7 +676,7 @@ public class WorkflowOrchestratorPanel extends JPanel {
                 for (String fieldId : meta.keySet()) {
                     String name = meta.get(fieldId).getString("name");
                     cachedFieldOptions.put(name + " (" + fieldId + ")", fieldId);
-                    tokens.add(name + " ({{fields." + fieldId + "}})");
+                    tokens.add(name + " ({{issue.fields." + fieldId + "}})");
                 }
                 Collections.sort(tokens);
 
@@ -848,14 +855,25 @@ public class WorkflowOrchestratorPanel extends JPanel {
             fields.put("project", new JSONObject().put("key", proj));
             fields.put("issuetype", new JSONObject().put("name", type));
             String resp = mainFrame.getService().executeRequest(baseUrl + "/rest/api/2/issue", "POST", new JSONObject().put("fields", fields).toString());
-            String newKey = new JSONObject(resp).getString("key");
+            JSONObject respJson = new JSONObject(resp);
+            String newKey = respJson.getString("key");
+            
             executionVars.put("last_key", newKey);
+            executionVars.put("last.key", newKey);
+            executionVars.put("last.id", respJson.getString("id"));
+            jsonContexts.put("last", respJson); // This has key/id/self
+            
             log("  > Created " + newKey);
         } else if (step instanceof UpdateStep) {
             UpdateStep us = (UpdateStep) step;
             String targetKey = resolveTokens(us.getTargetIssueToken(), issue);
             JSONObject fields = buildFields(step, issue, prompts, metaSnap);
             mainFrame.getService().executeRequest(baseUrl + "/rest/api/2/issue/" + targetKey, "PUT", new JSONObject().put("fields", fields).toString());
+            
+            executionVars.put("last_key", targetKey);
+            executionVars.put("last.key", targetKey);
+            // Context 'last' remains what it was or is cleared if we want to be strict.
+            
             log("  > Updated " + targetKey);
         } else if (step instanceof TransitionStep) {
             TransitionStep ts = (TransitionStep) step;
@@ -865,6 +883,8 @@ public class WorkflowOrchestratorPanel extends JPanel {
             String tid = JiraUtils.findTransitionIdByName(transMeta, ts.getTargetStatus());
             if (tid != null) {
                 mainFrame.getService().executeRequest(transUrl, "POST", new JSONObject().put("transition", new JSONObject().put("id", tid)).toString());
+                executionVars.put("last_key", targetKey);
+                executionVars.put("last.key", targetKey);
                 log("  > Transitioned " + targetKey + " to " + ts.getTargetStatus());
             } else log("  > ERROR: Transition '" + ts.getTargetStatus() + "' not found on " + targetKey);
         } else if (step instanceof LinkStep) {
@@ -1053,7 +1073,8 @@ public class WorkflowOrchestratorPanel extends JPanel {
     }
 
     private String resolveTokens(String input, JSONObject issue) {
-        return TokenEngine.replaceTokens(input, issue, executionVars);
+        jsonContexts.put("issue", issue);
+        return TokenEngine.replaceTokens(input, jsonContexts, executionVars);
     }
 
     private String resolveValue(FieldAction fa, JSONObject issue, Map<String, String> prompts) {
