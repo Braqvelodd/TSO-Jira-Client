@@ -1,7 +1,7 @@
 package tso.usmc.jira.workflow;
 
 import org.json.JSONObject;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 public abstract class WorkflowStep {
@@ -10,7 +10,7 @@ public abstract class WorkflowStep {
     protected String stepId;
     protected String label;
     protected StepType type;
-    protected Map<String, FieldAction> fieldActions = new HashMap<>();
+    protected Map<String, FieldAction> fieldActions = new LinkedHashMap<>();
 
     public WorkflowStep(StepType type) {
         this.type = type;

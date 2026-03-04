@@ -12,13 +12,20 @@ import javax.swing.*;
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Component;
+import java.awt.Dimension;
 import java.awt.FlowLayout;
+import java.awt.Insets;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 public class StepEditorPanel extends JPanel {
+    public interface StepActionListener {
+        void onMoveUp(StepEditorPanel panel);
+        void onMoveDown(StepEditorPanel panel);
+    }
+
     private final WorkflowStep step;
     private final JTextField labelField;
     private final JPanel fieldsContainer;
@@ -34,7 +41,7 @@ public class StepEditorPanel extends JPanel {
     private JTextField sourceTokenField;
     private JTextField targetTokenField;
 
-    public StepEditorPanel(WorkflowStep step, Map<String, String> fieldOptions, Runnable onRemove) {
+    public StepEditorPanel(WorkflowStep step, Map<String, String> fieldOptions, Runnable onRemove, StepActionListener stepListener) {
         this.step = step;
         this.fieldOptions = fieldOptions;
         setLayout(new BorderLayout());
@@ -46,6 +53,7 @@ public class StepEditorPanel extends JPanel {
         // Header
         JPanel header = new JPanel(new FlowLayout(FlowLayout.LEFT));
         header.setBackground(new Color(230, 230, 230));
+
         header.add(new JLabel("[" + step.getType() + "] Label:"));
         labelField = new JTextField(step.getLabel(), 20);
         tso.usmc.jira.util.JiraUtils.setupExpandedView(labelField);
@@ -107,6 +115,19 @@ public class StepEditorPanel extends JPanel {
             header.add(links);
         }
 
+        // Step Rearrangement Buttons
+        JButton stepUpBtn = new JButton("▲");
+        JButton stepDownBtn = new JButton("▼");
+        Dimension stepBtnDim = new Dimension(22, 22);
+        stepUpBtn.setPreferredSize(stepBtnDim);
+        stepDownBtn.setPreferredSize(stepBtnDim);
+        stepUpBtn.setMargin(new Insets(0, 0, 0, 0));
+        stepDownBtn.setMargin(new Insets(0, 0, 0, 0));
+        stepUpBtn.addActionListener(e -> stepListener.onMoveUp(this));
+        stepDownBtn.addActionListener(e -> stepListener.onMoveDown(this));
+        header.add(stepUpBtn);
+        header.add(stepDownBtn);
+
         JButton removeBtn = new JButton("X");
         removeBtn.setForeground(Color.RED);
         removeBtn.addActionListener(e -> onRemove.run());
@@ -133,9 +154,46 @@ public class StepEditorPanel extends JPanel {
     }
 
     private void addField(FieldAction action) {
-        FieldActionPanel panel = new FieldActionPanel(action, fieldOptions);
+        FieldActionPanel panel = new FieldActionPanel(action, fieldOptions, new FieldActionPanel.FieldActionListener() {
+            @Override
+            public void onMoveUp(FieldActionPanel p) {
+                int idx = actionPanels.indexOf(p);
+                if (idx > 0) {
+                    actionPanels.remove(idx);
+                    actionPanels.add(idx - 1, p);
+                    refreshFieldLayout();
+                }
+            }
+
+            @Override
+            public void onMoveDown(FieldActionPanel p) {
+                int idx = actionPanels.indexOf(p);
+                if (idx >= 0 && idx < actionPanels.size() - 1) {
+                    actionPanels.remove(idx);
+                    actionPanels.add(idx + 1, p);
+                    refreshFieldLayout();
+                }
+            }
+
+            @Override
+            public void onRemove(FieldActionPanel p) {
+                actionPanels.remove(p);
+                fieldsContainer.remove(p);
+                fieldsContainer.revalidate();
+                fieldsContainer.repaint();
+            }
+        });
         actionPanels.add(panel);
         fieldsContainer.add(panel);
+        fieldsContainer.revalidate();
+        fieldsContainer.repaint();
+    }
+
+    private void refreshFieldLayout() {
+        fieldsContainer.removeAll();
+        for (FieldActionPanel p : actionPanels) {
+            fieldsContainer.add(p);
+        }
         fieldsContainer.revalidate();
         fieldsContainer.repaint();
     }

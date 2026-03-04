@@ -180,9 +180,13 @@ public class WorkflowOrchestratorPanel extends JPanel {
                 if (e.getClickCount() == 2) {
                     String selected = tokenList.getSelectedValue();
                     if (selected != null) {
-                        String token = selected.substring(0, selected.indexOf(" "));
-                        java.awt.datatransfer.StringSelection selection = new java.awt.datatransfer.StringSelection(token);
-                        Toolkit.getDefaultToolkit().getSystemClipboard().setContents(selection, selection);
+                        int start = selected.indexOf("{{");
+                        int end = selected.lastIndexOf("}}");
+                        if (start >= 0 && end > start) {
+                            String token = selected.substring(start, end + 2);
+                            java.awt.datatransfer.StringSelection selection = new java.awt.datatransfer.StringSelection(token);
+                            Toolkit.getDefaultToolkit().getSystemClipboard().setContents(selection, selection);
+                        }
                     }
                 }
             }
@@ -522,17 +526,17 @@ public class WorkflowOrchestratorPanel extends JPanel {
                 cachedFieldOptions.clear();
                 
                 List<String> tokens = new ArrayList<>();
-                tokens.add("{{key}} (Issue Key)");
-                tokens.add("{{last_key}} (Last Created Issue)");
-                tokens.add("{{team.name}} (Selected Team Name)");
-                tokens.add("{{team.lead}} (Selected Team Lead)");
-                tokens.add("{{team.component}} (Selected Team Component)");
-                tokens.add("{{team.id}} (Selected Team ID)");
+                tokens.add("Issue Key ({{key}})");
+                tokens.add("Last Created Issue ({{last_key}})");
+                tokens.add("Selected Team Name ({{team.name}})");
+                tokens.add("Selected Team Lead ({{team.lead}})");
+                tokens.add("Selected Team Component ({{team.component}})");
+                tokens.add("Selected Team ID ({{team.id}})");
                 
                 for (String fieldId : meta.keySet()) {
                     String name = meta.get(fieldId).getString("name");
                     cachedFieldOptions.put(name + " (" + fieldId + ")", fieldId);
-                    tokens.add("{{fields." + fieldId + "}} (" + name + ")");
+                    tokens.add(name + " ({{fields." + fieldId + "}})");
                 }
                 Collections.sort(tokens);
 
@@ -565,6 +569,36 @@ public class WorkflowOrchestratorPanel extends JPanel {
             stepsContainer.remove(getStepPanel(step));
             stepsContainer.revalidate();
             stepsContainer.repaint();
+        }, new StepEditorPanel.StepActionListener() {
+            @Override
+            public void onMoveUp(StepEditorPanel p) {
+                int idx = getComponentIndex(p);
+                if (idx > 0) {
+                    stepsContainer.remove(p);
+                    stepsContainer.add(p, idx - 1);
+                    stepsContainer.revalidate();
+                    stepsContainer.repaint();
+                }
+            }
+
+            @Override
+            public void onMoveDown(StepEditorPanel p) {
+                int idx = getComponentIndex(p);
+                if (idx >= 0 && idx < stepsContainer.getComponentCount() - 1) {
+                    stepsContainer.remove(p);
+                    stepsContainer.add(p, idx + 1);
+                    stepsContainer.revalidate();
+                    stepsContainer.repaint();
+                }
+            }
+            
+            private int getComponentIndex(Component c) {
+                Component[] comps = stepsContainer.getComponents();
+                for (int i = 0; i < comps.length; i++) {
+                    if (comps[i] == c) return i;
+                }
+                return -1;
+            }
         });
         stepsContainer.add(panel);
         stepsContainer.revalidate();

@@ -6,6 +6,12 @@ import java.awt.*;
 import java.util.*;
 
 public class FieldActionPanel extends JPanel {
+    public interface FieldActionListener {
+        void onMoveUp(FieldActionPanel panel);
+        void onMoveDown(FieldActionPanel panel);
+        void onRemove(FieldActionPanel panel);
+    }
+
     private final JComboBox<FieldAction.MappingMode> modeCombo;
     private final JComboBox<String> keyCombo; // Replaced keyField with an editable combo box
     private final JPanel valuePanel;
@@ -16,9 +22,34 @@ public class FieldActionPanel extends JPanel {
     private final CardLayout cardLayout;
     private Map<String, String> currentOptions;
 
-    public FieldActionPanel(FieldAction action, Map<String, String> fieldOptions) {
+    public FieldActionPanel(FieldAction action, Map<String, String> fieldOptions, FieldActionListener listener) {
         this.currentOptions = fieldOptions;
         setLayout(new FlowLayout(FlowLayout.LEFT, 5, 0));
+
+        // Rearrangement and Removal Buttons
+        JPanel controls = new JPanel(new FlowLayout(FlowLayout.LEFT, 1, 0));
+        JButton upBtn = new JButton("▲");
+        JButton downBtn = new JButton("▼");
+        JButton delBtn = new JButton("X");
+        
+        Dimension btnDim = new Dimension(22, 22);
+        upBtn.setPreferredSize(btnDim);
+        downBtn.setPreferredSize(btnDim);
+        delBtn.setPreferredSize(btnDim);
+        
+        upBtn.setMargin(new Insets(0, 0, 0, 0));
+        downBtn.setMargin(new Insets(0, 0, 0, 0));
+        delBtn.setMargin(new Insets(0, 0, 0, 0));
+        delBtn.setForeground(Color.RED);
+        
+        upBtn.addActionListener(e -> listener.onMoveUp(this));
+        downBtn.addActionListener(e -> listener.onMoveDown(this));
+        delBtn.addActionListener(e -> listener.onRemove(this));
+        
+        controls.add(upBtn);
+        controls.add(downBtn);
+        controls.add(delBtn);
+        add(controls);
         
         Vector<String> options = new Vector<>();
         if (fieldOptions != null) {
