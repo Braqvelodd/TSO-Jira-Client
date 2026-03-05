@@ -368,6 +368,7 @@ public class WorkflowOrchestratorPanel extends JPanel {
     }
 
     private void runWorkflowOnSelected() {
+        // ... (pre-loop logic)
         int[] selectedRows = runnerTable.getSelectedRows();
         if (selectedRows.length == 0) {
             JOptionPane.showMessageDialog(this, "Please select one or more issues from the table first.");
@@ -401,6 +402,8 @@ public class WorkflowOrchestratorPanel extends JPanel {
                 } else if (selected != null) {
                     val = selected.toString();
                 }
+            } else if (comp instanceof PromptChoicePanel) {
+                val = ((PromptChoicePanel) comp).getValue();
             }
             promptValues.put(label, val);
         }
@@ -522,7 +525,7 @@ public class WorkflowOrchestratorPanel extends JPanel {
         }
 
         // Treat as dynamic if either label or value contains a tag/list
-        boolean isDynamic = (value != null && (value.contains(",") || value.contains("[config:"))) || label.contains("[config:");
+        boolean isDynamic = (value != null && (value.contains(",") || value.contains("[config:") || value.contains("[choice:"))) || label.contains("[config:") || label.contains("[choice:");
         
         if (isDynamic) {
             if (!labels.contains(cleanLabel)) {
@@ -548,48 +551,60 @@ public class WorkflowOrchestratorPanel extends JPanel {
 
     private JComponent createPromptInput(String label, String staticOptions, JSONObject contextIssue) {
         String tagSource = null;
-        if (staticOptions != null && staticOptions.contains("[config:")) tagSource = staticOptions;
-        else if (label != null && label.contains("[config:")) tagSource = label;
+        if (staticOptions != null && (staticOptions.contains("[config:") || staticOptions.contains("[choice:"))) tagSource = staticOptions;
+        else if (label != null && (label.contains("[config:") || label.contains("[choice:"))) tagSource = label;
 
         if (tagSource != null) {
             try {
-                int start = tagSource.indexOf("[config:") + 8;
-                int end = tagSource.lastIndexOf("]");
-                if (end > start) {
-                    String tag = tagSource.substring(start, end);
-                    String[] parts = tag.split(":");
-                    String key = parts[0];
-                    
-                    if (key.equals("teams")) {
-                        String subKey = parts.length > 1 ? parts[1] : "lead";
-                        Vector<ConfigOption> options = new Vector<>();
-                        String[] teamKeys = mainFrame.getJiraConfig().getWorkflowTeamKeys();
-                        for (String tKey : teamKeys) {
-                            String name = mainFrame.getJiraConfig().getTeamProperty(tKey, "name");
-                            String val = mainFrame.getJiraConfig().getTeamProperty(tKey, subKey);
-                            if (name != null && val != null) options.add(new ConfigOption(name, val, tKey));
-                        }
-                        return new JComboBox<>(options);
-                    } else if (key.equals("fy_summary")) {
-                        Vector<String> options = new Vector<>();
-                        options.add(mainFrame.getJiraConfig().getWorkflowFySummaryIssue());
-                        return new JComboBox<>(options);
-                    } else {
-                        String val = mainFrame.getJiraConfig().getProperty(key);
-                        if (val != null) {
-                            if (val.contains(",")) {
-                                String[] opts = smartSplit(val);
-                                // Resolve tokens in each option
-                                if (contextIssue != null) {
-                                    for (int i = 0; i < opts.length; i++) {
-                                        opts[i] = TokenEngine.replaceTokens(opts[i], contextIssue);
-                                    }
-                                }
-                                return new JComboBox<>(opts);
+                if (tagSource.contains("[choice:")) {
+                    int start = tagSource.indexOf("[choice:") + 8;
+                    int end = tagSource.lastIndexOf("]");
+                    if (end > start) {
+                        String tokenExpr = tagSource.substring(start, end);
+                        String resolved = tokenExpr;
+                        if (contextIssue != null) resolved = TokenEngine.replaceTokens(tokenExpr, contextIssue);
+                        return new PromptChoicePanel(tokenExpr, resolved);
+                    }
+                }
+
+                if (tagSource.contains("[config:")) {
+                    int start = tagSource.indexOf("[config:") + 8;
+                    int end = tagSource.lastIndexOf("]");
+                    if (end > start) {
+                        String tag = tagSource.substring(start, end);
+                        String[] parts = tag.split(":");
+                        String key = parts[0];
+                        
+                        if (key.equals("teams")) {
+                            String subKey = parts.length > 1 ? parts[1] : "lead";
+                            Vector<ConfigOption> options = new Vector<>();
+                            String[] teamKeys = mainFrame.getJiraConfig().getWorkflowTeamKeys();
+                            for (String tKey : teamKeys) {
+                                String name = mainFrame.getJiraConfig().getTeamProperty(tKey, "name");
+                                String val = mainFrame.getJiraConfig().getTeamProperty(tKey, subKey);
+                                if (name != null && val != null) options.add(new ConfigOption(name, val, tKey));
                             }
-                            String resolved = val;
-                            if (contextIssue != null) resolved = TokenEngine.replaceTokens(val, contextIssue);
-                            return new JTextField(resolved);
+                            return new JComboBox<>(options);
+                        } else if (key.equals("fy_summary")) {
+                            Vector<String> options = new Vector<>();
+                            options.add(mainFrame.getJiraConfig().getWorkflowFySummaryIssue());
+                            return new JComboBox<>(options);
+                        } else {
+                            String val = mainFrame.getJiraConfig().getProperty(key);
+                            if (val != null) {
+                                if (val.contains(",")) {
+                                    String[] opts = smartSplit(val);
+                                    if (contextIssue != null) {
+                                        for (int i = 0; i < opts.length; i++) {
+                                            opts[i] = TokenEngine.replaceTokens(opts[i], contextIssue);
+                                        }
+                                    }
+                                    return new JComboBox<>(opts);
+                                }
+                                String resolved = val;
+                                if (contextIssue != null) resolved = TokenEngine.replaceTokens(val, contextIssue);
+                                return new JTextField(resolved);
+                            }
                         }
                     }
                 }
@@ -642,6 +657,54 @@ public class WorkflowOrchestratorPanel extends JPanel {
         String label, value, teamKey;
         ConfigOption(String l, String v, String tk) { this.label = l; this.value = v; this.teamKey = tk; }
         @Override public String toString() { return label; }
+    }
+
+    private static class PromptChoicePanel extends JPanel {
+        private final JRadioButton tokenRadio;
+        private final JRadioButton manualRadio;
+        private final JTextField manualField;
+        private final String tokenValue;
+
+        PromptChoicePanel(String tokenName, String resolvedValue) {
+            setLayout(new FlowLayout(FlowLayout.LEFT, 5, 0));
+            this.tokenValue = resolvedValue;
+            
+            String displayText = resolvedValue;
+            if (resolvedValue.equals(tokenName)) {
+                // Not resolved yet or resolved to itself
+                displayText = tokenName;
+            } else {
+                displayText = resolvedValue + " (" + tokenName + ")";
+            }
+            
+            tokenRadio = new JRadioButton(displayText, true);
+            manualRadio = new JRadioButton("Manual:", false);
+            manualField = new JTextField(15);
+            manualField.setEnabled(false);
+
+            ButtonGroup group = new ButtonGroup();
+            group.add(tokenRadio);
+            group.add(manualRadio);
+
+            add(tokenRadio);
+            add(manualRadio);
+            add(manualField);
+
+            manualRadio.addActionListener(e -> { manualField.setEnabled(true); manualField.requestFocus(); });
+            tokenRadio.addActionListener(e -> manualField.setEnabled(false));
+            
+            // Allow clicking the manual field to auto-select the manual radio
+            manualField.addMouseListener(new java.awt.event.MouseAdapter() {
+                public void mouseClicked(java.awt.event.MouseEvent e) {
+                    manualRadio.setSelected(true);
+                    manualField.setEnabled(true);
+                }
+            });
+        }
+
+        public String getValue() {
+            return tokenRadio.isSelected() ? tokenValue : manualField.getText();
+        }
     }
 
     private void filterTokens() {
