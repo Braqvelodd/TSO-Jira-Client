@@ -34,10 +34,11 @@ public class JiraMetadataHelper {
     }
 
     /**
-     * Fetches possible transitions for an issue.
+     * Fetches possible transitions for an issue, optionally expanding to see fields.
      */
-    public List<JSONObject> getTransitions(String issueKey) throws Exception {
+    public List<JSONObject> getTransitions(String issueKey, boolean expandFields) throws Exception {
         String url = baseUrl + "/rest/api/2/issue/" + issueKey + "/transitions";
+        if (expandFields) url += "?expand=transitions.fields";
         String response = apiService.executeRequest(url, "GET", null);
         JSONObject json = new JSONObject(response);
         List<JSONObject> transitions = new ArrayList<>();
@@ -49,6 +50,59 @@ public class JiraMetadataHelper {
             }
         }
         return transitions;
+    }
+
+    /**
+     * Fetches fields required/available for a specific transition ID.
+     */
+    public Map<String, JSONObject> getTransitionMetadata(String issueKey, String transitionId) throws Exception {
+        List<JSONObject> transitions = getTransitions(issueKey, true);
+        Map<String, JSONObject> fields = new HashMap<>();
+        
+        for (JSONObject trans : transitions) {
+            if (trans.getString("id").equals(transitionId) && trans.has("fields")) {
+                JSONObject fieldsJson = trans.getJSONObject("fields");
+                for (String key : fieldsJson.keySet()) {
+                    fields.put(key, fieldsJson.getJSONObject(key));
+                }
+            }
+        }
+        return fields;
+    }
+
+    /**
+     * Fetches creation metadata for specific project and issue type.
+     */
+    public Map<String, JSONObject> getCreateMetadata(String projectKey, String issueTypeName) throws Exception {
+        String url = baseUrl + "/rest/api/2/issue/createmeta?expand=projects.issuetypes.fields";
+        if (projectKey != null && !projectKey.isEmpty() && !projectKey.contains("{{")) {
+            url += "&projectKeys=" + projectKey;
+        }
+        if (issueTypeName != null && !issueTypeName.isEmpty() && !issueTypeName.contains("{{")) {
+            url += "&issueTypeNames=" + java.net.URLEncoder.encode(issueTypeName, "UTF-8");
+        }
+        
+        String response = apiService.executeRequest(url, "GET", null);
+        JSONObject json = new JSONObject(response);
+        Map<String, JSONObject> fields = new HashMap<>();
+        
+        if (json.has("projects")) {
+            JSONArray projects = json.getJSONArray("projects");
+            for (int i = 0; i < projects.length(); i++) {
+                JSONObject proj = projects.getJSONObject(i);
+                JSONArray types = proj.getJSONArray("issuetypes");
+                for (int j = 0; j < types.length(); j++) {
+                    JSONObject type = types.getJSONObject(j);
+                    if (type.has("fields")) {
+                        JSONObject fieldsJson = type.getJSONObject("fields");
+                        for (String key : fieldsJson.keySet()) {
+                            fields.put(key, fieldsJson.getJSONObject(key));
+                        }
+                    }
+                }
+            }
+        }
+        return fields;
     }
 
     /**

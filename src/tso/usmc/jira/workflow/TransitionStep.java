@@ -2,6 +2,7 @@ package tso.usmc.jira.workflow;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
+import java.util.UUID;
 
 public class TransitionStep extends WorkflowStep {
     private String targetStatus;
@@ -36,8 +37,23 @@ public class TransitionStep extends WorkflowStep {
 
     public static TransitionStep fromJson(JSONObject json) {
         TransitionStep step = new TransitionStep();
+        step.setStepId(json.optString("stepId", UUID.randomUUID().toString()));
+        step.setLabel(json.optString("label", "Transition Step"));
         step.setTargetStatus(json.optString("targetStatus"));
         step.setTargetIssueToken(json.optString("targetIssueToken", "{{issue.key}}"));
+        
+        if (json.has("fields")) {
+            JSONArray fields = json.getJSONArray("fields");
+            for (int i = 0; i < fields.length(); i++) {
+                FieldAction fa = FieldAction.fromJson(fields.getJSONObject(i));
+                String key = fa.getFieldId();
+                if (key == null || key.isEmpty()) {
+                    key = "f" + i;
+                    fa.setFieldId(key);
+                }
+                step.addFieldAction(fa);
+            }
+        }
         return step;
     }
 }

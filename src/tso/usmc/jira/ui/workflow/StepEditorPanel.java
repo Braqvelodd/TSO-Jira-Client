@@ -26,11 +26,16 @@ public class StepEditorPanel extends JPanel {
         void onMoveDown(StepEditorPanel panel);
     }
 
+    public interface StepMetadataListener {
+        void onFetchTransitionFields(TransitionStep step);
+    }
+
     private final WorkflowStep step;
     private final JTextField labelField;
     private final JPanel fieldsContainer;
     private final List<FieldActionPanel> actionPanels = new ArrayList<>();
     private final Map<String, String> fieldOptions; // Label -> ID mapping
+    private final StepMetadataListener metadataListener;
 
     private JTextField targetIssueField;
     private JTextField projField;
@@ -41,9 +46,10 @@ public class StepEditorPanel extends JPanel {
     private JTextField sourceTokenField;
     private JTextField targetTokenField;
 
-    public StepEditorPanel(WorkflowStep step, Map<String, String> fieldOptions, Runnable onRemove, StepActionListener stepListener) {
+    public StepEditorPanel(WorkflowStep step, Map<String, String> fieldOptions, Runnable onRemove, StepActionListener stepListener, StepMetadataListener metadataListener) {
         this.step = step;
         this.fieldOptions = fieldOptions;
+        this.metadataListener = metadataListener;
         setLayout(new BorderLayout());
         setBorder(BorderFactory.createCompoundBorder(
             BorderFactory.createLineBorder(Color.GRAY),
@@ -162,6 +168,18 @@ public class StepEditorPanel extends JPanel {
             JButton addFieldBtn = new JButton("+ Add Field");
             addFieldBtn.addActionListener(e -> addField(new FieldAction("", FieldAction.MappingMode.STATIC, "", "")));
             footer.add(addFieldBtn);
+            
+            if (step instanceof TransitionStep) {
+                JButton fetchBtn = new JButton("Fetch Transition Fields");
+                fetchBtn.addActionListener(e -> {
+                    if (metadataListener != null) {
+                        saveToStep(); // Save latest status/key from UI
+                        metadataListener.onFetchTransitionFields((TransitionStep) step);
+                    }
+                });
+                footer.add(fetchBtn);
+            }
+            
             add(footer, BorderLayout.SOUTH);
         }
     }

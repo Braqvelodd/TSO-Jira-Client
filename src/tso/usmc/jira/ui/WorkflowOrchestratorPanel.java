@@ -654,45 +654,46 @@ public class WorkflowOrchestratorPanel extends JPanel {
 
     private void fetchLiveMetadata() {
         String key = contextIssueField.getText().trim();
-        if (key.isEmpty()) return;
         new Thread(() -> {
             try {
                 JiraMetadataHelper helper = new JiraMetadataHelper(mainFrame.getService(), mainFrame.getBaseUrl());
-                Map<String, JSONObject> meta = helper.getEditMetadata(key);
-                cachedFullMeta.clear();
-                cachedFullMeta.putAll(meta);
-                cachedFieldOptions.clear();
-                
-                List<String> tokens = new ArrayList<>();
-                tokens.add("Current Issue Key ({{issue.key}})");
-                tokens.add("Current Summary ({{issue.fields.summary}})");
-                tokens.add("Last Created/Mod Key ({{last.key}})");
-                tokens.add("Last Created/Mod ID ({{last.id}})");
-                tokens.add("Selected Team Name ({{team.name}})");
-                tokens.add("Selected Team Lead ({{team.lead}})");
-                tokens.add("Selected Team Component ({{team.component}})");
-                tokens.add("Selected Team ID ({{team.id}})");
-                
-                for (String fieldId : meta.keySet()) {
-                    String name = meta.get(fieldId).getString("name");
-                    cachedFieldOptions.put(name + " (" + fieldId + ")", fieldId);
-                    tokens.add(name + " ({{issue.fields." + fieldId + "}})");
-                }
-                Collections.sort(tokens);
+                boolean updated = false;
 
-                SwingUtilities.invokeLater(() -> {
-                    allTokens.clear();
-                    allTokens.addAll(tokens);
-                    filterTokens();
-
-                    for (Component c : stepsContainer.getComponents()) {
-                        if (c instanceof StepEditorPanel) {
-                            ((StepEditorPanel) c).refreshMetadata(cachedFieldOptions);
+                // 1. Try Create Meta from any CreateSteps
+                for (Component c : stepsContainer.getComponents()) {
+                    if (c instanceof StepEditorPanel) {
+                        WorkflowStep step = ((StepEditorPanel)c).getStep();
+                        if (step instanceof CreateStep) {
+                            CreateStep cs = (CreateStep) step;
+                            if (!cs.getProjectKey().contains("{{") && !cs.getIssueType().contains("{{")) {
+                                Map<String, JSONObject> cm = helper.getCreateMetadata(cs.getProjectKey(), cs.getIssueType());
+                                if (!cm.isEmpty()) {
+                                    cachedFullMeta.putAll(cm);
+                                    updated = true;
+                                }
+                            }
                         }
                     }
-                    cachedFieldOptions.put("teams_selection (Virtual)", "teams_selection");
-                    JOptionPane.showMessageDialog(this, "Fetched " + cachedFieldOptions.size() + " fields and tokens.");
-                });
+                }
+
+                // 2. Try Edit Meta from Context Key
+                if (!key.isEmpty()) {
+                    Map<String, JSONObject> em = helper.getEditMetadata(key);
+                    cachedFullMeta.putAll(em);
+                    updated = true;
+                }
+
+                if (updated) {
+                    SwingUtilities.invokeLater(() -> {
+                        updateTokensFromCache();
+                        for (Component c : stepsContainer.getComponents()) {
+                            if (c instanceof StepEditorPanel) ((StepEditorPanel) c).refreshMetadata(cachedFieldOptions);
+                        }
+                        JOptionPane.showMessageDialog(this, "Metadata updated (Running Total: " + cachedFullMeta.size() + " fields)");
+                    });
+                } else {
+                    SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(this, "No metadata source found (need Project/Type in Create step or a Context Issue Key)."));
+                }
             } catch (Exception ex) {
                 SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(this, "Metadata error: " + ex.getMessage()));
             }
@@ -739,10 +740,54 @@ public class WorkflowOrchestratorPanel extends JPanel {
                 }
                 return -1;
             }
+        }, new StepEditorPanel.StepMetadataListener() {
+            @Override
+            public void onFetchTransitionFields(TransitionStep step) {
+                fetchTransitionMetadata(step);
+            }
         });
         stepsContainer.add(panel);
         stepsContainer.revalidate();
         stepsContainer.repaint();
+    }
+
+    private void fetchTransitionMetadata(TransitionStep step) {
+        String key = contextIssueField.getText().trim();
+        if (key.isEmpty()) {
+            JOptionPane.showMessageDialog(this, "Please provide a Context Issue Key to fetch transition metadata.");
+            return;
+        }
+        new Thread(() -> {
+            try {
+                JiraMetadataHelper helper = new JiraMetadataHelper(mainFrame.getService(), mainFrame.getBaseUrl());
+                String transUrl = mainFrame.getBaseUrl() + "/rest/api/2/issue/" + key + "/transitions";
+                String transMeta = mainFrame.getService().executeRequest(transUrl, "GET", null);
+                String tid = JiraUtils.findTransitionIdByName(transMeta, step.getTargetStatus());
+                
+                if (tid == null) {
+                    SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(this, "Transition '" + step.getTargetStatus() + "' not found on issue " + key));
+                    return;
+                }
+                
+                Map<String, JSONObject> meta = helper.getTransitionMetadata(key, tid);
+                // Merge into global cache for token browsing, but also focus for this step
+                for (String fId : meta.keySet()) {
+                    cachedFullMeta.put(fId, meta.get(fId));
+                    String name = meta.get(fId).getString("name");
+                    cachedFieldOptions.put(name + " (" + fId + ")", fId);
+                }
+                
+                SwingUtilities.invokeLater(() -> {
+                    Component cp = getStepPanel(step);
+                    if (cp instanceof StepEditorPanel) {
+                        ((StepEditorPanel) cp).refreshMetadata(cachedFieldOptions);
+                    }
+                    JOptionPane.showMessageDialog(this, "Fetched " + meta.size() + " fields for transition '" + step.getTargetStatus() + "'");
+                });
+            } catch (Exception ex) {
+                SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(this, "Transition Meta Error: " + ex.getMessage()));
+            }
+        }).start();
     }
 
     private Component getStepPanel(WorkflowStep step) {
@@ -758,31 +803,36 @@ public class WorkflowOrchestratorPanel extends JPanel {
             System.out.println("Loading recipe: " + name);
             WorkflowRecipe recipe = workflowManager.loadWorkflow(name);
             if (recipe == null) {
-                // Try loading from JiraConfig
                 String key = "workflow." + name;
                 String val = mainFrame.getJiraConfig().getProperty(key);
-                if (val != null) {
-                    System.out.println("Found recipe in config: " + key);
-                    recipe = WorkflowRecipe.fromJson(val);
-                }
+                if (val != null) recipe = WorkflowRecipe.fromJson(val);
             }
 
             if (recipe != null) {
                 recipeNameField.setText(recipe.getRecipeName());
                 jqlField.setText(recipe.getJqlQuery());
                 stepsContainer.removeAll();
+                
+                // Load existing snapshot if present (Running Total)
+                if (recipe.getMetadataSnapshot() != null) {
+                    JSONObject snap = recipe.getMetadataSnapshot();
+                    for (String key : snap.keySet()) {
+                        cachedFullMeta.put(key, snap.getJSONObject(key));
+                    }
+                    updateTokensFromCache();
+                }
+
                 for (WorkflowStep step : recipe.getSteps()) {
                     addStepUI(step);
                 }
                 stepsContainer.revalidate();
                 stepsContainer.repaint();
-                System.out.println("Populated " + recipe.getSteps().size() + " steps.");
-            } else {
-                System.err.println("Recipe not found: " + name);
+                
+                // Background fetch metadata for the newly loaded recipe
+                autoFetchMetadataForRecipe(recipe);
             }
         } catch (Exception e) {
             e.printStackTrace();
-            JOptionPane.showMessageDialog(this, "Error loading recipe '" + name + "': " + e.getMessage());
         }
     }
 
@@ -882,10 +932,22 @@ public class WorkflowOrchestratorPanel extends JPanel {
             String transMeta = mainFrame.getService().executeRequest(transUrl, "GET", null);
             String tid = JiraUtils.findTransitionIdByName(transMeta, ts.getTargetStatus());
             if (tid != null) {
-                mainFrame.getService().executeRequest(transUrl, "POST", new JSONObject().put("transition", new JSONObject().put("id", tid)).toString());
+                JSONObject body = new JSONObject();
+                body.put("transition", new JSONObject().put("id", tid));
+                
+                JSONObject fields = buildFields(step, issue, prompts, metaSnap);
+                if (fields.length() > 0) {
+                    body.put("fields", fields);
+                }
+                
+                mainFrame.getService().executeRequest(transUrl, "POST", body.toString());
+                
                 executionVars.put("last_key", targetKey);
                 executionVars.put("last.key", targetKey);
-                log("  > Transitioned " + targetKey + " to " + ts.getTargetStatus());
+                executionVars.put("last_transition_id", tid);
+                executionVars.put("last.transition_id", tid);
+                
+                log("  > Transitioned " + targetKey + " to " + ts.getTargetStatus() + (fields.length() > 0 ? " (with fields)" : ""));
             } else log("  > ERROR: Transition '" + ts.getTargetStatus() + "' not found on " + targetKey);
         } else if (step instanceof LinkStep) {
             LinkStep ls = (LinkStep) step;
@@ -1091,5 +1153,76 @@ public class WorkflowOrchestratorPanel extends JPanel {
 
     private void log(String msg) {
         SwingUtilities.invokeLater(() -> { runnerLog.append(msg + "\n"); runnerLog.setCaretPosition(runnerLog.getDocument().getLength()); });
+    }
+
+    private void autoFetchMetadataForRecipe(WorkflowRecipe recipe) {
+        new Thread(() -> {
+            try {
+                JiraMetadataHelper helper = new JiraMetadataHelper(mainFrame.getService(), mainFrame.getBaseUrl());
+                boolean updated = false;
+
+                for (WorkflowStep step : recipe.getSteps()) {
+                    if (step instanceof CreateStep) {
+                        CreateStep cs = (CreateStep) step;
+                        if (!cs.getProjectKey().contains("{{") && !cs.getIssueType().contains("{{")) {
+                            Map<String, JSONObject> meta = helper.getCreateMetadata(cs.getProjectKey(), cs.getIssueType());
+                            if (!meta.isEmpty()) {
+                                cachedFullMeta.putAll(meta);
+                                updated = true;
+                            }
+                        }
+                    }
+                }
+
+                String ctxKey = contextIssueField.getText().trim();
+                if (ctxKey.isEmpty() && !jqlField.getText().trim().isEmpty()) {
+                    String searchUrl = mainFrame.getBaseUrl() + "/rest/api/2/search?jql=" + java.net.URLEncoder.encode(jqlField.getText().trim(), "UTF-8") + "&maxResults=1";
+                    String resp = mainFrame.getService().executeRequest(searchUrl, "GET", null);
+                    JSONArray issues = new JSONObject(resp).getJSONArray("issues");
+                    if (issues.length() > 0) ctxKey = issues.getJSONObject(0).getString("key");
+                }
+
+                if (!ctxKey.isEmpty()) {
+                    Map<String, JSONObject> editMeta = helper.getEditMetadata(ctxKey);
+                    cachedFullMeta.putAll(editMeta);
+                    updated = true;
+                }
+
+                if (updated) {
+                    SwingUtilities.invokeLater(() -> {
+                        updateTokensFromCache();
+                        for (Component c : stepsContainer.getComponents()) {
+                            if (c instanceof StepEditorPanel) ((StepEditorPanel) c).refreshMetadata(cachedFieldOptions);
+                        }
+                    });
+                }
+            } catch (Exception ignored) {}
+        }).start();
+    }
+
+    private void updateTokensFromCache() {
+        cachedFieldOptions.clear();
+        List<String> tokens = new ArrayList<>();
+        tokens.add("Current Issue Key ({{issue.key}})");
+        tokens.add("Current Summary ({{issue.fields.summary}})");
+        tokens.add("Last Created/Mod Key ({{last.key}})");
+        tokens.add("Smart Key Fallback ({{COALESCE(last.key, issue.key)}})");
+        tokens.add("Last Created/Mod ID ({{last.id}})");
+        tokens.add("Selected Team Name ({{team.name}})");
+        tokens.add("Selected Team Lead ({{team.lead}})");
+        tokens.add("Selected Team Component ({{team.component}})");
+        tokens.add("Selected Team ID ({{team.id}})");
+        
+        for (String fieldId : cachedFullMeta.keySet()) {
+            JSONObject fieldObj = cachedFullMeta.get(fieldId);
+            String name = fieldObj.optString("name", fieldId);
+            cachedFieldOptions.put(name + " (" + fieldId + ")", fieldId);
+            tokens.add(name + " ({{issue.fields." + fieldId + "}})");
+        }
+        Collections.sort(tokens);
+        allTokens.clear();
+        allTokens.addAll(tokens);
+        filterTokens();
+        cachedFieldOptions.put("teams_selection (Virtual)", "teams_selection");
     }
 }
