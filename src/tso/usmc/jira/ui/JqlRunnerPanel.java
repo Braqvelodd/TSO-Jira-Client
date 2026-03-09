@@ -106,7 +106,11 @@ public class JqlRunnerPanel extends JPanel implements tso.usmc.jira.util.ConfigC
                 int row = source.rowAtPoint(e.getPoint());
 
                 if (row >= 0 && row < source.getRowCount()) {
-                    source.setRowSelectionInterval(row, row);
+                    // Select row if not already selected, else keep current selection
+                    if (!source.isRowSelected(row)) {
+                        source.setRowSelectionInterval(row, row);
+                    }
+                    
                     int keyColumnIndex = -1;
                     for (int i = 0; i < tableModel.getColumnCount(); i++) {
                         if ("key".equalsIgnoreCase(tableModel.getColumnName(i))) {
@@ -116,7 +120,12 @@ public class JqlRunnerPanel extends JPanel implements tso.usmc.jira.util.ConfigC
                     }
 
                     if (keyColumnIndex != -1) {
-                        selectedIssueKey = (String) source.getModel().getValueAt(source.convertRowIndexToModel(row), keyColumnIndex);
+                        int[] selectedRows = source.getSelectedRows();
+                        java.util.List<String> keys = new java.util.ArrayList<>();
+                        for (int r : selectedRows) {
+                            keys.add((String) source.getModel().getValueAt(source.convertRowIndexToModel(r), keyColumnIndex));
+                        }
+                        selectedIssueKey = String.join(",", keys);
                         
                         // BUILD DYNAMIC MENU
                         final JPopupMenu contextMenu = new JPopupMenu();
@@ -168,8 +177,21 @@ public class JqlRunnerPanel extends JPanel implements tso.usmc.jira.util.ConfigC
                                             for (tso.usmc.jira.workflow.WorkflowStep step : recipe.getSteps()) {
                                                 if (step instanceof tso.usmc.jira.workflow.CreateStep) {
                                                     tso.usmc.jira.workflow.CreateStep cs = (tso.usmc.jira.workflow.CreateStep) step;
-                                                    if (cs.getProjectKey().contains(",") || cs.getProjectKey().contains("[config:") ||
-                                                        cs.getIssueType().contains(",") || cs.getIssueType().contains("[config:")) {
+                                                    String pk = cs.getProjectKey();
+                                                    String it = cs.getIssueType();
+                                                    if ((pk != null && (pk.contains(",") || pk.contains("[config:") || pk.contains("[choice:"))) ||
+                                                        (it != null && (it.contains(",") || it.contains("[config:") || it.contains("[choice:")))) {
+                                                        hasPrompts = true; break;
+                                                    }
+                                                }
+                                                if (step instanceof tso.usmc.jira.workflow.WorklogStep) {
+                                                    tso.usmc.jira.workflow.WorklogStep ws = (tso.usmc.jira.workflow.WorklogStep) step;
+                                                    String ts = ws.getTimeSpent();
+                                                    String c = ws.getComment();
+                                                    String s = ws.getStarted();
+                                                    if ((ts != null && (ts.contains(",") || ts.contains("[config:") || ts.contains("[choice:"))) ||
+                                                        (c != null && (c.contains(",") || c.contains("[config:") || c.contains("[choice:"))) ||
+                                                        (s != null && (s.contains(",") || s.contains("[config:") || s.contains("[choice:")))) {
                                                         hasPrompts = true; break;
                                                     }
                                                 }

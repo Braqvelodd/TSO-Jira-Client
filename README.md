@@ -71,19 +71,25 @@ Or by double click
         *   **Intelligent Layout**: Steps and fields are automatically packed at the top of the workspace for better visibility and organization.
     *   **Smart Token Engine:** 
         *   Use recursive tokens like `{{fields.summary}}`, `{{fields.reporter.name}}`, or root-level `{{key}}` to dynamically populate data.
-        *   **New Tokens**: `{{issue.fields.parent.key}}` for referencing an issue's parent key.
+        *   **New Tokens**: 
+            *   `{{issue.fields.parent.key}}` for referencing an issue's parent key.
+            *   `{{now}}`: Current ISO timestamp (e.g., `2026-03-09T13:45:00.000-0400`).
+            *   `{{today}}`: Current date in `YYYY-MM-DD` format.
         *   **Fail-Safe Resolution**: Unresolved tokens now safely resolve to an empty string instead of literal brackets, preventing malformed API requests.
     *   **Variable Chaining:** Capture the key of a newly created issue and reference it in later steps using `{{last_key}}` (e.g., for linking or updating).
     *   **Advanced Step Types:**
-        *   **CREATE:** Spawn new issues with dynamic field mapping. Now supports standard `parent` field mapping for sub-tasks.
+        *   **CREATE:** Spawn new issues with dynamic field mapping. Supports standard `parent` field mapping for sub-tasks and **comma-separated issue types** for multi-type metadata fetching.
         *   **UPDATE:** Perform mass field updates using tokens or prompts.
         *   **TRANSITION:** Move issues through the workflow.
         *   **LINK:** Create links between original and newly created issues.
         *   **CLONE:** Migrate all attachments and issue links between tickets.
-        *   **WORKLOG:** Add worklog entries to issues with support for `Time Spent`, `Comment`, and `Started` fields.
+        *   **WORKLOG:** Add worklog entries. The `Started` field supports tokens (`{{now}}`, `{{today}}`) and automatic date-to-timestamp normalization.
     *   **Developer Productivity & Debugging:**
         *   **Automatic Key Cleaning**: All issue keys are automatically "cleaned" (removing parentheses or noise) to ensure valid API URLs and payloads.
-        *   **Verbose API Logs**: Toggle "Verbose API Logs" in the Runner tab to see full formatted JSON payloads and URLs for every request.
+        *   **Persistent API Logs**: 
+            *   Toggle "Verbose API Logs" in the Runner tab or via `VERBOSE_API_LOGS = true` in `JiraConfig.ini`.
+            *   Full formatted JSON payloads and URLs are recorded to date-based log files in `%USERPROFILE%\.JiraApiClient\logs\`.
+        *   **Enhanced UI**: Increased scroll speed in the Orchestrator for smoother navigation of complex recipes.
     *   **Persistent Recipes:** Recipes are stored as JSON in `%USERPROFILE%\.JiraApiClient\workflows\` for easy sharing and re-use.
 *   **Task Builder:** Rapidly generate sub-tasks from templates.
     *   **JQL Integration:** Dynamic context menu in the **JQL Runner** results to instantly send tickets or templates to the builder.

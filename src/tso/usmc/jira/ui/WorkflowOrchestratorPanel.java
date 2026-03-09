@@ -229,8 +229,8 @@ public class WorkflowOrchestratorPanel extends JPanel {
         updateRunnerInputs(); // Ensure inputs match the selected recipe
     }
 
-    public void runWorkflowDirectly(String recipeName, String issueKey) {
-        // Switch to Runner tab and select the recipe
+    public void runWorkflowDirectly(String recipeName, String issueKeys) {
+        // Switch to Runner tab, select the recipe, and clear log
         SwingUtilities.invokeLater(() -> {
             mainFrame.showPanel("Workflow Orchestrator");
             // Assuming the JTabbedPane is the first child or we can find it
@@ -241,7 +241,9 @@ public class WorkflowOrchestratorPanel extends JPanel {
                 }
             }
             runnerRecipeCombo.setSelectedItem(recipeName);
-            runnerJqlField.setText(issueKey);
+            runnerJqlField.setText(issueKeys);
+            runnerLog.setText(""); // Clear log for fresh run
+            executeRunnerSearch(); // Populate table so user sees what's happening
         });
 
         new Thread(() -> {
@@ -256,23 +258,34 @@ public class WorkflowOrchestratorPanel extends JPanel {
                     return;
                 }
 
-                // Fetch the issue data
-                log("Executing " + recipeName + " on " + issueKey);
-                String searchUrl = mainFrame.getBaseUrl() + "/rest/api/2/issue/" + issueKey + "?expand=names,renderedFields&fields=*all,attachment,issuelinks";
-                String resp = mainFrame.getService().executeRequest(searchUrl, "GET", null);
-                JSONObject issue = new JSONObject(resp);
-                
                 JSONObject metaSnap = recipe.getMetadataSnapshot();
+                String[] keys = issueKeys.split(",");
                 
-                executionVars.clear();
-                jsonContexts.clear();
-                executionVars.put("issue.key", issueKey);
-                executionVars.put("key", issueKey);
-                jsonContexts.put("issue", issue);
+                log("Starting Direct Execution of '" + recipeName + "' on " + keys.length + " issues...");
 
-                for (WorkflowStep step : recipe.getSteps()) {
-                    log("Step: " + step.getLabel());
-                    executeStep(step, issue, new HashMap<>(), metaSnap);
+                for (String key : keys) {
+                    String cleanKey = JiraUtils.cleanIssueKey(key.trim());
+                    if (cleanKey.isEmpty()) continue;
+
+                    try {
+                        log("--- Processing " + cleanKey + " ---");
+                        String searchUrl = mainFrame.getBaseUrl() + "/rest/api/2/issue/" + cleanKey + "?expand=names,renderedFields&fields=*all,attachment,issuelinks";
+                        String resp = mainFrame.getService().executeRequest(searchUrl, "GET", null);
+                        JSONObject issue = new JSONObject(resp);
+                        
+                        executionVars.clear();
+                        jsonContexts.clear();
+                        executionVars.put("issue.key", cleanKey);
+                        executionVars.put("key", cleanKey);
+                        jsonContexts.put("issue", issue);
+
+                        for (WorkflowStep step : recipe.getSteps()) {
+                            log("Step: " + step.getLabel());
+                            executeStep(step, issue, new java.util.HashMap<>(), metaSnap);
+                        }
+                    } catch (Exception ex) {
+                        log("  > Error processing " + cleanKey + ": " + ex.getMessage());
+                    }
                 }
                 log("Workflow Execution Complete.");
             } catch (Exception e) {
@@ -341,7 +354,12 @@ public class WorkflowOrchestratorPanel extends JPanel {
 
         // Simple heuristic for Issue Key vs JQL
         if (!finalJql.contains(" ") && !finalJql.contains("=") && !finalJql.contains("(")) {
-            finalJql = "key = " + finalJql;
+            if (finalJql.contains(",")) {
+                // Multi-key search: convert "KEY-1, KEY-2" to "key in (KEY-1, KEY-2)"
+                finalJql = "key in (" + finalJql + ")";
+            } else {
+                finalJql = "key = " + finalJql;
+            }
         }
 
         final String jql = finalJql;
