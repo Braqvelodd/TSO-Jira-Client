@@ -52,7 +52,8 @@ public class TokenEngine {
                 value = resolveToken(fullContent, contexts, variables);
             }
 
-            matcher.appendReplacement(sb, Matcher.quoteReplacement(value != null ? value : matcher.group(0)));
+            // If token is unresolved, we replace it with an empty string to avoid breaking Jira API calls with literal "{{token}}" strings.
+            matcher.appendReplacement(sb, Matcher.quoteReplacement(value != null ? value : ""));
         }
         matcher.appendTail(sb);
         return sb.toString();

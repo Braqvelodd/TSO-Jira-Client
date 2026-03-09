@@ -983,17 +983,26 @@ public class WorkflowOrchestratorPanel extends JPanel {
         } else if (step instanceof UpdateStep) {
             UpdateStep us = (UpdateStep) step;
             String targetKey = resolveTokens(us.getTargetIssueToken(), issue);
+            if (targetKey == null || targetKey.trim().isEmpty()) {
+                log("  > SKIP: Target issue key resolved to empty string for step: " + step.getLabel());
+                return;
+            }
+            
             JSONObject fields = buildFields(step, issue, prompts, metaSnap);
             mainFrame.getService().executeRequest(baseUrl + "/rest/api/2/issue/" + targetKey, "PUT", new JSONObject().put("fields", fields).toString());
             
             executionVars.put("last_key", targetKey);
             executionVars.put("last.key", targetKey);
-            // Context 'last' remains what it was or is cleared if we want to be strict.
             
             log("  > Updated " + targetKey);
         } else if (step instanceof TransitionStep) {
             TransitionStep ts = (TransitionStep) step;
             String targetKey = resolveTokens(ts.getTargetIssueToken(), issue);
+            if (targetKey == null || targetKey.trim().isEmpty()) {
+                log("  > SKIP: Target issue key resolved to empty string for step: " + step.getLabel());
+                return;
+            }
+
             String transUrl = baseUrl + "/rest/api/2/issue/" + targetKey + "/transitions";
             String transMeta = mainFrame.getService().executeRequest(transUrl, "GET", null);
             String tid = JiraUtils.findTransitionIdByName(transMeta, ts.getTargetStatus());
@@ -1019,6 +1028,12 @@ public class WorkflowOrchestratorPanel extends JPanel {
             LinkStep ls = (LinkStep) step;
             String inward = resolveTokens(ls.getInwardIssueToken(), issue);
             String outward = resolveTokens(ls.getOutwardIssueToken(), issue);
+            
+            if (inward == null || inward.trim().isEmpty() || outward == null || outward.trim().isEmpty()) {
+                log("  > SKIP: Link step skipped due to empty key (Inward: '" + inward + "', Outward: '" + outward + "')");
+                return;
+            }
+
             JSONObject body = new JSONObject();
             body.put("type", new JSONObject().put("name", ls.getLinkType()));
             body.put("inwardIssue", new JSONObject().put("key", inward));
@@ -1030,6 +1045,11 @@ public class WorkflowOrchestratorPanel extends JPanel {
             String srcKey = resolveTokens(cls.getSourceIssueToken(), issue);
             String targetKey = resolveTokens(cls.getTargetIssueToken(), issue);
             
+            if (srcKey == null || srcKey.trim().isEmpty() || targetKey == null || targetKey.trim().isEmpty()) {
+                log("  > SKIP: Clone step skipped due to empty key (Source: '" + srcKey + "', Target: '" + targetKey + "')");
+                return;
+            }
+
             // Fetch source issue data if it's not the one we are currently iterating over
             JSONObject sourceData = issue;
             if (!srcKey.equals(issue.getString("key"))) {
@@ -1160,7 +1180,7 @@ public class WorkflowOrchestratorPanel extends JPanel {
     }
 
     private Object wrapSingleValue(String fieldId, String val, JSONObject fieldMeta) {
-        if (val == null || val.equalsIgnoreCase("null")) return JSONObject.NULL;
+        if (val == null || val.equalsIgnoreCase("null") || val.trim().isEmpty()) return JSONObject.NULL;
 
         String type = null;
         if (fieldMeta != null && fieldMeta.has("schema")) {
