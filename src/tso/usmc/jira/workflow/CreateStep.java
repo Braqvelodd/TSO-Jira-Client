@@ -6,7 +6,6 @@ import org.json.JSONObject;
 public class CreateStep extends WorkflowStep {
     private String projectKey;
     private String issueType;
-    private String parentIssueToken;
 
     public CreateStep() {
         super(StepType.CREATE);
@@ -18,9 +17,6 @@ public class CreateStep extends WorkflowStep {
     public String getIssueType() { return issueType; }
     public void setIssueType(String issueType) { this.issueType = issueType; }
 
-    public String getParentIssueToken() { return parentIssueToken; }
-    public void setParentIssueToken(String parentIssueToken) { this.parentIssueToken = parentIssueToken; }
-
     @Override
     public JSONObject toJson() {
         JSONObject json = new JSONObject();
@@ -29,7 +25,6 @@ public class CreateStep extends WorkflowStep {
         json.put("label", label);
         json.put("projectKey", projectKey);
         json.put("issueType", issueType);
-        json.put("parentIssueToken", parentIssueToken);
         
         JSONArray fields = new JSONArray();
         for (FieldAction action : fieldActions.values()) {
@@ -43,7 +38,6 @@ public class CreateStep extends WorkflowStep {
         CreateStep step = new CreateStep();
         step.setProjectKey(json.optString("projectKey"));
         step.setIssueType(json.optString("issueType"));
-        step.setParentIssueToken(json.optString("parentIssueToken"));
         return step;
     }
 }

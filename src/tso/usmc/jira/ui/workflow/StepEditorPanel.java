@@ -40,7 +40,6 @@ public class StepEditorPanel extends JPanel {
     private JTextField targetIssueField;
     private JTextField projField;
     private JTextField typeField;
-    private JTextField parentField;
     private JTextField inwardField;
     private JTextField linkTypeField;
     private JTextField outwardField;
@@ -97,10 +96,6 @@ public class StepEditorPanel extends JPanel {
             typeField = new JTextField(cs.getIssueType(), 10);
             tso.usmc.jira.util.JiraUtils.setupExpandedView(typeField);
             header.add(typeField);
-            header.add(new JLabel("Parent:"));
-            parentField = new JTextField(cs.getParentIssueToken(), 10);
-            tso.usmc.jira.util.JiraUtils.setupExpandedView(parentField);
-            header.add(parentField);
         }
 
         if (step instanceof LinkStep) {
@@ -255,7 +250,6 @@ public class StepEditorPanel extends JPanel {
         if (step instanceof CreateStep) {
             ((CreateStep)step).setProjectKey(projField.getText());
             ((CreateStep)step).setIssueType(typeField.getText());
-            ((CreateStep)step).setParentIssueToken(parentField.getText());
         }
         if (step instanceof LinkStep) {
             ((LinkStep)step).setInwardIssueToken(inwardField.getText());

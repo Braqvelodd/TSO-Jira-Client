@@ -497,7 +497,6 @@ public class WorkflowOrchestratorPanel extends JPanel {
                         CreateStep cs = (CreateStep) step;
                         addDynamicPrompt(labels, "Project (" + step.getLabel() + ")", cs.getProjectKey(), contextIssue);
                         addDynamicPrompt(labels, "Issue Type (" + step.getLabel() + ")", cs.getIssueType(), contextIssue);
-                        addDynamicPrompt(labels, "Parent (" + step.getLabel() + ")", cs.getParentIssueToken(), contextIssue);
                     }
                     
                     for (FieldAction fa : step.getFieldActions().values()) {
@@ -540,7 +539,7 @@ public class WorkflowOrchestratorPanel extends JPanel {
             }
         } else {
             // Standard field prompt (text input)
-            if (label.startsWith("Project (") || label.startsWith("Issue Type (") || label.startsWith("Parent (")) return;
+            if (label.startsWith("Project (") || label.startsWith("Issue Type (")) return;
             
             if (!labels.contains(cleanLabel)) {
                 labels.add(cleanLabel);
@@ -966,16 +965,10 @@ public class WorkflowOrchestratorPanel extends JPanel {
             CreateStep cs = (CreateStep) step;
             String proj = resolveStepProperty(cs.getProjectKey(), "Project (" + step.getLabel() + ")", prompts);
             String type = resolveStepProperty(cs.getIssueType(), "Issue Type (" + step.getLabel() + ")", prompts);
-            String parentValue = resolveStepProperty(cs.getParentIssueToken(), "Parent (" + step.getLabel() + ")", prompts);
             
             JSONObject fields = buildFields(step, issue, prompts, metaSnap);
             fields.put("project", new JSONObject().put("key", proj));
             fields.put("issuetype", new JSONObject().put("name", type));
-            
-            String parent = resolveTokens(parentValue, issue);
-            if (parent != null && !parent.trim().isEmpty()) {
-                fields.put("parent", new JSONObject().put("key", parent.trim()));
-            }
 
             String resp = mainFrame.getService().executeRequest(baseUrl + "/rest/api/2/issue", "POST", new JSONObject().put("fields", fields).toString());
             JSONObject respJson = new JSONObject(resp);
@@ -1187,6 +1180,7 @@ public class WorkflowOrchestratorPanel extends JPanel {
         }
 
         if ("user".equals(type)) return new JSONObject().put("name", val);
+        if ("parent".equals(fieldId)) return new JSONObject().put("key", val);
         if ("option".equals(type) || "component".equals(type) || "version".equals(type)) {
             String subKey = "value";
             if ("component".equals(type) || "version".equals(type) || fieldId.equals("components") || fieldId.contains("Version")) {
@@ -1278,6 +1272,7 @@ public class WorkflowOrchestratorPanel extends JPanel {
         List<String> tokens = new ArrayList<>();
         tokens.add("Current Issue Key ({{issue.key}})");
         tokens.add("Current Summary ({{issue.fields.summary}})");
+        tokens.add("Current Parent Key ({{issue.fields.parent.key}})");
         tokens.add("Last Created/Mod Key ({{last.key}})");
         tokens.add("Smart Key Fallback ({{COALESCE(last.key, issue.key)}})");
         tokens.add("Last Created/Mod ID ({{last.id}})");
