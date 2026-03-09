@@ -746,6 +746,7 @@ public class WorkflowOrchestratorPanel extends JPanel {
                             String pKey = cs.getProjectKey();
                             String iType = cs.getIssueType();
                             if (pKey != null && iType != null && !pKey.contains("{{") && !iType.contains("{{")) {
+                                System.out.println("Fetching Create Metadata for: " + pKey + " / " + iType);
                                 Map<String, JSONObject> cm = helper.getCreateMetadata(pKey, iType);
                                 if (!cm.isEmpty()) {
                                     cachedFullMeta.putAll(cm);
@@ -758,12 +759,14 @@ public class WorkflowOrchestratorPanel extends JPanel {
 
                 // 2. Try Edit Meta from Context Key
                 if (!key.isEmpty()) {
+                    System.out.println("Fetching Edit Metadata for Context Issue: " + key);
                     Map<String, JSONObject> em = helper.getEditMetadata(key);
                     cachedFullMeta.putAll(em);
                     updated = true;
                 }
                 
                 // 3. Try Link Types
+                System.out.println("Fetching Issue Link Types...");
                 List<JSONObject> lts = helper.getIssueLinkTypes();
                 if (!lts.isEmpty()) {
                     cachedLinkTypes.clear();
