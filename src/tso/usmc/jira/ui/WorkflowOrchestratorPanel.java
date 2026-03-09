@@ -746,11 +746,20 @@ public class WorkflowOrchestratorPanel extends JPanel {
                             String pKey = cs.getProjectKey();
                             String iType = cs.getIssueType();
                             if (pKey != null && iType != null && !pKey.contains("{{") && !iType.contains("{{")) {
-                                System.out.println("Fetching Create Metadata for: " + pKey + " / " + iType);
-                                Map<String, JSONObject> cm = helper.getCreateMetadata(pKey, iType);
-                                if (!cm.isEmpty()) {
-                                    cachedFullMeta.putAll(cm);
-                                    updated = true;
+                                String[] types = iType.split(",");
+                                for (String type : types) {
+                                    String t = type.trim();
+                                    if (t.isEmpty()) continue;
+                                    System.out.println("Fetching Create Metadata for: " + pKey + " / " + t);
+                                    try {
+                                        Map<String, JSONObject> cm = helper.getCreateMetadata(pKey, t);
+                                        if (!cm.isEmpty()) {
+                                            cachedFullMeta.putAll(cm);
+                                            updated = true;
+                                        }
+                                    } catch (Exception ex) {
+                                        System.err.println("Error fetching metadata for " + t + ": " + ex.getMessage());
+                                    }
                                 }
                             }
                         }
