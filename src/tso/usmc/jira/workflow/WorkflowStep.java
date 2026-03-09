@@ -6,7 +6,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 public abstract class WorkflowStep {
-    public enum StepType { TRANSITION, UPDATE, CLONE, CREATE, LINK }
+    public enum StepType { TRANSITION, UPDATE, CLONE, CREATE, LINK, WORKLOG }
 
     protected String stepId;
     protected String label;
@@ -45,6 +45,8 @@ public abstract class WorkflowStep {
             step = CreateStep.fromJson(json);
         } else if (type == StepType.LINK) {
             step = LinkStep.fromJson(json);
+        } else if (type == StepType.WORKLOG) {
+            step = WorklogStep.fromJson(json);
         } else {
             step = new UpdateStep(); 
         }

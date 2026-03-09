@@ -7,6 +7,7 @@ import tso.usmc.jira.workflow.UpdateStep;
 import tso.usmc.jira.workflow.CloneStep;
 import tso.usmc.jira.workflow.CreateStep;
 import tso.usmc.jira.workflow.LinkStep;
+import tso.usmc.jira.workflow.WorklogStep;
 
 import javax.swing.*;
 import java.awt.BorderLayout;
@@ -45,6 +46,9 @@ public class StepEditorPanel extends JPanel {
     private JTextField outwardField;
     private JTextField sourceTokenField;
     private JTextField targetTokenField;
+    private JTextField timeSpentField;
+    private JTextField commentField;
+    private JTextField startedField;
 
     public StepEditorPanel(WorkflowStep step, Map<String, String> fieldOptions, Runnable onRemove, StepActionListener stepListener, StepMetadataListener metadataListener) {
         this.step = step;
@@ -134,6 +138,29 @@ public class StepEditorPanel extends JPanel {
             header.add(links);
         }
 
+        if (step instanceof WorklogStep) {
+            WorklogStep ws = (WorklogStep) step;
+            header.add(new JLabel("Target Issue:"));
+            targetIssueField = new JTextField(ws.getTargetIssueToken(), 10);
+            tso.usmc.jira.util.JiraUtils.setupExpandedView(targetIssueField);
+            header.add(targetIssueField);
+            
+            header.add(new JLabel("Time Spent:"));
+            timeSpentField = new JTextField(ws.getTimeSpent(), 8);
+            tso.usmc.jira.util.JiraUtils.setupExpandedView(timeSpentField);
+            header.add(timeSpentField);
+            
+            header.add(new JLabel("Comment:"));
+            commentField = new JTextField(ws.getComment(), 15);
+            tso.usmc.jira.util.JiraUtils.setupExpandedView(commentField);
+            header.add(commentField);
+            
+            header.add(new JLabel("Started:"));
+            startedField = new JTextField(ws.getStarted(), 12);
+            tso.usmc.jira.util.JiraUtils.setupExpandedView(startedField);
+            header.add(startedField);
+        }
+
         // Step Rearrangement Buttons
         JButton stepUpBtn = new JButton("▲");
         JButton stepDownBtn = new JButton("▼");
@@ -168,7 +195,7 @@ public class StepEditorPanel extends JPanel {
         contentPanel.add(fieldsContainer);
 
         // Footer (Add Field) - Only for steps that support fields
-        if (step.getType() != WorkflowStep.StepType.CLONE && step.getType() != WorkflowStep.StepType.LINK) {
+        if (step.getType() != WorkflowStep.StepType.CLONE && step.getType() != WorkflowStep.StepType.LINK && step.getType() != WorkflowStep.StepType.WORKLOG) {
             JPanel footer = new JPanel(new FlowLayout(FlowLayout.LEFT));
             footer.setAlignmentX(Component.LEFT_ALIGNMENT);
             JButton addFieldBtn = new JButton("+ Add Field");
@@ -259,6 +286,13 @@ public class StepEditorPanel extends JPanel {
         if (step instanceof CloneStep) {
             ((CloneStep)step).setSourceIssueToken(sourceTokenField.getText());
             ((CloneStep)step).setTargetIssueToken(targetTokenField.getText());
+        }
+        if (step instanceof WorklogStep) {
+            WorklogStep ws = (WorklogStep) step;
+            ws.setTargetIssueToken(targetIssueField.getText());
+            ws.setTimeSpent(timeSpentField.getText());
+            ws.setComment(commentField.getText());
+            ws.setStarted(startedField.getText());
         }
         
         step.getFieldActions().clear();

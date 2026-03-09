@@ -150,11 +150,13 @@ public class WorkflowOrchestratorPanel extends JPanel {
         JButton addCreateBtn = new JButton("Add Create");
         JButton addLinkBtn = new JButton("Add Link");
         JButton addCloneBtn = new JButton("Add Clone (Links/Att)");
+        JButton addWorklogBtn = new JButton("Add Worklog");
         footer.add(addTransBtn);
         footer.add(addUpdateBtn);
         footer.add(addCreateBtn);
         footer.add(addLinkBtn);
         footer.add(addCloneBtn);
+        footer.add(addWorklogBtn);
         center.add(footer, BorderLayout.SOUTH);
 
         // Split Editor and Tokens
@@ -190,6 +192,7 @@ public class WorkflowOrchestratorPanel extends JPanel {
         addCreateBtn.addActionListener(e -> addStep(new CreateStep()));
         addLinkBtn.addActionListener(e -> addStep(new LinkStep()));
         addCloneBtn.addActionListener(e -> addStep(new CloneStep()));
+        addWorklogBtn.addActionListener(e -> addStep(new WorklogStep()));
 
         tokenSearchField.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
             public void insertUpdate(javax.swing.event.DocumentEvent e) { filterTokens(); }
@@ -501,6 +504,13 @@ public class WorkflowOrchestratorPanel extends JPanel {
                         addDynamicPrompt(labels, "Issue Type (" + step.getLabel() + ")", cs.getIssueType(), contextIssue);
                     }
                     
+                    if (step instanceof WorklogStep) {
+                        WorklogStep ws = (WorklogStep) step;
+                        addDynamicPrompt(labels, "Time Spent (" + step.getLabel() + ")", ws.getTimeSpent(), contextIssue);
+                        addDynamicPrompt(labels, "Comment (" + step.getLabel() + ")", ws.getComment(), contextIssue);
+                        addDynamicPrompt(labels, "Started (" + step.getLabel() + ")", ws.getStarted(), contextIssue);
+                    }
+                    
                     for (FieldAction fa : step.getFieldActions().values()) {
                         if (fa.getMode() == FieldAction.MappingMode.PROMPT) {
                             addDynamicPrompt(labels, fa.getPromptLabel(), fa.getValue() != null ? fa.getValue().toString() : null, contextIssue);
@@ -541,7 +551,7 @@ public class WorkflowOrchestratorPanel extends JPanel {
             }
         } else {
             // Standard field prompt (text input)
-            if (label.startsWith("Project (") || label.startsWith("Issue Type (")) return;
+            if (label.startsWith("Project (") || label.startsWith("Issue Type (") || label.startsWith("Time Spent (") || label.startsWith("Comment (") || label.startsWith("Started (")) return;
             
             if (!labels.contains(cleanLabel)) {
                 labels.add(cleanLabel);
@@ -1097,6 +1107,32 @@ public class WorkflowOrchestratorPanel extends JPanel {
             if (cls.isCopyLinks()) {
                 cloneLinks(sourceData, targetKey);
             }
+        } else if (step instanceof WorklogStep) {
+            WorklogStep ws = (WorklogStep) step;
+            String targetKey = JiraUtils.cleanIssueKey(resolveTokens(ws.getTargetIssueToken(), issue));
+            if (targetKey == null || targetKey.trim().isEmpty()) {
+                log("  > SKIP: Worklog target key empty for step: " + step.getLabel());
+                return;
+            }
+
+            String timeSpent = resolveStepProperty(ws.getTimeSpent(), "Time Spent (" + step.getLabel() + ")", prompts);
+            String comment = resolveStepProperty(ws.getComment(), "Comment (" + step.getLabel() + ")", prompts);
+            String started = resolveStepProperty(ws.getStarted(), "Started (" + step.getLabel() + ")", prompts);
+
+            JSONObject body = new JSONObject();
+            if (timeSpent != null && !timeSpent.trim().isEmpty()) body.put("timeSpent", timeSpent);
+            if (comment != null && !comment.trim().isEmpty()) body.put("comment", comment);
+            if (started != null && !started.trim().isEmpty()) body.put("started", started);
+
+            String url = baseUrl + "/rest/api/2/issue/" + targetKey + "/worklog";
+            String payload = body.toString(4);
+            if (verboseLogCheck.isSelected()) {
+                log("  > Request URL: POST " + url);
+                log("  > Request Body:\n" + payload);
+            }
+
+            mainFrame.getService().executeRequest(url, "POST", payload);
+            log("  > Added Worklog to " + targetKey + " (" + timeSpent + ")");
         }
     }
 
