@@ -65,6 +65,35 @@ public class JiraUtils {
         return s;
     }
 
+    /**
+     * Converts simple date formats (YYYY-MM-DD or YYYYMMDD) into the full 
+     * Jira-compliant ISO 8601 timestamp (e.g., 2026-01-01T09:00:00.000+0000).
+     */
+    public static String formatJiraDateTime(String input) {
+        if (input == null || input.trim().isEmpty()) return input;
+        String s = input.trim();
+        
+        // Already looks like a full timestamp
+        if (s.contains("T") && s.contains(":")) return s;
+        
+        String offset = new java.text.SimpleDateFormat("Z").format(new java.util.Date());
+        
+        // YYYY-MM-DD
+        if (s.matches("\\d{4}-\\d{2}-\\d{2}")) {
+            return s + "T09:00:00.000" + offset;
+        }
+        
+        // YYYYMMDD
+        if (s.matches("\\d{8}")) {
+            String y = s.substring(0, 4);
+            String m = s.substring(4, 6);
+            String d = s.substring(6, 8);
+            return y + "-" + m + "-" + d + "T09:00:00.000" + offset;
+        }
+        
+        return s;
+    }
+
     // You can add other static utility methods here in the future
     public static void setupExpandedView(javax.swing.JTextField field) {
         field.addMouseListener(new java.awt.event.MouseAdapter() {

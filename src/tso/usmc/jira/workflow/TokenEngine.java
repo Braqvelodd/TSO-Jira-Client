@@ -65,11 +65,19 @@ public class TokenEngine {
             return path.substring(1, path.length() - 1);
         }
 
+        // 2. Built-in date/time tokens
+        if (path.equalsIgnoreCase("now")) {
+            return new java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSZ").format(new java.util.Date());
+        }
+        if (path.equalsIgnoreCase("today")) {
+            return new java.text.SimpleDateFormat("yyyy-MM-dd").format(new java.util.Date());
+        }
+
         String value = null;
         String resolvedPath = path;
         JSONObject targetContext = contexts.get("issue"); // Default context
 
-        // 2. Check for explicit context prefix (e.g., issue.summary, last.key)
+        // 3. Check for explicit context prefix (e.g., issue.summary, last.key)
         for (String contextName : contexts.keySet()) {
             if (path.startsWith(contextName + ".")) {
                 targetContext = contexts.get(contextName);

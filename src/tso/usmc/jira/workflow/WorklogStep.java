@@ -7,7 +7,7 @@ public class WorklogStep extends WorkflowStep {
     private String targetIssueToken = "{{issue.key}}";
     private String timeSpent;
     private String comment;
-    private String started; // Optional, format: 2021-01-17T12:34:00.000+0000
+    private String started = "{{now}}";
 
     public WorklogStep() {
         super(StepType.WORKLOG);

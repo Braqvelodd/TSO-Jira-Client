@@ -1135,6 +1135,8 @@ public class WorkflowOrchestratorPanel extends JPanel {
             String timeSpent = resolveStepProperty(ws.getTimeSpent(), "Time Spent (" + step.getLabel() + ")", prompts);
             String comment = resolveStepProperty(ws.getComment(), "Comment (" + step.getLabel() + ")", prompts);
             String started = resolveStepProperty(ws.getStarted(), "Started (" + step.getLabel() + ")", prompts);
+            started = resolveTokens(started, issue); // Resolve any tokens in the date string
+            started = JiraUtils.formatJiraDateTime(started);
 
             JSONObject body = new JSONObject();
             if (timeSpent != null && !timeSpent.trim().isEmpty()) body.put("timeSpent", timeSpent);
@@ -1407,6 +1409,8 @@ public class WorkflowOrchestratorPanel extends JPanel {
         tokens.add("Current Issue Key ({{issue.key}})");
         tokens.add("Current Summary ({{issue.fields.summary}})");
         tokens.add("Current Parent Key ({{issue.fields.parent.key}})");
+        tokens.add("Current Timestamp ({{now}})");
+        tokens.add("Current Date ({{today}})");
         tokens.add("Last Created/Mod Key ({{last.key}})");
         tokens.add("Smart Key Fallback ({{COALESCE(last.key, issue.key)}})");
         tokens.add("Last Created/Mod ID ({{last.id}})");
