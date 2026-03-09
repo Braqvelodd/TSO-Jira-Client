@@ -72,44 +72,52 @@ public class JiraMetadataHelper {
 
     /**
      * Fetches creation metadata for specific project and issue type.
+     * Supports Jira 9+ multi-step lookup.
      */
     public Map<String, JSONObject> getCreateMetadata(String projectKey, String issueTypeName) throws Exception {
-        String url = baseUrl + "/rest/api/2/issue/createmeta?expand=projects.issuetypes.fields";
-        if (projectKey != null && !projectKey.isEmpty() && !projectKey.contains("{{")) {
-            url += "&projectKeys=" + projectKey.trim();
-        }
-        if (issueTypeName != null && !issueTypeName.isEmpty() && !issueTypeName.contains("{{")) {
-            url += "&issueTypeNames=" + java.net.URLEncoder.encode(issueTypeName.trim(), "UTF-8");
-        }
+        if (projectKey == null || projectKey.isEmpty() || projectKey.contains("{{")) return new HashMap<>();
+        if (issueTypeName == null || issueTypeName.isEmpty() || issueTypeName.contains("{{")) return new HashMap<>();
+
+        String pKey = projectKey.trim();
+        String iName = issueTypeName.trim();
+
+        // 1. Get available issue types for this project
+        String typesUrl = baseUrl + "/rest/api/2/issue/createmeta/" + pKey + "/issuetypes";
+        String typesResponse = apiService.executeRequest(typesUrl, "GET", null);
+        JSONObject typesJson = new JSONObject(typesResponse);
         
-        String response = apiService.executeRequest(url, "GET", null);
-        JSONObject json = new JSONObject(response);
-        Map<String, JSONObject> fields = new HashMap<>();
-        
-        if (json.has("projects")) {
-            JSONArray projects = json.getJSONArray("projects");
-            if (projects.length() == 0) {
-                throw new Exception("Jira returned zero projects for create metadata (Project: " + projectKey + "). Check permissions or project key.");
-            }
-            for (int i = 0; i < projects.length(); i++) {
-                JSONObject proj = projects.getJSONObject(i);
-                if (proj.has("issuetypes")) {
-                    JSONArray types = proj.getJSONArray("issuetypes");
-                    if (types.length() == 0 && issueTypeName != null) {
-                        throw new Exception("Jira returned zero issue types matching '" + issueTypeName + "' for project " + projectKey);
-                    }
-                    for (int j = 0; j < types.length(); j++) {
-                        JSONObject type = types.getJSONObject(j);
-                        if (type.has("fields")) {
-                            JSONObject fieldsJson = type.getJSONObject("fields");
-                            for (String key : fieldsJson.keySet()) {
-                                fields.put(key, fieldsJson.getJSONObject(key));
-                            }
-                        }
-                    }
+        String typeId = null;
+        if (typesJson.has("values")) {
+            JSONArray values = typesJson.getJSONArray("values");
+            for (int i = 0; i < values.length(); i++) {
+                JSONObject type = values.getJSONObject(i);
+                if (type.getString("name").equalsIgnoreCase(iName)) {
+                    typeId = type.getString("id");
+                    break;
                 }
             }
         }
+
+        if (typeId == null) {
+            throw new Exception("Issue type '" + iName + "' not found in project " + pKey + " (or no create permission).");
+        }
+
+        // 2. Get fields for that specific project + issue type
+        String fieldsUrl = baseUrl + "/rest/api/2/issue/createmeta/" + pKey + "/issuetypes/" + typeId;
+        String fieldsResponse = apiService.executeRequest(fieldsUrl, "GET", null);
+        JSONObject fieldsJson = new JSONObject(fieldsResponse);
+        
+        Map<String, JSONObject> fields = new HashMap<>();
+        if (fieldsJson.has("values")) {
+            JSONArray values = fieldsJson.getJSONArray("values");
+            for (int i = 0; i < values.length(); i++) {
+                JSONObject f = values.getJSONObject(i);
+                if (f.has("fieldId")) {
+                    fields.put(f.getString("fieldId"), f);
+                }
+            }
+        }
+        
         return fields;
     }
 
