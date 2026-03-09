@@ -970,7 +970,11 @@ public class WorkflowOrchestratorPanel extends JPanel {
             fields.put("project", new JSONObject().put("key", proj));
             fields.put("issuetype", new JSONObject().put("name", type));
 
-            String resp = mainFrame.getService().executeRequest(baseUrl + "/rest/api/2/issue", "POST", new JSONObject().put("fields", fields).toString());
+            String payload = new JSONObject().put("fields", fields).toString(4);
+            log("  > Request URL: POST " + baseUrl + "/rest/api/2/issue");
+            log("  > Request Body:\n" + payload);
+
+            String resp = mainFrame.getService().executeRequest(baseUrl + "/rest/api/2/issue", "POST", payload);
             JSONObject respJson = new JSONObject(resp);
             String newKey = respJson.getString("key");
             
@@ -989,7 +993,13 @@ public class WorkflowOrchestratorPanel extends JPanel {
             }
             
             JSONObject fields = buildFields(step, issue, prompts, metaSnap);
-            mainFrame.getService().executeRequest(baseUrl + "/rest/api/2/issue/" + targetKey, "PUT", new JSONObject().put("fields", fields).toString());
+            String payload = new JSONObject().put("fields", fields).toString(4);
+            String url = baseUrl + "/rest/api/2/issue/" + targetKey;
+            
+            log("  > Request URL: PUT " + url);
+            log("  > Request Body:\n" + payload);
+
+            mainFrame.getService().executeRequest(url, "PUT", payload);
             
             executionVars.put("last_key", targetKey);
             executionVars.put("last.key", targetKey);
@@ -1015,7 +1025,11 @@ public class WorkflowOrchestratorPanel extends JPanel {
                     body.put("fields", fields);
                 }
                 
-                mainFrame.getService().executeRequest(transUrl, "POST", body.toString());
+                String payload = body.toString(4);
+                log("  > Request URL: POST " + transUrl);
+                log("  > Request Body:\n" + payload);
+
+                mainFrame.getService().executeRequest(transUrl, "POST", payload);
                 
                 executionVars.put("last_key", targetKey);
                 executionVars.put("last.key", targetKey);
@@ -1038,7 +1052,13 @@ public class WorkflowOrchestratorPanel extends JPanel {
             body.put("type", new JSONObject().put("name", ls.getLinkType()));
             body.put("inwardIssue", new JSONObject().put("key", inward));
             body.put("outwardIssue", new JSONObject().put("key", outward));
-            mainFrame.getService().executeRequest(baseUrl + "/rest/api/2/issueLink", "POST", body.toString());
+            
+            String payload = body.toString(4);
+            String url = baseUrl + "/rest/api/2/issueLink";
+            log("  > Request URL: POST " + url);
+            log("  > Request Body:\n" + payload);
+
+            mainFrame.getService().executeRequest(url, "POST", payload);
             log("  > Linked " + inward + " to " + outward);
         } else if (step instanceof CloneStep) {
             CloneStep cls = (CloneStep) step;
@@ -1053,7 +1073,9 @@ public class WorkflowOrchestratorPanel extends JPanel {
             // Fetch source issue data if it's not the one we are currently iterating over
             JSONObject sourceData = issue;
             if (!srcKey.equals(issue.getString("key"))) {
-                String srcResp = mainFrame.getService().executeRequest(mainFrame.getBaseUrl() + "/rest/api/2/issue/" + srcKey + "?expand=names,renderedFields&fields=*all,attachment,issuelinks", "GET", null);
+                String url = mainFrame.getBaseUrl() + "/rest/api/2/issue/" + srcKey + "?expand=names,renderedFields&fields=*all,attachment,issuelinks";
+                log("  > Request URL: GET " + url);
+                String srcResp = mainFrame.getService().executeRequest(url, "GET", null);
                 sourceData = new JSONObject(srcResp);
             }
 
@@ -1083,7 +1105,9 @@ public class WorkflowOrchestratorPanel extends JPanel {
             String contentUrl = att.getString("content");
             java.io.File tempFile = mainFrame.getService().downloadAttachmentToTempFile(contentUrl, filename);
             try {
-                mainFrame.getService().uploadAttachment(mainFrame.getBaseUrl() + "/rest/api/2/issue/" + targetKey + "/attachments", tempFile, filename);
+                String url = mainFrame.getBaseUrl() + "/rest/api/2/issue/" + targetKey + "/attachments";
+                log("  > Uploading attachment to: POST " + url);
+                mainFrame.getService().uploadAttachment(url, tempFile, filename);
                 log("  > Cloned attachment: " + filename);
             } finally {
                 if (tempFile != null) tempFile.delete();
@@ -1122,7 +1146,9 @@ public class WorkflowOrchestratorPanel extends JPanel {
             }
             
             try {
-                mainFrame.getService().executeRequest(mainFrame.getBaseUrl() + "/rest/api/2/issueLink", "POST", body.toString());
+                String url = mainFrame.getBaseUrl() + "/rest/api/2/issueLink";
+                log("  > Creating link: POST " + url + " (Payload: " + body.toString() + ")");
+                mainFrame.getService().executeRequest(url, "POST", body.toString());
                 log("  > Cloned link: " + typeName + " to " + otherKey);
             } catch (Exception e) {
                 log("  > Warning: Could not clone link to " + otherKey);
