@@ -742,6 +742,7 @@ public class WorkflowOrchestratorPanel extends JPanel {
                     if (c instanceof StepEditorPanel) {
                         WorkflowStep step = ((StepEditorPanel)c).getStep();
                         if (step instanceof CreateStep) {
+                            CreateStep cs = (CreateStep) step;
                             String pKey = cs.getProjectKey();
                             String iType = cs.getIssueType();
                             if (pKey != null && iType != null && !pKey.contains("{{") && !iType.contains("{{")) {
@@ -1351,6 +1352,7 @@ public class WorkflowOrchestratorPanel extends JPanel {
                 boolean updated = false;
 
                 for (WorkflowStep step : recipe.getSteps()) {
+                    if (step instanceof CreateStep) {
                         CreateStep cs = (CreateStep) step;
                         String pKey = cs.getProjectKey();
                         String iType = cs.getIssueType();
