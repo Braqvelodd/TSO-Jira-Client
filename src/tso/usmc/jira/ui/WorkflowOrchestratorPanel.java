@@ -760,7 +760,8 @@ public class WorkflowOrchestratorPanel extends JPanel {
                 // 1. Try Create Meta from any CreateSteps
                 for (Component c : stepsContainer.getComponents()) {
                     if (c instanceof StepEditorPanel) {
-                        WorkflowStep step = ((StepEditorPanel)c).getStep();
+                        StepEditorPanel sep = (StepEditorPanel) c;
+                        WorkflowStep step = sep.getStep();
                         if (step instanceof CreateStep) {
                             CreateStep cs = (CreateStep) step;
                             String pKey = cs.getProjectKey();
@@ -776,6 +777,24 @@ public class WorkflowOrchestratorPanel extends JPanel {
                                         if (!cm.isEmpty()) {
                                             cachedFullMeta.putAll(cm);
                                             updated = true;
+                                            
+                                            // Automatically add required fields to this step's UI
+                                            SwingUtilities.invokeLater(() -> {
+                                                int addedCount = 0;
+                                                for (String fId : cm.keySet()) {
+                                                    JSONObject fMeta = cm.get(fId);
+                                                    if (fMeta.optBoolean("required", false)) {
+                                                        if (fId.equals("project") || fId.equals("issuetype")) continue;
+                                                        if (!step.getFieldActions().containsKey(fId)) {
+                                                            sep.addField(new FieldAction(fId, FieldAction.MappingMode.STATIC, "", ""));
+                                                            addedCount++;
+                                                        }
+                                                    }
+                                                }
+                                                if (addedCount > 0) {
+                                                    System.out.println("Auto-added " + addedCount + " required fields to step: " + step.getLabel());
+                                                }
+                                            });
                                         }
                                     } catch (Exception ex) {
                                         System.err.println("Error fetching metadata for " + t + ": " + ex.getMessage());
@@ -872,11 +891,68 @@ public class WorkflowOrchestratorPanel extends JPanel {
             public void onFetchTransitionFields(TransitionStep step) {
                 fetchTransitionMetadata(step);
             }
+
+            @Override
+            public void onFetchCreateFields(CreateStep step) {
+                fetchCreateMetadata(step);
+            }
         });
         panel.updateLinkTypes(cachedLinkTypes);
         stepsContainer.add(panel);
         stepsContainer.revalidate();
         stepsContainer.repaint();
+    }
+
+    private void fetchCreateMetadata(CreateStep step) {
+        String pKey = step.getProjectKey();
+        String iType = step.getIssueType();
+        if (pKey == null || pKey.isEmpty() || iType == null || iType.isEmpty()) {
+            JOptionPane.showMessageDialog(this, "Please provide both Project Key and Issue Type.");
+            return;
+        }
+
+        new Thread(() -> {
+            try {
+                JiraMetadataHelper helper = new JiraMetadataHelper(mainFrame.getService(), mainFrame.getBaseUrl());
+                Map<String, JSONObject> meta = helper.getCreateMetadata(pKey, iType);
+                if (meta.isEmpty()) {
+                    SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(this, "No metadata found for " + pKey + " / " + iType));
+                    return;
+                }
+
+                // Merge into global cache
+                for (String fId : meta.keySet()) {
+                    cachedFullMeta.put(fId, meta.get(fId));
+                    String name = meta.get(fId).getString("name");
+                    cachedFieldOptions.put(name + " (" + fId + ")", fId);
+                }
+
+                SwingUtilities.invokeLater(() -> {
+                    updateTokensFromCache();
+                    Component cp = getStepPanel(step);
+                    if (cp instanceof StepEditorPanel) {
+                        StepEditorPanel sep = (StepEditorPanel) cp;
+                        sep.refreshMetadata(cachedFieldOptions);
+                        
+                        // Automatically add required fields
+                        int addedCount = 0;
+                        for (String fId : meta.keySet()) {
+                            JSONObject fMeta = meta.get(fId);
+                            if (fMeta.optBoolean("required", false)) {
+                                if (fId.equals("project") || fId.equals("issuetype")) continue;
+                                if (!step.getFieldActions().containsKey(fId)) {
+                                    sep.addField(new FieldAction(fId, FieldAction.MappingMode.STATIC, "", ""));
+                                    addedCount++;
+                                }
+                            }
+                        }
+                        JOptionPane.showMessageDialog(this, "Fetched " + meta.size() + " fields. Added " + addedCount + " required fields.");
+                    }
+                });
+            } catch (Exception ex) {
+                SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(this, "Create Meta Error: " + ex.getMessage()));
+            }
+        }).start();
     }
 
     private void fetchTransitionMetadata(TransitionStep step) {
@@ -1393,6 +1469,28 @@ public class WorkflowOrchestratorPanel extends JPanel {
                             if (!meta.isEmpty()) {
                                 cachedFullMeta.putAll(meta);
                                 updated = true;
+                                
+                                // Auto-add required fields logic
+                                SwingUtilities.invokeLater(() -> {
+                                    Component cp = getStepPanel(step);
+                                    if (cp instanceof StepEditorPanel) {
+                                        StepEditorPanel sep = (StepEditorPanel) cp;
+                                        int addedCount = 0;
+                                        for (String fId : meta.keySet()) {
+                                            JSONObject fMeta = meta.get(fId);
+                                            if (fMeta.optBoolean("required", false)) {
+                                                if (fId.equals("project") || fId.equals("issuetype")) continue;
+                                                if (!step.getFieldActions().containsKey(fId)) {
+                                                    sep.addField(new FieldAction(fId, FieldAction.MappingMode.STATIC, "", ""));
+                                                    addedCount++;
+                                                }
+                                            }
+                                        }
+                                        if (addedCount > 0) {
+                                            System.out.println("Auto-added " + addedCount + " required fields to step: " + step.getLabel());
+                                        }
+                                    }
+                                });
                             }
                         }
                     }

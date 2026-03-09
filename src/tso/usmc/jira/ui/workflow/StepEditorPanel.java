@@ -29,6 +29,7 @@ public class StepEditorPanel extends JPanel {
 
     public interface StepMetadataListener {
         void onFetchTransitionFields(TransitionStep step);
+        void onFetchCreateFields(CreateStep step);
     }
 
     private final WorkflowStep step;
@@ -233,7 +234,7 @@ public class StepEditorPanel extends JPanel {
         add(centerWrapper, BorderLayout.CENTER);
     }
 
-    private void addField(FieldAction action) {
+    public void addField(FieldAction action) {
         FieldActionPanel panel = new FieldActionPanel(action, fieldOptions, new FieldActionPanel.FieldActionListener() {
             @Override
             public void onMoveUp(FieldActionPanel p) {
