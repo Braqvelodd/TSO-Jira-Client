@@ -42,6 +42,7 @@ public class WorkflowOrchestratorPanel extends JPanel {
     private final Map<String, JComponent> promptFields = new HashMap<>();
     private final JTextArea runnerLog = new JTextArea();
     private final JButton runBtn = new JButton("Run Workflow on Selected");
+    private final JCheckBox verboseLogCheck = new JCheckBox("Verbose API Logs");
 
     // Results data
     private final List<JSONObject> currentSearchIssues = new ArrayList<>();
@@ -287,6 +288,7 @@ public class WorkflowOrchestratorPanel extends JPanel {
 
         gbc.gridx = 0; gbc.gridy = 0; top.add(new JLabel("Select Recipe:"), gbc);
         gbc.gridx = 1; gbc.weightx = 1.0; top.add(runnerRecipeCombo, gbc);
+        gbc.gridx = 2; gbc.weightx = 0; top.add(verboseLogCheck, gbc);
 
         gbc.gridx = 0; gbc.gridy = 1; gbc.weightx = 0; top.add(new JLabel("JQL Query / Issue Key:"), gbc);
         gbc.gridx = 1; gbc.weightx = 1.0; top.add(runnerJqlField, gbc);
@@ -971,8 +973,10 @@ public class WorkflowOrchestratorPanel extends JPanel {
             fields.put("issuetype", new JSONObject().put("name", type));
 
             String payload = new JSONObject().put("fields", fields).toString(4);
-            log("  > Request URL: POST " + baseUrl + "/rest/api/2/issue");
-            log("  > Request Body:\n" + payload);
+            if (verboseLogCheck.isSelected()) {
+                log("  > Request URL: POST " + baseUrl + "/rest/api/2/issue");
+                log("  > Request Body:\n" + payload);
+            }
 
             String resp = mainFrame.getService().executeRequest(baseUrl + "/rest/api/2/issue", "POST", payload);
             JSONObject respJson = new JSONObject(resp);
@@ -996,8 +1000,10 @@ public class WorkflowOrchestratorPanel extends JPanel {
             String payload = new JSONObject().put("fields", fields).toString(4);
             String url = baseUrl + "/rest/api/2/issue/" + targetKey;
             
-            log("  > Request URL: PUT " + url);
-            log("  > Request Body:\n" + payload);
+            if (verboseLogCheck.isSelected()) {
+                log("  > Request URL: PUT " + url);
+                log("  > Request Body:\n" + payload);
+            }
 
             mainFrame.getService().executeRequest(url, "PUT", payload);
             
@@ -1026,8 +1032,10 @@ public class WorkflowOrchestratorPanel extends JPanel {
                 }
                 
                 String payload = body.toString(4);
-                log("  > Request URL: POST " + transUrl);
-                log("  > Request Body:\n" + payload);
+                if (verboseLogCheck.isSelected()) {
+                    log("  > Request URL: POST " + transUrl);
+                    log("  > Request Body:\n" + payload);
+                }
 
                 mainFrame.getService().executeRequest(transUrl, "POST", payload);
                 
@@ -1055,8 +1063,10 @@ public class WorkflowOrchestratorPanel extends JPanel {
             
             String payload = body.toString(4);
             String url = baseUrl + "/rest/api/2/issueLink";
-            log("  > Request URL: POST " + url);
-            log("  > Request Body:\n" + payload);
+            if (verboseLogCheck.isSelected()) {
+                log("  > Request URL: POST " + url);
+                log("  > Request Body:\n" + payload);
+            }
 
             mainFrame.getService().executeRequest(url, "POST", payload);
             log("  > Linked " + inward + " to " + outward);
@@ -1074,7 +1084,9 @@ public class WorkflowOrchestratorPanel extends JPanel {
             JSONObject sourceData = issue;
             if (!srcKey.equals(issue.getString("key"))) {
                 String url = mainFrame.getBaseUrl() + "/rest/api/2/issue/" + srcKey + "?expand=names,renderedFields&fields=*all,attachment,issuelinks";
-                log("  > Request URL: GET " + url);
+                if (verboseLogCheck.isSelected()) {
+                    log("  > Request URL: GET " + url);
+                }
                 String srcResp = mainFrame.getService().executeRequest(url, "GET", null);
                 sourceData = new JSONObject(srcResp);
             }
@@ -1106,7 +1118,9 @@ public class WorkflowOrchestratorPanel extends JPanel {
             java.io.File tempFile = mainFrame.getService().downloadAttachmentToTempFile(contentUrl, filename);
             try {
                 String url = mainFrame.getBaseUrl() + "/rest/api/2/issue/" + targetKey + "/attachments";
-                log("  > Uploading attachment to: POST " + url);
+                if (verboseLogCheck.isSelected()) {
+                    log("  > Uploading attachment to: POST " + url);
+                }
                 mainFrame.getService().uploadAttachment(url, tempFile, filename);
                 log("  > Cloned attachment: " + filename);
             } finally {
@@ -1147,7 +1161,9 @@ public class WorkflowOrchestratorPanel extends JPanel {
             
             try {
                 String url = mainFrame.getBaseUrl() + "/rest/api/2/issueLink";
-                log("  > Creating link: POST " + url + " (Payload: " + body.toString() + ")");
+                if (verboseLogCheck.isSelected()) {
+                    log("  > Creating link: POST " + url + " (Payload: " + body.toString() + ")");
+                }
                 mainFrame.getService().executeRequest(url, "POST", body.toString());
                 log("  > Cloned link: " + typeName + " to " + otherKey);
             } catch (Exception e) {
