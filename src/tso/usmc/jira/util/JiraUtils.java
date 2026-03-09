@@ -40,6 +40,31 @@ public class JiraUtils {
         return null;
     }
 
+    /**
+     * Cleans an issue key string by removing parentheses and extracting the standard 
+     * PROJECT-123 format. This is useful for dealing with noisy data from tokens or 
+     * manual input.
+     */
+    public static String cleanIssueKey(String input) {
+        if (input == null) return null;
+        String s = input.trim();
+        if (s.isEmpty()) return s;
+
+        // Remove surrounding parentheses if they exist (e.g. "(TFS-123)")
+        if (s.startsWith("(") && s.endsWith(")")) {
+            s = s.substring(1, s.length() - 1).trim();
+        }
+
+        // Use regex to find the first standard Jira key (e.g. PROJECT-123 or 123-456)
+        // Pattern: Starts with 1+ alphanum, hyphen, 1+ digits
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("([A-Z0-9]+-[0-9]+)").matcher(s);
+        if (m.find()) {
+            return m.group(1);
+        }
+        
+        return s;
+    }
+
     // You can add other static utility methods here in the future
     public static void setupExpandedView(javax.swing.JTextField field) {
         field.addMouseListener(new java.awt.event.MouseAdapter() {

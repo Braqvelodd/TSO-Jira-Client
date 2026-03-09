@@ -986,7 +986,7 @@ public class WorkflowOrchestratorPanel extends JPanel {
             log("  > Created " + newKey);
         } else if (step instanceof UpdateStep) {
             UpdateStep us = (UpdateStep) step;
-            String targetKey = resolveTokens(us.getTargetIssueToken(), issue);
+            String targetKey = JiraUtils.cleanIssueKey(resolveTokens(us.getTargetIssueToken(), issue));
             if (targetKey == null || targetKey.trim().isEmpty()) {
                 log("  > SKIP: Target issue key resolved to empty string for step: " + step.getLabel());
                 return;
@@ -1007,7 +1007,7 @@ public class WorkflowOrchestratorPanel extends JPanel {
             log("  > Updated " + targetKey);
         } else if (step instanceof TransitionStep) {
             TransitionStep ts = (TransitionStep) step;
-            String targetKey = resolveTokens(ts.getTargetIssueToken(), issue);
+            String targetKey = JiraUtils.cleanIssueKey(resolveTokens(ts.getTargetIssueToken(), issue));
             if (targetKey == null || targetKey.trim().isEmpty()) {
                 log("  > SKIP: Target issue key resolved to empty string for step: " + step.getLabel());
                 return;
@@ -1040,8 +1040,8 @@ public class WorkflowOrchestratorPanel extends JPanel {
             } else log("  > ERROR: Transition '" + ts.getTargetStatus() + "' not found on " + targetKey);
         } else if (step instanceof LinkStep) {
             LinkStep ls = (LinkStep) step;
-            String inward = resolveTokens(ls.getInwardIssueToken(), issue);
-            String outward = resolveTokens(ls.getOutwardIssueToken(), issue);
+            String inward = JiraUtils.cleanIssueKey(resolveTokens(ls.getInwardIssueToken(), issue));
+            String outward = JiraUtils.cleanIssueKey(resolveTokens(ls.getOutwardIssueToken(), issue));
             
             if (inward == null || inward.trim().isEmpty() || outward == null || outward.trim().isEmpty()) {
                 log("  > SKIP: Link step skipped due to empty key (Inward: '" + inward + "', Outward: '" + outward + "')");
@@ -1062,8 +1062,8 @@ public class WorkflowOrchestratorPanel extends JPanel {
             log("  > Linked " + inward + " to " + outward);
         } else if (step instanceof CloneStep) {
             CloneStep cls = (CloneStep) step;
-            String srcKey = resolveTokens(cls.getSourceIssueToken(), issue);
-            String targetKey = resolveTokens(cls.getTargetIssueToken(), issue);
+            String srcKey = JiraUtils.cleanIssueKey(resolveTokens(cls.getSourceIssueToken(), issue));
+            String targetKey = JiraUtils.cleanIssueKey(resolveTokens(cls.getTargetIssueToken(), issue));
             
             if (srcKey == null || srcKey.trim().isEmpty() || targetKey == null || targetKey.trim().isEmpty()) {
                 log("  > SKIP: Clone step skipped due to empty key (Source: '" + srcKey + "', Target: '" + targetKey + "')");
@@ -1226,7 +1226,11 @@ public class WorkflowOrchestratorPanel extends JPanel {
         }
 
         if ("user".equals(type)) return new JSONObject().put("name", val);
-        if ("parent".equals(fieldId)) return new JSONObject().put("key", val);
+        
+        if ("parent".equals(fieldId)) {
+            return new JSONObject().put("key", JiraUtils.cleanIssueKey(val));
+        }
+        
         if ("option".equals(type) || "component".equals(type) || "version".equals(type)) {
             String subKey = "value";
             if ("component".equals(type) || "version".equals(type) || fieldId.equals("components") || fieldId.contains("Version")) {
