@@ -106,6 +106,24 @@ public class JiraMetadataHelper {
     }
 
     /**
+     * Fetches all available issue link types.
+     */
+    public List<JSONObject> getIssueLinkTypes() throws Exception {
+        String url = baseUrl + "/rest/api/2/issueLinkType";
+        String response = apiService.executeRequest(url, "GET", null);
+        JSONObject json = new JSONObject(response);
+        List<JSONObject> linkTypes = new ArrayList<>();
+        
+        if (json.has("issueLinkTypes")) {
+            JSONArray arr = json.getJSONArray("issueLinkTypes");
+            for (int i = 0; i < arr.length(); i++) {
+                linkTypes.add(arr.getJSONObject(i));
+            }
+        }
+        return linkTypes;
+    }
+
+    /**
      * Helper to extract allowed values from a field metadata object.
      */
     public List<String> getAllowedValues(JSONObject fieldMeta) {

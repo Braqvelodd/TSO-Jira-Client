@@ -59,7 +59,7 @@ Or by double click
 
 ### 🛠️ Specialized Toolset
 *   **Raw API Sandbox:** 
-    *   Dropdown selector with **50+ predefined Data Center API templates** (Issues, Projects, Users, Worklogs, etc.).
+    *   Dropdown selector with **50+ predefined Data Center API templates** (Issues, Projects, Users, Worklogs, Link Types, etc.).
     *   Dynamic discovery: Add new `api_template.` keys to the config to automatically expand the menu.
     *   Automatic JSON pretty-printing and smart execution buttons.
 *   **Enhanced Bulk Actions:** Perform mass updates including Transitions, Assignee changes, Comments, Labels, Priority, and Issue Linking.

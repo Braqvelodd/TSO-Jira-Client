@@ -20,6 +20,7 @@ public class WorkflowOrchestratorPanel extends JPanel {
     private final JiraApiClientGui mainFrame;
     private final WorkflowManager workflowManager;
     private final Map<String, String> cachedFieldOptions = new HashMap<>();
+    private final List<String> cachedLinkTypes = new ArrayList<>();
     
     // Designer Components
     private final DefaultListModel<String> recipeListModel = new DefaultListModel<>();
@@ -759,14 +760,29 @@ public class WorkflowOrchestratorPanel extends JPanel {
                     cachedFullMeta.putAll(em);
                     updated = true;
                 }
+                
+                // 3. Try Link Types
+                List<JSONObject> lts = helper.getIssueLinkTypes();
+                if (!lts.isEmpty()) {
+                    cachedLinkTypes.clear();
+                    for (JSONObject lt : lts) {
+                        cachedLinkTypes.add(lt.getString("name"));
+                    }
+                    Collections.sort(cachedLinkTypes);
+                    updated = true;
+                }
 
                 if (updated) {
                     SwingUtilities.invokeLater(() -> {
                         updateTokensFromCache();
                         for (Component c : stepsContainer.getComponents()) {
-                            if (c instanceof StepEditorPanel) ((StepEditorPanel) c).refreshMetadata(cachedFieldOptions);
+                            if (c instanceof StepEditorPanel) {
+                                StepEditorPanel sep = (StepEditorPanel) c;
+                                sep.refreshMetadata(cachedFieldOptions);
+                                sep.updateLinkTypes(cachedLinkTypes);
+                            }
                         }
-                        JOptionPane.showMessageDialog(this, "Metadata updated (Running Total: " + cachedFullMeta.size() + " fields)");
+                        JOptionPane.showMessageDialog(this, "Metadata updated (Running Total: " + cachedFullMeta.size() + " fields, " + cachedLinkTypes.size() + " link types)");
                     });
                 } else {
                     SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(this, "No metadata source found (need Project/Type in Create step or a Context Issue Key)."));
@@ -823,6 +839,7 @@ public class WorkflowOrchestratorPanel extends JPanel {
                 fetchTransitionMetadata(step);
             }
         });
+        panel.updateLinkTypes(cachedLinkTypes);
         stepsContainer.add(panel);
         stepsContainer.revalidate();
         stepsContainer.repaint();
@@ -1356,12 +1373,27 @@ public class WorkflowOrchestratorPanel extends JPanel {
                     cachedFullMeta.putAll(editMeta);
                     updated = true;
                 }
+                
+                // Fetch Link Types
+                List<JSONObject> lts = helper.getIssueLinkTypes();
+                if (!lts.isEmpty()) {
+                    cachedLinkTypes.clear();
+                    for (JSONObject lt : lts) {
+                        cachedLinkTypes.add(lt.getString("name"));
+                    }
+                    Collections.sort(cachedLinkTypes);
+                    updated = true;
+                }
 
                 if (updated) {
                     SwingUtilities.invokeLater(() -> {
                         updateTokensFromCache();
                         for (Component c : stepsContainer.getComponents()) {
-                            if (c instanceof StepEditorPanel) ((StepEditorPanel) c).refreshMetadata(cachedFieldOptions);
+                            if (c instanceof StepEditorPanel) {
+                                StepEditorPanel sep = (StepEditorPanel) c;
+                                sep.refreshMetadata(cachedFieldOptions);
+                                sep.updateLinkTypes(cachedLinkTypes);
+                            }
                         }
                     });
                 }

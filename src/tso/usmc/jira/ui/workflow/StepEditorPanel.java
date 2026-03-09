@@ -43,6 +43,7 @@ public class StepEditorPanel extends JPanel {
     private JTextField typeField;
     private JTextField inwardField;
     private JTextField linkTypeField;
+    private JComboBox<String> linkTypeCombo;
     private JTextField outwardField;
     private JTextField sourceTokenField;
     private JTextField targetTokenField;
@@ -108,10 +109,22 @@ public class StepEditorPanel extends JPanel {
             inwardField = new JTextField(ls.getInwardIssueToken(), 10);
             tso.usmc.jira.util.JiraUtils.setupExpandedView(inwardField);
             header.add(inwardField);
+            
             header.add(new JLabel("Type:"));
+            linkTypeCombo = new JComboBox<>();
+            linkTypeCombo.setPreferredSize(new Dimension(120, 22));
+            linkTypeCombo.addActionListener(e -> {
+                String selected = (String) linkTypeCombo.getSelectedItem();
+                if (selected != null && !selected.isEmpty()) {
+                    linkTypeField.setText(selected);
+                }
+            });
+            header.add(linkTypeCombo);
+            
             linkTypeField = new JTextField(ls.getLinkType(), 10);
             tso.usmc.jira.util.JiraUtils.setupExpandedView(linkTypeField);
             header.add(linkTypeField);
+            
             header.add(new JLabel("Outward:"));
             outwardField = new JTextField(ls.getOutwardIssueToken(), 10);
             tso.usmc.jira.util.JiraUtils.setupExpandedView(outwardField);
@@ -306,6 +319,18 @@ public class StepEditorPanel extends JPanel {
     public void refreshMetadata(Map<String, String> fieldOptions) {
         for (FieldActionPanel panel : actionPanels) {
             panel.refreshMetadata(fieldOptions);
+        }
+    }
+
+    public void updateLinkTypes(List<String> linkTypes) {
+        if (linkTypeCombo != null) {
+            String current = (String) linkTypeCombo.getSelectedItem();
+            linkTypeCombo.removeAllItems();
+            linkTypeCombo.addItem(""); // Default empty
+            for (String lt : linkTypes) {
+                linkTypeCombo.addItem(lt);
+            }
+            if (current != null) linkTypeCombo.setSelectedItem(current);
         }
     }
 
