@@ -1292,5 +1292,6 @@ public class WorkflowOrchestratorPanel extends JPanel {
         allTokens.addAll(tokens);
         filterTokens();
         cachedFieldOptions.put("teams_selection (Virtual)", "teams_selection");
+        cachedFieldOptions.put("Parent (System)", "parent");
     }
 }
