@@ -41,19 +41,6 @@ public class TransitionStep extends WorkflowStep {
         step.setLabel(json.optString("label", "Transition Step"));
         step.setTargetStatus(json.optString("targetStatus"));
         step.setTargetIssueToken(json.optString("targetIssueToken", "{{issue.key}}"));
-        
-        if (json.has("fields")) {
-            JSONArray fields = json.getJSONArray("fields");
-            for (int i = 0; i < fields.length(); i++) {
-                FieldAction fa = FieldAction.fromJson(fields.getJSONObject(i));
-                String key = fa.getFieldId();
-                if (key == null || key.isEmpty()) {
-                    key = "f" + i;
-                    fa.setFieldId(key);
-                }
-                step.addFieldAction(fa);
-            }
-        }
         return step;
     }
 }
