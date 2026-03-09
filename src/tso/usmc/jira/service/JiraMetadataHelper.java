@@ -76,10 +76,10 @@ public class JiraMetadataHelper {
     public Map<String, JSONObject> getCreateMetadata(String projectKey, String issueTypeName) throws Exception {
         String url = baseUrl + "/rest/api/2/issue/createmeta?expand=projects.issuetypes.fields";
         if (projectKey != null && !projectKey.isEmpty() && !projectKey.contains("{{")) {
-            url += "&projectKeys=" + projectKey;
+            url += "&projectKeys=" + projectKey.trim();
         }
         if (issueTypeName != null && !issueTypeName.isEmpty() && !issueTypeName.contains("{{")) {
-            url += "&issueTypeNames=" + java.net.URLEncoder.encode(issueTypeName, "UTF-8");
+            url += "&issueTypeNames=" + java.net.URLEncoder.encode(issueTypeName.trim(), "UTF-8");
         }
         
         String response = apiService.executeRequest(url, "GET", null);
@@ -88,15 +88,23 @@ public class JiraMetadataHelper {
         
         if (json.has("projects")) {
             JSONArray projects = json.getJSONArray("projects");
+            if (projects.length() == 0) {
+                throw new Exception("Jira returned zero projects for create metadata (Project: " + projectKey + "). Check permissions or project key.");
+            }
             for (int i = 0; i < projects.length(); i++) {
                 JSONObject proj = projects.getJSONObject(i);
-                JSONArray types = proj.getJSONArray("issuetypes");
-                for (int j = 0; j < types.length(); j++) {
-                    JSONObject type = types.getJSONObject(j);
-                    if (type.has("fields")) {
-                        JSONObject fieldsJson = type.getJSONObject("fields");
-                        for (String key : fieldsJson.keySet()) {
-                            fields.put(key, fieldsJson.getJSONObject(key));
+                if (proj.has("issuetypes")) {
+                    JSONArray types = proj.getJSONArray("issuetypes");
+                    if (types.length() == 0 && issueTypeName != null) {
+                        throw new Exception("Jira returned zero issue types matching '" + issueTypeName + "' for project " + projectKey);
+                    }
+                    for (int j = 0; j < types.length(); j++) {
+                        JSONObject type = types.getJSONObject(j);
+                        if (type.has("fields")) {
+                            JSONObject fieldsJson = type.getJSONObject("fields");
+                            for (String key : fieldsJson.keySet()) {
+                                fields.put(key, fieldsJson.getJSONObject(key));
+                            }
                         }
                     }
                 }
