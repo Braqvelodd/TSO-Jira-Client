@@ -138,7 +138,9 @@ public class WorkflowOrchestratorPanel extends JPanel {
         
         // Editor Steps
         stepsContainer.setLayout(new BoxLayout(stepsContainer, BoxLayout.Y_AXIS));
-        center.add(new JScrollPane(stepsContainer), BorderLayout.CENTER);
+        JPanel stepsWrapper = new JPanel(new BorderLayout());
+        stepsWrapper.add(stepsContainer, BorderLayout.NORTH);
+        center.add(new JScrollPane(stepsWrapper), BorderLayout.CENTER);
         
         // Editor Footer (Add Step)
         JPanel footer = new JPanel(new FlowLayout(FlowLayout.LEFT));
@@ -495,6 +497,7 @@ public class WorkflowOrchestratorPanel extends JPanel {
                         CreateStep cs = (CreateStep) step;
                         addDynamicPrompt(labels, "Project (" + step.getLabel() + ")", cs.getProjectKey(), contextIssue);
                         addDynamicPrompt(labels, "Issue Type (" + step.getLabel() + ")", cs.getIssueType(), contextIssue);
+                        addDynamicPrompt(labels, "Parent (" + step.getLabel() + ")", cs.getParentIssueToken(), contextIssue);
                     }
                     
                     for (FieldAction fa : step.getFieldActions().values()) {
@@ -537,7 +540,7 @@ public class WorkflowOrchestratorPanel extends JPanel {
             }
         } else {
             // Standard field prompt (text input)
-            if (label.startsWith("Project (") || label.startsWith("Issue Type (")) return;
+            if (label.startsWith("Project (") || label.startsWith("Issue Type (") || label.startsWith("Parent (")) return;
             
             if (!labels.contains(cleanLabel)) {
                 labels.add(cleanLabel);
@@ -963,10 +966,17 @@ public class WorkflowOrchestratorPanel extends JPanel {
             CreateStep cs = (CreateStep) step;
             String proj = resolveStepProperty(cs.getProjectKey(), "Project (" + step.getLabel() + ")", prompts);
             String type = resolveStepProperty(cs.getIssueType(), "Issue Type (" + step.getLabel() + ")", prompts);
+            String parentValue = resolveStepProperty(cs.getParentIssueToken(), "Parent (" + step.getLabel() + ")", prompts);
             
             JSONObject fields = buildFields(step, issue, prompts, metaSnap);
             fields.put("project", new JSONObject().put("key", proj));
             fields.put("issuetype", new JSONObject().put("name", type));
+            
+            String parent = resolveTokens(parentValue, issue);
+            if (parent != null && !parent.trim().isEmpty()) {
+                fields.put("parent", new JSONObject().put("key", parent.trim()));
+            }
+
             String resp = mainFrame.getService().executeRequest(baseUrl + "/rest/api/2/issue", "POST", new JSONObject().put("fields", fields).toString());
             JSONObject respJson = new JSONObject(resp);
             String newKey = respJson.getString("key");
@@ -1045,7 +1055,7 @@ public class WorkflowOrchestratorPanel extends JPanel {
 
     private String resolveStepProperty(String value, String promptLabel, Map<String, String> prompts) {
         if (value == null) return "";
-        if (value.contains(",") || value.contains("[config:")) {
+        if (value.contains(",") || value.contains("[config:") || value.contains("[choice:")) {
             if (prompts.containsKey(promptLabel)) return prompts.get(promptLabel);
         }
         return value;

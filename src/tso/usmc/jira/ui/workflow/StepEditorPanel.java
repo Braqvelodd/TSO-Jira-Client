@@ -40,6 +40,7 @@ public class StepEditorPanel extends JPanel {
     private JTextField targetIssueField;
     private JTextField projField;
     private JTextField typeField;
+    private JTextField parentField;
     private JTextField inwardField;
     private JTextField linkTypeField;
     private JTextField outwardField;
@@ -96,6 +97,10 @@ public class StepEditorPanel extends JPanel {
             typeField = new JTextField(cs.getIssueType(), 10);
             tso.usmc.jira.util.JiraUtils.setupExpandedView(typeField);
             header.add(typeField);
+            header.add(new JLabel("Parent:"));
+            parentField = new JTextField(cs.getParentIssueToken(), 10);
+            tso.usmc.jira.util.JiraUtils.setupExpandedView(parentField);
+            header.add(parentField);
         }
 
         if (step instanceof LinkStep) {
@@ -154,17 +159,23 @@ public class StepEditorPanel extends JPanel {
         
         add(header, BorderLayout.NORTH);
 
+        // Content Wrapper (to keep fields and footer packed at the top)
+        JPanel contentPanel = new JPanel();
+        contentPanel.setLayout(new BoxLayout(contentPanel, BoxLayout.Y_AXIS));
+
         // Fields Container
         fieldsContainer = new JPanel();
         fieldsContainer.setLayout(new BoxLayout(fieldsContainer, BoxLayout.Y_AXIS));
+        fieldsContainer.setAlignmentX(Component.LEFT_ALIGNMENT);
         for (FieldAction action : step.getFieldActions().values()) {
             addField(action);
         }
-        add(fieldsContainer, BorderLayout.CENTER);
+        contentPanel.add(fieldsContainer);
 
         // Footer (Add Field) - Only for steps that support fields
         if (step.getType() != WorkflowStep.StepType.CLONE && step.getType() != WorkflowStep.StepType.LINK) {
             JPanel footer = new JPanel(new FlowLayout(FlowLayout.LEFT));
+            footer.setAlignmentX(Component.LEFT_ALIGNMENT);
             JButton addFieldBtn = new JButton("+ Add Field");
             addFieldBtn.addActionListener(e -> addField(new FieldAction("", FieldAction.MappingMode.STATIC, "", "")));
             footer.add(addFieldBtn);
@@ -179,9 +190,12 @@ public class StepEditorPanel extends JPanel {
                 });
                 footer.add(fetchBtn);
             }
-            
-            add(footer, BorderLayout.SOUTH);
+            contentPanel.add(footer);
         }
+
+        JPanel centerWrapper = new JPanel(new BorderLayout());
+        centerWrapper.add(contentPanel, BorderLayout.NORTH);
+        add(centerWrapper, BorderLayout.CENTER);
     }
 
     private void addField(FieldAction action) {
@@ -214,6 +228,7 @@ public class StepEditorPanel extends JPanel {
                 fieldsContainer.repaint();
             }
         });
+        panel.setAlignmentX(Component.LEFT_ALIGNMENT);
         actionPanels.add(panel);
         fieldsContainer.add(panel);
         fieldsContainer.revalidate();
@@ -240,6 +255,7 @@ public class StepEditorPanel extends JPanel {
         if (step instanceof CreateStep) {
             ((CreateStep)step).setProjectKey(projField.getText());
             ((CreateStep)step).setIssueType(typeField.getText());
+            ((CreateStep)step).setParentIssueToken(parentField.getText());
         }
         if (step instanceof LinkStep) {
             ((LinkStep)step).setInwardIssueToken(inwardField.getText());
