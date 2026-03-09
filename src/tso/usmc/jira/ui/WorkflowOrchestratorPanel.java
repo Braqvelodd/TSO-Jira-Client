@@ -142,7 +142,9 @@ public class WorkflowOrchestratorPanel extends JPanel {
         stepsContainer.setLayout(new BoxLayout(stepsContainer, BoxLayout.Y_AXIS));
         JPanel stepsWrapper = new JPanel(new BorderLayout());
         stepsWrapper.add(stepsContainer, BorderLayout.NORTH);
-        center.add(new JScrollPane(stepsWrapper), BorderLayout.CENTER);
+        JScrollPane stepsScroll = new JScrollPane(stepsWrapper);
+        stepsScroll.getVerticalScrollBar().setUnitIncrement(16); // Faster scrolling
+        center.add(stepsScroll, BorderLayout.CENTER);
         
         // Editor Footer (Add Step)
         JPanel footer = new JPanel(new FlowLayout(FlowLayout.LEFT));

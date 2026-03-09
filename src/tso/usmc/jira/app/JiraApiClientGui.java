@@ -216,6 +216,11 @@ public class JiraApiClientGui extends JFrame implements ConfigChangeListener {
         if (apiService == null) {
             apiService = new JiraApiService(selectedAlias);
         }
+        
+        // Update logging state based on config
+        String verbose = jiraConfig.getProperty("VERBOSE_API_LOGS");
+        apiService.setLoggingEnabled("YES".equalsIgnoreCase(verbose));
+        
         return apiService;
     }
 

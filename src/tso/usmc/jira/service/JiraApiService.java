@@ -115,17 +115,24 @@ import javax.net.ssl.*;
 
 public class JiraApiService {
     private SSLContext sslContext;
+    private boolean loggingEnabled = false;
 
     public JiraApiService(String selectedAlias) throws Exception {
         this.sslContext = createSslContext(selectedAlias);
     }
 
+    public void setLoggingEnabled(boolean enabled) {
+        this.loggingEnabled = enabled;
+    }
+
     public String executeRequest(String urlString, String method, String jsonBody) throws Exception {
-        String logMsg = "\n[" + new java.util.Date() + "] [API REQUEST] " + method + " " + urlString + "\n";
-        if (jsonBody != null) {
-            logMsg += "[API REQUEST BODY]\n" + jsonBody + "\n";
+        if (loggingEnabled) {
+            String logMsg = "\n[" + new java.util.Date() + "] [API REQUEST] " + method + " " + urlString + "\n";
+            if (jsonBody != null) {
+                logMsg += "[API REQUEST BODY]\n" + jsonBody + "\n";
+            }
+            appendToFile(logMsg);
         }
-        appendToFile(logMsg);
 
         URL url = new URL(urlString);
         HttpsURLConnection conn = (HttpsURLConnection) url.openConnection();
@@ -155,11 +162,13 @@ public class JiraApiService {
         }
 
         String response = sb.toString();
-        String respLog = "[API RESPONSE CODE] " + code + "\n";
-        if (response != null && !response.isEmpty()) {
-            respLog += "[API RESPONSE BODY]\n" + response + "\n";
+        if (loggingEnabled) {
+            String respLog = "[API RESPONSE CODE] " + code + "\n";
+            if (response != null && !response.isEmpty()) {
+                respLog += "[API RESPONSE BODY]\n" + response + "\n";
+            }
+            appendToFile(respLog);
         }
-        appendToFile(respLog);
 
         if (code >= 300) {
             throw new Exception("Jira API request failed with code " + code + ": " + response);
@@ -168,14 +177,25 @@ public class JiraApiService {
     }
 
     private void appendToFile(String msg) {
-        try (FileWriter fw = new FileWriter("jira_api.log", true);
-             PrintWriter pw = new PrintWriter(fw)) {
-            pw.println(msg);
+        if (!loggingEnabled) return;
+        try {
+            String userHome = System.getProperty("user.home");
+            File logDir = new File(userHome, ".JiraApiClient/logs");
+            if (!logDir.exists()) logDir.mkdirs();
+            
+            String dateStr = new java.text.SimpleDateFormat("yyyy-MM-dd").format(new java.util.Date());
+            File logFile = new File(logDir, "jira_api_" + dateStr + ".log");
+            
+            try (FileWriter fw = new FileWriter(logFile, true);
+                 PrintWriter pw = new PrintWriter(fw)) {
+                pw.println(msg);
+            }
         } catch (IOException e) {
             e.printStackTrace();
         }
     }
     public File downloadAttachmentToTempFile(String fileUrl, String originalFilename) throws Exception {
+        if (loggingEnabled) appendToFile("\n[" + new java.util.Date() + "] [API ATTACHMENT DOWNLOAD] " + fileUrl);
         URL downloadUrl = new URL(fileUrl);
         HttpsURLConnection dlConn = (HttpsURLConnection) downloadUrl.openConnection();
         
@@ -197,11 +217,13 @@ public class JiraApiService {
                 out.write(buffer, 0, bytesRead);
             }
         }
+        if (loggingEnabled) appendToFile("[API ATTACHMENT DOWNLOAD] Success: " + originalFilename + " -> " + tempFile.getAbsolutePath());
         
         // Return the handle to the downloaded temporary file.
         return tempFile;
     }
     public String uploadAttachment(String urlString, File fileToUpload, String originalFilename) throws Exception {
+        if (loggingEnabled) appendToFile("\n[" + new java.util.Date() + "] [API ATTACHMENT UPLOAD] POST " + urlString + " (File: " + originalFilename + ")");
         String boundary = "---" + System.currentTimeMillis() + "---";
         URL url = new URL(urlString);
         HttpsURLConnection conn = (HttpsURLConnection) url.openConnection();
@@ -242,11 +264,14 @@ public class JiraApiService {
             }
         }
 
+        String response = sb.toString();
+        if (loggingEnabled) appendToFile("[API RESPONSE CODE] " + code + "\n[API RESPONSE BODY]\n" + response);
+
         if (code >= 300) {
-            throw new Exception("Jira API request failed with code " + code + ": " + sb.toString());
+            throw new Exception("Jira API request failed with code " + code + ": " + response);
         }
 
-        return sb.toString();
+        return response;
     }
 
     private SSLContext createSslContext(final String alias) throws Exception {
