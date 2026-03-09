@@ -121,6 +121,12 @@ public class JiraApiService {
     }
 
     public String executeRequest(String urlString, String method, String jsonBody) throws Exception {
+        String logMsg = "\n[" + new java.util.Date() + "] [API REQUEST] " + method + " " + urlString + "\n";
+        if (jsonBody != null) {
+            logMsg += "[API REQUEST BODY]\n" + jsonBody + "\n";
+        }
+        appendToFile(logMsg);
+
         URL url = new URL(urlString);
         HttpsURLConnection conn = (HttpsURLConnection) url.openConnection();
         conn.setSSLSocketFactory(this.sslContext.getSocketFactory());
@@ -147,10 +153,27 @@ public class JiraApiService {
                 }
             }
         }
-        if (code >= 300) {
-            throw new Exception("Jira API request failed with code " + code + ": " + sb.toString());
+
+        String response = sb.toString();
+        String respLog = "[API RESPONSE CODE] " + code + "\n";
+        if (response != null && !response.isEmpty()) {
+            respLog += "[API RESPONSE BODY]\n" + response + "\n";
         }
-        return sb.toString();
+        appendToFile(respLog);
+
+        if (code >= 300) {
+            throw new Exception("Jira API request failed with code " + code + ": " + response);
+        }
+        return response;
+    }
+
+    private void appendToFile(String msg) {
+        try (FileWriter fw = new FileWriter("jira_api.log", true);
+             PrintWriter pw = new PrintWriter(fw)) {
+            pw.println(msg);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
     public File downloadAttachmentToTempFile(String fileUrl, String originalFilename) throws Exception {
         URL downloadUrl = new URL(fileUrl);
