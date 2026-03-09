@@ -742,9 +742,10 @@ public class WorkflowOrchestratorPanel extends JPanel {
                     if (c instanceof StepEditorPanel) {
                         WorkflowStep step = ((StepEditorPanel)c).getStep();
                         if (step instanceof CreateStep) {
-                            CreateStep cs = (CreateStep) step;
-                            if (!cs.getProjectKey().contains("{{") && !cs.getIssueType().contains("{{")) {
-                                Map<String, JSONObject> cm = helper.getCreateMetadata(cs.getProjectKey(), cs.getIssueType());
+                            String pKey = cs.getProjectKey();
+                            String iType = cs.getIssueType();
+                            if (pKey != null && iType != null && !pKey.contains("{{") && !iType.contains("{{")) {
+                                Map<String, JSONObject> cm = helper.getCreateMetadata(pKey, iType);
                                 if (!cm.isEmpty()) {
                                     cachedFullMeta.putAll(cm);
                                     updated = true;
@@ -1350,10 +1351,11 @@ public class WorkflowOrchestratorPanel extends JPanel {
                 boolean updated = false;
 
                 for (WorkflowStep step : recipe.getSteps()) {
-                    if (step instanceof CreateStep) {
                         CreateStep cs = (CreateStep) step;
-                        if (!cs.getProjectKey().contains("{{") && !cs.getIssueType().contains("{{")) {
-                            Map<String, JSONObject> meta = helper.getCreateMetadata(cs.getProjectKey(), cs.getIssueType());
+                        String pKey = cs.getProjectKey();
+                        String iType = cs.getIssueType();
+                        if (pKey != null && iType != null && !pKey.contains("{{") && !iType.contains("{{")) {
+                            Map<String, JSONObject> meta = helper.getCreateMetadata(pKey, iType);
                             if (!meta.isEmpty()) {
                                 cachedFullMeta.putAll(meta);
                                 updated = true;
