@@ -6,7 +6,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 public abstract class WorkflowStep {
-    public enum StepType { TRANSITION, UPDATE, CLONE, CREATE, LINK, WORKLOG }
+    public enum StepType { TRANSITION, UPDATE, ASSET, CREATE, LINK, WORKLOG }
 
     protected String stepId;
     protected String label;
@@ -39,8 +39,11 @@ public abstract class WorkflowStep {
             step = TransitionStep.fromJson(json);
         } else if (type == StepType.UPDATE) {
             step = UpdateStep.fromJson(json);
-        } else if (type == StepType.CLONE) {
-            step = CloneStep.fromJson(json);
+        } else if (type == StepType.ASSET) {
+            step = AssetStep.fromJson(json);
+        } else if (json.getString("type").equals("CLONE")) {
+            // Backward compatibility
+            step = AssetStep.fromJson(json);
         } else if (type == StepType.CREATE) {
             step = CreateStep.fromJson(json);
         } else if (type == StepType.LINK) {

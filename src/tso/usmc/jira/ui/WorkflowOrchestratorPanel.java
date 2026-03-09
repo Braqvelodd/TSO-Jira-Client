@@ -152,13 +152,13 @@ public class WorkflowOrchestratorPanel extends JPanel {
         JButton addUpdateBtn = new JButton("Add Update");
         JButton addCreateBtn = new JButton("Add Create");
         JButton addLinkBtn = new JButton("Add Link");
-        JButton addCloneBtn = new JButton("Add Clone (Links/Att)");
+        JButton addAssetBtn = new JButton("Add Asset (Links/Att/Sub)");
         JButton addWorklogBtn = new JButton("Add Worklog");
         footer.add(addTransBtn);
         footer.add(addUpdateBtn);
         footer.add(addCreateBtn);
         footer.add(addLinkBtn);
-        footer.add(addCloneBtn);
+        footer.add(addAssetBtn);
         footer.add(addWorklogBtn);
         center.add(footer, BorderLayout.SOUTH);
 
@@ -194,7 +194,7 @@ public class WorkflowOrchestratorPanel extends JPanel {
         addUpdateBtn.addActionListener(e -> addStep(new UpdateStep()));
         addCreateBtn.addActionListener(e -> addStep(new CreateStep()));
         addLinkBtn.addActionListener(e -> addStep(new LinkStep()));
-        addCloneBtn.addActionListener(e -> addStep(new CloneStep()));
+        addAssetBtn.addActionListener(e -> addStep(new AssetStep()));
         addWorklogBtn.addActionListener(e -> addStep(new WorklogStep()));
 
         tokenSearchField.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
@@ -432,6 +432,8 @@ public class WorkflowOrchestratorPanel extends JPanel {
                 }
             } else if (comp instanceof PromptChoicePanel) {
                 val = ((PromptChoicePanel) comp).getValue();
+            } else if (comp instanceof AssetOptionsPromptPanel) {
+                val = ((AssetOptionsPromptPanel) comp).getValue();
             }
             promptValues.put(label, val);
         }
@@ -530,6 +532,20 @@ public class WorkflowOrchestratorPanel extends JPanel {
                         addDynamicPrompt(labels, "Time Spent (" + step.getLabel() + ")", ws.getTimeSpent(), contextIssue);
                         addDynamicPrompt(labels, "Comment (" + step.getLabel() + ")", ws.getComment(), contextIssue);
                         addDynamicPrompt(labels, "Started (" + step.getLabel() + ")", ws.getStarted(), contextIssue);
+                    }
+                    
+                    if (step instanceof AssetStep) {
+                        AssetStep as = (AssetStep) step;
+                        if (as.isPromptOptions()) {
+                            String label = "Asset Options (" + step.getLabel() + ")";
+                            if (!labels.contains(label)) {
+                                labels.add(label);
+                                runnerInputsPanel.add(new JLabel(label + ":"));
+                                AssetOptionsPromptPanel panel = new AssetOptionsPromptPanel(as.isCopyAttachments(), as.isCopyLinks(), as.isCopySubTasks());
+                                runnerInputsPanel.add(panel);
+                                promptFields.put(label, panel);
+                            }
+                        }
                     }
                     
                     for (FieldAction fa : step.getFieldActions().values()) {
@@ -739,6 +755,20 @@ public class WorkflowOrchestratorPanel extends JPanel {
 
         public String getValue() {
             return tokenRadio.isSelected() ? tokenValue : manualField.getText();
+        }
+    }
+
+    private static class AssetOptionsPromptPanel extends JPanel {
+        private final JCheckBox att, links, sub;
+        AssetOptionsPromptPanel(boolean a, boolean l, boolean s) {
+            setLayout(new FlowLayout(FlowLayout.LEFT));
+            att = new JCheckBox("Attachments", a);
+            links = new JCheckBox("Links", l);
+            sub = new JCheckBox("Sub-tasks", s);
+            add(att); add(links); add(sub);
+        }
+        public String getValue() {
+            return att.isSelected() + "," + links.isSelected() + "," + sub.isSelected();
         }
     }
 
@@ -1207,13 +1237,13 @@ public class WorkflowOrchestratorPanel extends JPanel {
 
             mainFrame.getService().executeRequest(url, "POST", payload);
             log("  > Linked " + inward + " to " + outward);
-        } else if (step instanceof CloneStep) {
-            CloneStep cls = (CloneStep) step;
-            String srcKey = JiraUtils.cleanIssueKey(resolveTokens(cls.getSourceIssueToken(), issue));
-            String targetKey = JiraUtils.cleanIssueKey(resolveTokens(cls.getTargetIssueToken(), issue));
-            
+        } else if (step instanceof AssetStep) {
+            AssetStep as = (AssetStep) step;
+            String srcKey = JiraUtils.cleanIssueKey(resolveTokens(as.getSourceIssueToken(), issue));
+            String targetKey = JiraUtils.cleanIssueKey(resolveTokens(as.getTargetIssueToken(), issue));
+
             if (srcKey == null || srcKey.trim().isEmpty() || targetKey == null || targetKey.trim().isEmpty()) {
-                log("  > SKIP: Clone step skipped due to empty key (Source: '" + srcKey + "', Target: '" + targetKey + "')");
+                log("  > SKIP: Asset step skipped due to empty key (Source: '" + srcKey + "', Target: '" + targetKey + "')");
                 return;
             }
 
@@ -1228,13 +1258,27 @@ public class WorkflowOrchestratorPanel extends JPanel {
                 sourceData = new JSONObject(srcResp);
             }
 
-            if (cls.isCopyAttachments()) {
-                cloneAttachments(sourceData, targetKey);
+            boolean doAtt = as.isCopyAttachments();
+            boolean doLinks = as.isCopyLinks();
+            boolean doSub = as.isCopySubTasks();
+
+            if (as.isPromptOptions()) {
+                String p = prompts.get("Asset Options (" + step.getLabel() + ")");
+                if (p != null && p.contains(",")) {
+                    String[] parts = p.split(",");
+                    if (parts.length >= 3) {
+                        doAtt = Boolean.parseBoolean(parts[0]);
+                        doLinks = Boolean.parseBoolean(parts[1]);
+                        doSub = Boolean.parseBoolean(parts[2]);
+                    }
+                }
             }
-            if (cls.isCopyLinks()) {
-                cloneLinks(sourceData, targetKey);
-            }
-        } else if (step instanceof WorklogStep) {
+
+            if (doAtt) copyAttachments(sourceData, targetKey);
+            if (doLinks) copyLinks(sourceData, targetKey);
+            if (doSub) copySubTasks(sourceData, targetKey, as);
+        }
+ else if (step instanceof WorklogStep) {
             WorklogStep ws = (WorklogStep) step;
             String targetKey = JiraUtils.cleanIssueKey(resolveTokens(ws.getTargetIssueToken(), issue));
             if (targetKey == null || targetKey.trim().isEmpty()) {
@@ -1273,7 +1317,83 @@ public class WorkflowOrchestratorPanel extends JPanel {
         return value;
     }
 
-    private void cloneAttachments(JSONObject sourceIssue, String targetKey) throws Exception {
+    private void copySubTasks(JSONObject sourceIssue, String targetParentKey, AssetStep as) throws Exception {
+        if (!sourceIssue.getJSONObject("fields").has("subtasks")) return;
+        JSONArray subtasks = sourceIssue.getJSONObject("fields").getJSONArray("subtasks");
+        String baseUrl = mainFrame.getBaseUrl();
+
+        for (int i = 0; i < subtasks.length(); i++) {
+            String subKey = subtasks.getJSONObject(i).getString("key");
+            log("  > Copying sub-task: " + subKey);
+
+            // Fetch full sub-task data
+            String url = baseUrl + "/rest/api/2/issue/" + subKey + "?expand=names,renderedFields&fields=*all";
+            String subResp = mainFrame.getService().executeRequest(url, "GET", null);
+            JSONObject subData = new JSONObject(subResp);
+            JSONObject subFields = subData.getJSONObject("fields");
+
+            // Build new sub-task payload
+            JSONObject newSubFields = new JSONObject();
+            newSubFields.put("project", new JSONObject().put("key", targetParentKey.split("-")[0]));
+            newSubFields.put("parent", new JSONObject().put("key", targetParentKey));
+            newSubFields.put("issuetype", subFields.getJSONObject("issuetype")); // Use same sub-task type
+            
+            // Clone fields from the CSV list
+            String csv = as.getSubTaskFields();
+            if (csv != null && !csv.trim().isEmpty()) {
+                String[] fieldsToCopy = csv.split(",");
+                copySubTaskFields(subFields, newSubFields, fieldsToCopy);
+            }
+
+            String payload = new JSONObject().put("fields", newSubFields).toString(4);
+            String createUrl = baseUrl + "/rest/api/2/issue";
+            
+            try {
+                String resp = mainFrame.getService().executeRequest(createUrl, "POST", payload);
+                JSONObject respJson = new JSONObject(resp);
+                String newSubKey = respJson.getString("key");
+                log("    > Created sub-task copy: " + newSubKey);
+            } catch (Exception e) {
+                log("    > Error copying sub-task " + subKey + ": " + e.getMessage());
+            }
+        }
+    }
+
+    private void copySubTaskFields(JSONObject src, JSONObject dest, String[] fields) {
+        for (String f : fields) {
+            String fieldId = f.trim();
+            if (src.has(fieldId) && !src.isNull(fieldId)) {
+                Object val = src.get(fieldId);
+                
+                // Smart cleanup for complex objects (Jira expects identifying info for CREATE)
+                if (val instanceof JSONObject) {
+                    JSONObject obj = (JSONObject) val;
+                    if (fieldId.equals("reporter") || fieldId.equals("assignee")) {
+                        if (obj.has("name")) dest.put(fieldId, new JSONObject().put("name", obj.getString("name")));
+                    } else if (obj.has("id")) {
+                        dest.put(fieldId, new JSONObject().put("id", obj.getString("id")));
+                    } else if (obj.has("value")) {
+                        dest.put(fieldId, new JSONObject().put("value", obj.getString("value")));
+                    } else {
+                        dest.put(fieldId, val); // Pass as is
+                    }
+                } else {
+                    dest.put(fieldId, val);
+                }
+            }
+        }
+        
+        // Always attempt to copy custom fields if not already in the explicit list
+        for (String key : src.keySet()) {
+            if (key.startsWith("customfield_") && !src.isNull(key)) {
+                boolean alreadyDone = false;
+                for(String f : fields) if(f.trim().equals(key)) alreadyDone = true;
+                if(!alreadyDone) dest.put(key, src.get(key));
+            }
+        }
+    }
+
+    private void copyAttachments(JSONObject sourceIssue, String targetKey) throws Exception {
         if (!sourceIssue.getJSONObject("fields").has("attachment")) return;
         JSONArray attachments = sourceIssue.getJSONObject("fields").getJSONArray("attachment");
         for (int i = 0; i < attachments.length(); i++) {
@@ -1287,14 +1407,14 @@ public class WorkflowOrchestratorPanel extends JPanel {
                     log("  > Uploading attachment to: POST " + url);
                 }
                 mainFrame.getService().uploadAttachment(url, tempFile, filename);
-                log("  > Cloned attachment: " + filename);
+                log("  > Copied attachment: " + filename);
             } finally {
                 if (tempFile != null) tempFile.delete();
             }
         }
     }
 
-    private void cloneLinks(JSONObject sourceIssue, String targetKey) throws Exception {
+    private void copyLinks(JSONObject sourceIssue, String targetKey) throws Exception {
         if (!sourceIssue.getJSONObject("fields").has("issuelinks")) return;
         JSONArray links = sourceIssue.getJSONObject("fields").getJSONArray("issuelinks");
         String sourceKey = sourceIssue.getString("key");
@@ -1330,9 +1450,9 @@ public class WorkflowOrchestratorPanel extends JPanel {
                     log("  > Creating link: POST " + url + " (Payload: " + body.toString() + ")");
                 }
                 mainFrame.getService().executeRequest(url, "POST", body.toString());
-                log("  > Cloned link: " + typeName + " to " + otherKey);
+                log("  > Copied link: " + typeName + " to " + otherKey);
             } catch (Exception e) {
-                log("  > Warning: Could not clone link to " + otherKey);
+                log("  > Warning: Could not copy link to " + otherKey);
             }
         }
     }

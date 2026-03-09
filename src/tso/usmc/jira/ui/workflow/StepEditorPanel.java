@@ -4,7 +4,7 @@ import tso.usmc.jira.workflow.WorkflowStep;
 import tso.usmc.jira.workflow.FieldAction;
 import tso.usmc.jira.workflow.TransitionStep;
 import tso.usmc.jira.workflow.UpdateStep;
-import tso.usmc.jira.workflow.CloneStep;
+import tso.usmc.jira.workflow.AssetStep;
 import tso.usmc.jira.workflow.CreateStep;
 import tso.usmc.jira.workflow.LinkStep;
 import tso.usmc.jira.workflow.WorklogStep;
@@ -51,6 +51,7 @@ public class StepEditorPanel extends JPanel {
     private JTextField timeSpentField;
     private JTextField commentField;
     private JTextField startedField;
+    private JTextField subTaskFieldsComp;
 
     public StepEditorPanel(WorkflowStep step, Map<String, String> fieldOptions, Runnable onRemove, StepActionListener stepListener, StepMetadataListener metadataListener) {
         this.step = step;
@@ -132,24 +133,37 @@ public class StepEditorPanel extends JPanel {
             header.add(outwardField);
         }
 
-        if (step instanceof CloneStep) {
-            CloneStep cs = (CloneStep) step;
+        if (step instanceof AssetStep) {
+            AssetStep as = (AssetStep) step;
             header.add(new JLabel("From:"));
-            sourceTokenField = new JTextField(cs.getSourceIssueToken(), 10);
+            sourceTokenField = new JTextField(as.getSourceIssueToken(), 10);
             tso.usmc.jira.util.JiraUtils.setupExpandedView(sourceTokenField);
             header.add(sourceTokenField);
             
             header.add(new JLabel("To:"));
-            targetTokenField = new JTextField(cs.getTargetIssueToken(), 10);
+            targetTokenField = new JTextField(as.getTargetIssueToken(), 10);
             tso.usmc.jira.util.JiraUtils.setupExpandedView(targetTokenField);
             header.add(targetTokenField);
             
-            JCheckBox att = new JCheckBox("Attachments", cs.isCopyAttachments());
-            att.addActionListener(e -> cs.setCopyAttachments(att.isSelected()));
-            JCheckBox links = new JCheckBox("Links", cs.isCopyLinks());
-            links.addActionListener(e -> cs.setCopyLinks(links.isSelected()));
-            header.add(att);
-            header.add(links);
+            JCheckBox att = new JCheckBox("Attachments", as.isCopyAttachments());
+            att.addActionListener(e -> as.setCopyAttachments(att.isSelected()));
+            JCheckBox links = new JCheckBox("Links", as.isCopyLinks());
+            links.addActionListener(e -> as.setCopyLinks(links.isSelected()));
+            JCheckBox subtasks = new JCheckBox("Sub-tasks", as.isCopySubTasks());
+            subtasks.addActionListener(e -> as.setCopySubTasks(subtasks.isSelected()));
+
+            JCheckBox pOpt = new JCheckBox("Prompt for Options?", as.isPromptOptions());
+            pOpt.addActionListener(e -> as.setPromptOptions(pOpt.isSelected()));
+
+            header.add(att); 
+            header.add(links); 
+            header.add(subtasks); 
+            header.add(pOpt);
+
+            header.add(new JLabel("Fields to Asset (CSV):"));
+            subTaskFieldsComp = new JTextField(as.getSubTaskFields(), 20);
+            tso.usmc.jira.util.JiraUtils.setupExpandedView(subTaskFieldsComp);
+            header.add(subTaskFieldsComp);
         }
 
         if (step instanceof WorklogStep) {
@@ -209,7 +223,7 @@ public class StepEditorPanel extends JPanel {
         contentPanel.add(fieldsContainer);
 
         // Footer (Add Field) - Only for steps that support fields
-        if (step.getType() != WorkflowStep.StepType.CLONE && step.getType() != WorkflowStep.StepType.LINK && step.getType() != WorkflowStep.StepType.WORKLOG) {
+        if (step.getType() != WorkflowStep.StepType.ASSET && step.getType() != WorkflowStep.StepType.LINK && step.getType() != WorkflowStep.StepType.WORKLOG) {
             JPanel footer = new JPanel(new FlowLayout(FlowLayout.LEFT));
             footer.setAlignmentX(Component.LEFT_ALIGNMENT);
             JButton addFieldBtn = new JButton("+ Add Field");
@@ -297,9 +311,13 @@ public class StepEditorPanel extends JPanel {
             ((LinkStep)step).setLinkType(linkTypeField.getText());
             ((LinkStep)step).setOutwardIssueToken(outwardField.getText());
         }
-        if (step instanceof CloneStep) {
-            ((CloneStep)step).setSourceIssueToken(sourceTokenField.getText());
-            ((CloneStep)step).setTargetIssueToken(targetTokenField.getText());
+        if (step instanceof AssetStep) {
+            AssetStep as = (AssetStep) step;
+            as.setSourceIssueToken(sourceTokenField.getText());
+            as.setTargetIssueToken(targetTokenField.getText());
+            if (subTaskFieldsComp != null) {
+                as.setSubTaskFields(subTaskFieldsComp.getText());
+            }
         }
         if (step instanceof WorklogStep) {
             WorklogStep ws = (WorklogStep) step;
