@@ -80,6 +80,14 @@ public class WorkflowFieldsConfig {
         }
     }
 
+    public void replaceMetadata(Map<String, JSONObject> newMeta) {
+        synchronized (lock) {
+            fieldMetadata.clear();
+            fieldMetadata.putAll(newMeta);
+            save();
+        }
+    }
+
     public void addFieldMetadata(String fieldId, JSONObject meta) {
         synchronized (lock) {
             fieldMetadata.put(fieldId, meta);

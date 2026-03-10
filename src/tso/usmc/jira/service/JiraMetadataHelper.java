@@ -140,6 +140,37 @@ public class JiraMetadataHelper {
     }
 
     /**
+     * Fetches all project keys visible to the user.
+     */
+    public List<String> getProjectKeys() throws Exception {
+        String url = baseUrl + "/rest/api/2/project";
+        String response = apiService.executeRequest(url, "GET", null);
+        JSONArray arr = new JSONArray(response);
+        List<String> keys = new ArrayList<>();
+        for (int i = 0; i < arr.length(); i++) {
+            keys.add(arr.getJSONObject(i).getString("key"));
+        }
+        return keys;
+    }
+
+    /**
+     * Fetches available issue types for a specific project.
+     */
+    public List<JSONObject> getIssueTypesForProject(String projectKey) throws Exception {
+        String url = baseUrl + "/rest/api/2/issue/createmeta/" + projectKey + "/issuetypes";
+        String response = apiService.executeRequest(url, "GET", null);
+        JSONObject json = new JSONObject(response);
+        List<JSONObject> types = new ArrayList<>();
+        if (json.has("values")) {
+            JSONArray values = json.getJSONArray("values");
+            for (int i = 0; i < values.length(); i++) {
+                types.add(values.getJSONObject(i));
+            }
+        }
+        return types;
+    }
+
+    /**
      * Helper to extract allowed values from a field metadata object.
      */
     public List<String> getAllowedValues(JSONObject fieldMeta) {

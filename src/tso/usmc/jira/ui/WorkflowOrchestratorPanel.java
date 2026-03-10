@@ -823,97 +823,105 @@ private JComponent createPromptInput(String label, String staticOptions, JSONObj
     }
 
     private void fetchLiveMetadata() {
-        String key = contextIssueField.getText().trim();
+        int choice = JOptionPane.showConfirmDialog(this, 
+            "Deep Sync will CLEAN and REBUILD the metadata cache for ALL projects.\n" +
+            "This will erase existing cached fields and fetch them fresh.\n\n" +
+            "Continue?", "Rebuild Global Metadata Cache", JOptionPane.YES_NO_OPTION);
+        
+        if (choice != JOptionPane.YES_OPTION) return;
+
         new Thread(() -> {
             try {
                 JiraMetadataHelper helper = new JiraMetadataHelper(mainFrame.getService(), mainFrame.getBaseUrl());
-                boolean updated = false;
+                
+                // Start fresh - clear the local cache
+                cachedFullMeta.clear(); 
+                cachedFieldOptions.clear();
 
-                // 1. Try Create Meta from any CreateSteps
-                for (Component c : stepsContainer.getComponents()) {
-                    if (c instanceof StepEditorPanel) {
-                        StepEditorPanel sep = (StepEditorPanel) c;
-                        WorkflowStep step = sep.getStep();
-                        if (step instanceof CreateStep) {
-                            CreateStep cs = (CreateStep) step;
-                            String pKey = cs.getProjectKey();
-                            String iType = cs.getIssueType();
-                            if (pKey != null && iType != null && !pKey.contains("{{") && !iType.contains("{{")) {
-                                String[] types = iType.split(",");
-                                for (String type : types) {
-                                    String t = type.trim();
-                                    if (t.isEmpty()) continue;
-                                    System.out.println("Fetching Create Metadata for: " + pKey + " / " + t);
-                                    try {
-                                        Map<String, JSONObject> cm = helper.getCreateMetadata(pKey, t);
-                                        if (!cm.isEmpty()) {
-                                            cachedFullMeta.putAll(cm);
-                                            updated = true;
-                                            
-                                            // Automatically add required fields to this step's UI
-                                            SwingUtilities.invokeLater(() -> {
-                                                int addedCount = 0;
-                                                for (String fId : cm.keySet()) {
-                                                    JSONObject fMeta = cm.get(fId);
-                                                    if (fMeta.optBoolean("required", false)) {
-                                                        if (fId.equals("project") || fId.equals("issuetype")) continue;
-                                                        if (!step.getFieldActions().containsKey(fId)) {
-                                                            sep.addField(new FieldAction(fId, FieldAction.MappingMode.SET, "", ""));
-                                                            addedCount++;
-                                                        }
-                                                    }
-                                                }
-                                                if (addedCount > 0) {
-                                                    System.out.println("Auto-added " + addedCount + " required fields to step: " + step.getLabel());
-                                                }
-                                            });
+                log("--- Starting Fresh Deep Metadata Sync ---");
+                List<String> projects = helper.getProjectKeys();
+                log("Found " + projects.size() + " projects. Rebuilding fields...");
+
+                for (String pKey : projects) {
+                    try {
+                        log("Syncing Project: " + pKey);
+                        List<JSONObject> types = helper.getIssueTypesForProject(pKey);
+                        for (JSONObject type : types) {
+                            String tName = type.getString("name");
+                            String tId = type.getString("id");
+                            
+                            // 1. Create Meta
+                            log("  > [" + pKey + "] Fetching CreateMeta: " + tName);
+                            try {
+                                String fieldsUrl = mainFrame.getBaseUrl() + "/rest/api/2/issue/createmeta/" + pKey + "/issuetypes/" + tId;
+                                String fieldsResponse = mainFrame.getService().executeRequest(fieldsUrl, "GET", null);
+                                JSONObject fieldsJson = new JSONObject(fieldsResponse);
+                                if (fieldsJson.has("values")) {
+                                    JSONArray values = fieldsJson.getJSONArray("values");
+                                    for (int i = 0; i < values.length(); i++) {
+                                        JSONObject f = values.getJSONObject(i);
+                                        if (f.has("fieldId")) {
+                                            cachedFullMeta.put(f.getString("fieldId"), f);
                                         }
-                                    } catch (Exception ex) {
-                                        System.err.println("Error fetching metadata for " + t + ": " + ex.getMessage());
                                     }
                                 }
+                            } catch (Exception e) {
+                                log("    ! CreateMeta Error for " + tName + ": " + e.getMessage());
+                            }
+
+                            // 2. Edit Meta
+                            try {
+                                String jql = "project = '" + pKey + "' AND issuetype = '" + tName + "' order by created desc";
+                                String searchUrl = mainFrame.getBaseUrl() + "/rest/api/2/search?jql=" + java.net.URLEncoder.encode(jql, "UTF-8") + "&maxResults=1&fields=key";
+                                String searchResp = mainFrame.getService().executeRequest(searchUrl, "GET", null);
+                                JSONArray issues = new JSONObject(searchResp).getJSONArray("issues");
+                                if (issues.length() > 0) {
+                                    String issueKey = issues.getJSONObject(0).getString("key");
+                                    log("    > Found representative issue: " + issueKey + ". Fetching EditMeta...");
+                                    Map<String, JSONObject> em = helper.getEditMetadata(issueKey);
+                                    cachedFullMeta.putAll(em);
+                                }
+                            } catch (Exception e) {
+                                log("    ! EditMeta Search Error for " + tName + ": " + e.getMessage());
                             }
                         }
+                    } catch (Exception e) {
+                        log("  ! Project Sync Error (" + pKey + "): " + e.getMessage());
                     }
                 }
 
-                // 2. Try Edit Meta from Context Key
-                if (!key.isEmpty()) {
-                    System.out.println("Fetching Edit Metadata for Context Issue: " + key);
-                    Map<String, JSONObject> em = helper.getEditMetadata(key);
-                    cachedFullMeta.putAll(em);
-                    updated = true;
+                // 3. Link Types
+                log("Fetching Issue Link Types...");
+                try {
+                    List<JSONObject> lts = helper.getIssueLinkTypes();
+                    if (!lts.isEmpty()) {
+                        cachedLinkTypes.clear();
+                        for (JSONObject lt : lts) {
+                            cachedLinkTypes.add(lt.getString("name"));
+                        }
+                        Collections.sort(cachedLinkTypes);
+                    }
+                } catch (Exception e) {
+                    log("  ! Link Types Error: " + e.getMessage());
                 }
+
+                // Finalize and Save
+                fieldsConfig.replaceMetadata(cachedFullMeta);
                 
-                // 3. Try Link Types
-                System.out.println("Fetching Issue Link Types...");
-                List<JSONObject> lts = helper.getIssueLinkTypes();
-                if (!lts.isEmpty()) {
-                    cachedLinkTypes.clear();
-                    for (JSONObject lt : lts) {
-                        cachedLinkTypes.add(lt.getString("name"));
-                    }
-                    Collections.sort(cachedLinkTypes);
-                    updated = true;
-                }
-
-                if (updated) {
-                    fieldsConfig.updateMetadata(cachedFullMeta);
-                    SwingUtilities.invokeLater(() -> {
-                        updateTokensFromCache();
-                        for (Component c : stepsContainer.getComponents()) {
-                            if (c instanceof StepEditorPanel) {
-                                StepEditorPanel sep = (StepEditorPanel) c;
-                                sep.refreshMetadata(cachedFieldOptions, cachedFullMeta);
-                                sep.updateLinkTypes(cachedLinkTypes);
-                            }
+                SwingUtilities.invokeLater(() -> {
+                    updateTokensFromCache();
+                    for (Component c : stepsContainer.getComponents()) {
+                        if (c instanceof StepEditorPanel) {
+                            StepEditorPanel sep = (StepEditorPanel) c;
+                            sep.refreshMetadata(cachedFieldOptions, cachedFullMeta);
+                            sep.updateLinkTypes(cachedLinkTypes);
                         }
-                        JOptionPane.showMessageDialog(this, "Metadata updated (Running Total: " + cachedFullMeta.size() + " fields, " + cachedLinkTypes.size() + " link types)");
-                    });
-                } else {
-                    SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(this, "No metadata source found (need Project/Type in Create step or a Context Issue Key)."));
-                }
+                    }
+                    log("--- Deep Sync Complete ---");
+                    JOptionPane.showMessageDialog(this, "Metadata Cache Rebuilt!\nTotal Fields: " + cachedFullMeta.size());
+                });
             } catch (Exception ex) {
+                log("CRITICAL METADATA ERROR: " + ex.getMessage());
                 SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(this, "Metadata error: " + ex.getMessage()));
             }
         }).start();
