@@ -63,7 +63,7 @@ public class FieldActionPanel extends JPanel {
         
         keyCombo = new JComboBox<>(options);
         keyCombo.setEditable(true);
-        keyCombo.setPreferredSize(new Dimension(150, 25));
+        keyCombo.setPreferredSize(new Dimension(200, 25));
         
         if (action != null) {
             keyCombo.setSelectedItem(action.getFieldId());
