@@ -94,7 +94,6 @@ public class JiraUtils {
         return s;
     }
 
-    // You can add other static utility methods here in the future
     public static void setupExpandedView(javax.swing.JTextField field) {
         field.addMouseListener(new java.awt.event.MouseAdapter() {
             @Override
@@ -113,5 +112,77 @@ public class JiraUtils {
             }
         });
         field.setToolTipText("Double-click to expand");
+    }
+
+    /**
+     * FlowLayout subclass that correctly calculates its preferred size when its
+     * components wrap.
+     */
+    public static class WrapLayout extends java.awt.FlowLayout {
+        public WrapLayout() { super(java.awt.FlowLayout.LEFT); }
+        public WrapLayout(int align) { super(align); }
+        public WrapLayout(int align, int hgap, int vgap) { super(align, hgap, vgap); }
+
+        @Override
+        public java.awt.Dimension preferredLayoutSize(java.awt.Container target) {
+            return layoutSize(target, true);
+        }
+
+        @Override
+        public java.awt.Dimension minimumLayoutSize(java.awt.Container target) {
+            java.awt.Dimension size = layoutSize(target, false);
+            size.width -= getHgap() + 1;
+            return size;
+        }
+
+        private java.awt.Dimension layoutSize(java.awt.Container target, boolean preferred) {
+            synchronized (target.getTreeLock()) {
+                int targetWidth = target.getSize().width;
+                if (targetWidth == 0) targetWidth = Integer.MAX_VALUE;
+
+                int hgap = getHgap();
+                int vgap = getVgap();
+                java.awt.Insets insets = target.getInsets();
+                int horizontalInsetsAndGap = insets.left + insets.right + (hgap * 2);
+                int maxWidth = targetWidth - horizontalInsetsAndGap;
+
+                java.awt.Dimension dim = new java.awt.Dimension(0, 0);
+                int rowWidth = 0;
+                int rowHeight = 0;
+                int nmembers = target.getComponentCount();
+
+                for (int i = 0; i < nmembers; i++) {
+                    java.awt.Component m = target.getComponent(i);
+                    if (m.isVisible()) {
+                        java.awt.Dimension d = preferred ? m.getPreferredSize() : m.getMinimumSize();
+                        if (rowWidth + d.width > maxWidth) {
+                            addRow(dim, rowWidth, rowHeight);
+                            rowWidth = 0;
+                            rowHeight = 0;
+                        }
+                        if (rowWidth > 0) rowWidth += hgap;
+                        rowWidth += d.width;
+                        rowHeight = Math.max(rowHeight, d.height);
+                    }
+                }
+                addRow(dim, rowWidth, rowHeight);
+
+                dim.width += horizontalInsetsAndGap;
+                dim.height += insets.top + insets.bottom + vgap * 2;
+
+                java.awt.Container scrollPane = javax.swing.SwingUtilities.getAncestorOfClass(javax.swing.JScrollPane.class, target);
+                if (scrollPane != null && target.isValid()) {
+                    dim.width -= (hgap + 1);
+                }
+
+                return dim;
+            }
+        }
+
+        private void addRow(java.awt.Dimension dim, int rowWidth, int rowHeight) {
+            dim.width = Math.max(dim.width, rowWidth);
+            if (dim.height > 0) dim.height += getVgap();
+            dim.height += rowHeight;
+        }
     }
 }

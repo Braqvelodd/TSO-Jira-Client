@@ -816,7 +816,7 @@ public class WorkflowOrchestratorPanel extends JPanel {
                                                     if (fMeta.optBoolean("required", false)) {
                                                         if (fId.equals("project") || fId.equals("issuetype")) continue;
                                                         if (!step.getFieldActions().containsKey(fId)) {
-                                                            sep.addField(new FieldAction(fId, FieldAction.MappingMode.STATIC, "", ""));
+                                                            sep.addField(new FieldAction(fId, FieldAction.MappingMode.SET, "", ""));
                                                             addedCount++;
                                                         }
                                                     }
@@ -971,7 +971,7 @@ public class WorkflowOrchestratorPanel extends JPanel {
                             if (fMeta.optBoolean("required", false)) {
                                 if (fId.equals("project") || fId.equals("issuetype")) continue;
                                 if (!step.getFieldActions().containsKey(fId)) {
-                                    sep.addField(new FieldAction(fId, FieldAction.MappingMode.STATIC, "", ""));
+                                    sep.addField(new FieldAction(fId, FieldAction.MappingMode.SET, "", ""));
                                     addedCount++;
                                 }
                             }
@@ -1558,8 +1558,7 @@ public class WorkflowOrchestratorPanel extends JPanel {
     }
 
     private String resolveValue(FieldAction fa, JSONObject issue, Map<String, String> prompts) {
-        if (fa.getMode() == FieldAction.MappingMode.STATIC) return fa.getValue().toString();
-        if (fa.getMode() == FieldAction.MappingMode.VARIABLE) return resolveTokens(fa.getValue().toString(), issue);
+        if (fa.getMode() == FieldAction.MappingMode.SET) return resolveTokens(fa.getValue().toString(), issue);
         if (fa.getMode() == FieldAction.MappingMode.PROMPT) {
             String label = fa.getPromptLabel();
             String cleanLabel = label.replaceAll("\\[.*?\\]", "").trim();
@@ -1601,7 +1600,7 @@ public class WorkflowOrchestratorPanel extends JPanel {
                                             if (fMeta.optBoolean("required", false)) {
                                                 if (fId.equals("project") || fId.equals("issuetype")) continue;
                                                 if (!step.getFieldActions().containsKey(fId)) {
-                                                    sep.addField(new FieldAction(fId, FieldAction.MappingMode.STATIC, "", ""));
+                                                    sep.addField(new FieldAction(fId, FieldAction.MappingMode.SET, "", ""));
                                                     addedCount++;
                                                 }
                                             }

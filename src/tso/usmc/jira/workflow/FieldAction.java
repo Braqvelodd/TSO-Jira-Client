@@ -4,8 +4,7 @@ import org.json.JSONObject;
 
 public class FieldAction {
     public enum MappingMode {
-        STATIC,   // Value is fixed (e.g., "High")
-        VARIABLE, // Value is pulled from issue context (e.g., "{{issue.parent.key}}")
+        SET,      // Value is set (can contain tokens or literals)
         PROMPT    // User is asked at runtime
     }
 
@@ -54,7 +53,12 @@ public class FieldAction {
         if (json.has("fieldId")) {
             fa.setFieldId(json.getString("fieldId"));
         }
-        fa.setMode(MappingMode.valueOf(json.getString("mode")));
+        String modeStr = json.getString("mode");
+        if (modeStr.equals("STATIC") || modeStr.equals("VARIABLE")) {
+            fa.setMode(MappingMode.SET);
+        } else {
+            fa.setMode(MappingMode.valueOf(modeStr));
+        }
         if (json.has("value")) fa.setValue(json.get("value"));
         if (json.has("promptLabel")) fa.setPromptLabel(json.optString("promptLabel"));
         if (json.has("description")) fa.setDescription(json.optString("description"));

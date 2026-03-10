@@ -64,55 +64,48 @@ public class StepEditorPanel extends JPanel {
         ));
 
         // Header
-        JPanel header = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        JPanel header = new JPanel(new tso.usmc.jira.util.JiraUtils.WrapLayout(FlowLayout.LEFT, 5, 5));
         header.setBackground(new Color(230, 230, 230));
 
-        header.add(new JLabel("[" + step.getType() + "] Label:"));
         labelField = new JTextField(step.getLabel(), 20);
         tso.usmc.jira.util.JiraUtils.setupExpandedView(labelField);
-        header.add(labelField);
+        header.add(createPair("[" + step.getType() + "] Label:", labelField));
         
         if (step instanceof UpdateStep) {
-            header.add(new JLabel("Target Issue:"));
             targetIssueField = new JTextField(((UpdateStep)step).getTargetIssueToken(), 10);
             tso.usmc.jira.util.JiraUtils.setupExpandedView(targetIssueField);
-            header.add(targetIssueField);
+            header.add(createPair("Target Issue:", targetIssueField));
         }
 
         if (step instanceof TransitionStep) {
             TransitionStep ts = (TransitionStep) step;
-            header.add(new JLabel("Target Issue:"));
             targetIssueField = new JTextField(ts.getTargetIssueToken(), 10);
             tso.usmc.jira.util.JiraUtils.setupExpandedView(targetIssueField);
-            header.add(targetIssueField);
+            header.add(createPair("Target Issue:", targetIssueField));
             
-            header.add(new JLabel("Target Status:"));
             JTextField targetField = new JTextField(ts.getTargetStatus(), 15);
             tso.usmc.jira.util.JiraUtils.setupExpandedView(targetField);
             targetField.getDocument().addDocumentListener(new SimpleDocumentListener(() -> ts.setTargetStatus(targetField.getText())));
-            header.add(targetField);
+            header.add(createPair("Target Status:", targetField));
         }
 
         if (step instanceof CreateStep) {
             CreateStep cs = (CreateStep) step;
-            header.add(new JLabel("Project:"));
             projField = new JTextField(cs.getProjectKey(), 5);
             tso.usmc.jira.util.JiraUtils.setupExpandedView(projField);
-            header.add(projField);
-            header.add(new JLabel("Type:"));
+            header.add(createPair("Project:", projField));
+            
             typeField = new JTextField(cs.getIssueType(), 10);
             tso.usmc.jira.util.JiraUtils.setupExpandedView(typeField);
-            header.add(typeField);
+            header.add(createPair("Type:", typeField));
         }
 
         if (step instanceof LinkStep) {
             LinkStep ls = (LinkStep) step;
-            header.add(new JLabel("Inward:"));
             inwardField = new JTextField(ls.getInwardIssueToken(), 10);
             tso.usmc.jira.util.JiraUtils.setupExpandedView(inwardField);
-            header.add(inwardField);
+            header.add(createPair("Inward:", inwardField));
             
-            header.add(new JLabel("Type:"));
             linkTypeCombo = new JComboBox<>();
             linkTypeCombo.setPreferredSize(new Dimension(120, 22));
             linkTypeCombo.addActionListener(e -> {
@@ -121,75 +114,68 @@ public class StepEditorPanel extends JPanel {
                     linkTypeField.setText(selected);
                 }
             });
-            header.add(linkTypeCombo);
-            
             linkTypeField = new JTextField(ls.getLinkType(), 10);
             tso.usmc.jira.util.JiraUtils.setupExpandedView(linkTypeField);
-            header.add(linkTypeField);
+            header.add(createPair("Type:", linkTypeField));
+            header.add(linkTypeCombo);
             
-            header.add(new JLabel("Outward:"));
             outwardField = new JTextField(ls.getOutwardIssueToken(), 10);
             tso.usmc.jira.util.JiraUtils.setupExpandedView(outwardField);
-            header.add(outwardField);
+            header.add(createPair("Outward:", outwardField));
         }
 
         if (step instanceof AssetStep) {
             AssetStep as = (AssetStep) step;
-            header.add(new JLabel("From:"));
             sourceTokenField = new JTextField(as.getSourceIssueToken(), 10);
             tso.usmc.jira.util.JiraUtils.setupExpandedView(sourceTokenField);
-            header.add(sourceTokenField);
+            header.add(createPair("From:", sourceTokenField));
             
-            header.add(new JLabel("To:"));
             targetTokenField = new JTextField(as.getTargetIssueToken(), 10);
             tso.usmc.jira.util.JiraUtils.setupExpandedView(targetTokenField);
-            header.add(targetTokenField);
+            header.add(createPair("To:", targetTokenField));
             
+            JCheckBox pOpt = new JCheckBox("Prompt?", as.isPromptOptions());
+            pOpt.addActionListener(e -> as.setPromptOptions(pOpt.isSelected()));
+            header.add(createPair("", pOpt));
             JCheckBox att = new JCheckBox("Attachments", as.isCopyAttachments());
             att.addActionListener(e -> as.setCopyAttachments(att.isSelected()));
+            header.add(createPair("", att));
+
             JCheckBox links = new JCheckBox("Links", as.isCopyLinks());
             links.addActionListener(e -> as.setCopyLinks(links.isSelected()));
+            header.add(createPair("", links));
+
             JCheckBox subtasks = new JCheckBox("Sub-tasks", as.isCopySubTasks());
             subtasks.addActionListener(e -> as.setCopySubTasks(subtasks.isSelected()));
+            header.add(createPair("", subtasks));
 
-            JCheckBox pOpt = new JCheckBox("Prompt for Options?", as.isPromptOptions());
-            pOpt.addActionListener(e -> as.setPromptOptions(pOpt.isSelected()));
-
-            header.add(att); 
-            header.add(links); 
-            header.add(subtasks); 
-            header.add(pOpt);
-
-            header.add(new JLabel("Fields to Asset (CSV):"));
             subTaskFieldsComp = new JTextField(as.getSubTaskFields(), 20);
             tso.usmc.jira.util.JiraUtils.setupExpandedView(subTaskFieldsComp);
-            header.add(subTaskFieldsComp);
+            header.add(createPair("Fields to Asset (CSV):", subTaskFieldsComp));
         }
 
         if (step instanceof WorklogStep) {
             WorklogStep ws = (WorklogStep) step;
-            header.add(new JLabel("Target Issue:"));
             targetIssueField = new JTextField(ws.getTargetIssueToken(), 10);
             tso.usmc.jira.util.JiraUtils.setupExpandedView(targetIssueField);
-            header.add(targetIssueField);
+            header.add(createPair("Target Issue:", targetIssueField));
             
-            header.add(new JLabel("Time Spent:"));
             timeSpentField = new JTextField(ws.getTimeSpent(), 8);
             tso.usmc.jira.util.JiraUtils.setupExpandedView(timeSpentField);
-            header.add(timeSpentField);
+            header.add(createPair("Time Spent:", timeSpentField));
             
-            header.add(new JLabel("Comment:"));
             commentField = new JTextField(ws.getComment(), 15);
             tso.usmc.jira.util.JiraUtils.setupExpandedView(commentField);
-            header.add(commentField);
+            header.add(createPair("Comment:", commentField));
             
-            header.add(new JLabel("Started:"));
             startedField = new JTextField(ws.getStarted(), 12);
             tso.usmc.jira.util.JiraUtils.setupExpandedView(startedField);
-            header.add(startedField);
+            header.add(createPair("Started:", startedField));
         }
 
         // Step Rearrangement Buttons
+        JPanel movePanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 2, 0));
+        movePanel.setOpaque(false);
         JButton stepUpBtn = new JButton("▲");
         JButton stepDownBtn = new JButton("▼");
         Dimension stepBtnDim = new Dimension(22, 22);
@@ -199,8 +185,9 @@ public class StepEditorPanel extends JPanel {
         stepDownBtn.setMargin(new Insets(0, 0, 0, 0));
         stepUpBtn.addActionListener(e -> stepListener.onMoveUp(this));
         stepDownBtn.addActionListener(e -> stepListener.onMoveDown(this));
-        header.add(stepUpBtn);
-        header.add(stepDownBtn);
+        movePanel.add(stepUpBtn);
+        movePanel.add(stepDownBtn);
+        header.add(movePanel);
 
         JButton removeBtn = new JButton("X");
         removeBtn.setForeground(Color.RED);
@@ -227,7 +214,7 @@ public class StepEditorPanel extends JPanel {
             JPanel footer = new JPanel(new FlowLayout(FlowLayout.LEFT));
             footer.setAlignmentX(Component.LEFT_ALIGNMENT);
             JButton addFieldBtn = new JButton("+ Add Field");
-            addFieldBtn.addActionListener(e -> addField(new FieldAction("", FieldAction.MappingMode.STATIC, "", "")));
+            addFieldBtn.addActionListener(e -> addField(new FieldAction("", FieldAction.MappingMode.SET, "", "")));
             footer.add(addFieldBtn);
             
             if (step instanceof TransitionStep) {
@@ -283,6 +270,16 @@ public class StepEditorPanel extends JPanel {
         fieldsContainer.add(panel);
         fieldsContainer.revalidate();
         fieldsContainer.repaint();
+    }
+
+    private JPanel createPair(String label, JComponent comp) {
+        JPanel p = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
+        p.setOpaque(false);
+        if (label != null && !label.isEmpty()) {
+            p.add(new JLabel(label));
+        }
+        p.add(comp);
+        return p;
     }
 
     private void refreshFieldLayout() {
