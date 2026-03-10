@@ -1773,6 +1773,6 @@ private JComponent createPromptInput(String label, String staticOptions, JSONObj
         allTokens.addAll(tokens);
         filterTokens();
         cachedFieldOptions.put("teams_selection (Virtual)", "teams_selection");
-        cachedFieldOptions.put("Parent (System)", "parent");
+        // cachedFieldOptions.put("Parent (System)", "parent");
     }
 }

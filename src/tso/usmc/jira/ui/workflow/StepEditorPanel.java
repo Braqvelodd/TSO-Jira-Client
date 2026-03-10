@@ -67,7 +67,7 @@ public class StepEditorPanel extends JPanel {
         ));
 
         // Header
-        JPanel header = new JPanel(new tso.usmc.jira.util.JiraUtils.WrapLayout(FlowLayout.LEFT, 5, 5));
+        JPanel header = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 5));
         header.setBackground(new Color(230, 230, 230));
 
         labelField = new JTextField(step.getLabel(), 20);
