@@ -30,6 +30,8 @@ public class WorkflowOrchestratorPanel extends JPanel {
     private final JTextField recipeNameField = new JTextField(20);
     private final JTextField jqlField = new JTextField(30);
     private final JTextField contextIssueField = new JTextField(10); 
+    private final JButton fetchMetaBtn = new JButton("Fetch Metadata");
+    private final JProgressBar syncProgress = new JProgressBar();
     private final JPanel stepsContainer = new JPanel();
     private final DefaultListModel<String> tokenListModel = new DefaultListModel<>();
     private final JList<String> tokenList = new JList<>(tokenListModel);
@@ -133,8 +135,11 @@ public class WorkflowOrchestratorPanel extends JPanel {
         
         gbc.gridx=0; gbc.gridy=2; gbc.weightx=0; header.add(new JLabel("Context Issue (for metadata):"), gbc);
         gbc.gridx=1; gbc.weightx=1.0; header.add(contextIssueField, gbc);
-        JButton fetchMetaBtn = new JButton("Fetch Metadata");
         gbc.gridx=2; gbc.weightx=0; header.add(fetchMetaBtn, gbc);
+
+        syncProgress.setIndeterminate(true);
+        syncProgress.setVisible(false);
+        gbc.gridx=0; gbc.gridy=3; gbc.gridwidth=3; gbc.weightx=1.0; header.add(syncProgress, gbc);
 
         JButton saveBtn = new JButton("Save Recipe");
         gbc.gridy=0; gbc.gridx=2; header.add(saveBtn, gbc);
@@ -830,6 +835,10 @@ private JComponent createPromptInput(String label, String staticOptions, JSONObj
         
         if (choice != JOptionPane.YES_OPTION) return;
 
+        fetchMetaBtn.setEnabled(false);
+        fetchMetaBtn.setText("Syncing...");
+        syncProgress.setVisible(true);
+
         new Thread(() -> {
             try {
                 JiraMetadataHelper helper = new JiraMetadataHelper(mainFrame.getService(), mainFrame.getBaseUrl());
@@ -918,11 +927,19 @@ private JComponent createPromptInput(String label, String staticOptions, JSONObj
                         }
                     }
                     log("--- Deep Sync Complete ---");
+                    fetchMetaBtn.setEnabled(true);
+                    fetchMetaBtn.setText("Fetch Metadata");
+                    syncProgress.setVisible(false);
                     JOptionPane.showMessageDialog(this, "Metadata Cache Rebuilt!\nTotal Fields: " + cachedFullMeta.size());
                 });
             } catch (Exception ex) {
                 log("CRITICAL METADATA ERROR: " + ex.getMessage());
-                SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(this, "Metadata error: " + ex.getMessage()));
+                SwingUtilities.invokeLater(() -> {
+                    fetchMetaBtn.setEnabled(true);
+                    fetchMetaBtn.setText("Fetch Metadata");
+                    syncProgress.setVisible(false);
+                    JOptionPane.showMessageDialog(this, "Metadata error: " + ex.getMessage());
+                });
             }
         }).start();
     }
