@@ -136,7 +136,7 @@ public class WorkflowOrchestratorPanel extends JPanel {
         gbc.gridx=0; gbc.gridy=2; gbc.weightx=0; header.add(new JLabel("Project Filter / Context Issue:"), gbc);
         gbc.gridx=1; gbc.weightx=1.0; header.add(contextIssueField, gbc);
         gbc.gridx=2; gbc.weightx=0; header.add(fetchMetaBtn, gbc);
-        contextIssueField.setToolTipText("Deep Sync: Comma-separated project keys (or blank for ALL). Transition Meta: A specific issue key.");
+        contextIssueField.setToolTipText("Deep Sync: PROJ1, PROJ2 (Rebuild Filtered) or +PROJ1 (Incremental Add). Transition Meta: Issue Key.");
 
         syncProgress.setIndeterminate(true);
         syncProgress.setVisible(false);
@@ -830,14 +830,32 @@ private JComponent createPromptInput(String label, String staticOptions, JSONObj
 
     private void fetchLiveMetadata() {
         String filterText = contextIssueField.getText().trim();
+        boolean isIncremental = filterText.startsWith("+");
         boolean isFiltered = !filterText.isEmpty();
         
-        String msg = isFiltered ? 
-            "Deep Sync will REBUILD metadata for these projects: " + filterText :
-            "Deep Sync will CLEAN and REBUILD the metadata cache for ALL projects.";
+        // Projects to sync
+        final List<String> targetProjects = new ArrayList<>();
+        if (isFiltered) {
+            String cleanFilter = isIncremental ? filterText.substring(1) : filterText;
+            String[] parts = cleanFilter.split("\\s*,\\s*");
+            for (String p : parts) {
+                String pKey = p.trim();
+                if (pKey.startsWith("+")) pKey = pKey.substring(1);
+                if (!pKey.isEmpty()) targetProjects.add(pKey);
+            }
+        }
+
+        String msg;
+        if (!isFiltered) {
+            msg = "Deep Sync will CLEAN and REBUILD the metadata cache for ALL projects.";
+        } else if (isIncremental) {
+            msg = "Deep Sync will ADD/UPDATE metadata for these projects: " + targetProjects + "\n(Existing cache will be preserved)";
+        } else {
+            msg = "Deep Sync will CLEAN and REBUILD metadata for ONLY these projects: " + targetProjects;
+        }
             
         int choice = JOptionPane.showConfirmDialog(this, 
-            msg + "\nContinue?", "Rebuild Global Metadata Cache", JOptionPane.YES_NO_OPTION);
+            msg + "\n\nContinue?", "Rebuild Global Metadata Cache", JOptionPane.YES_NO_OPTION);
         
         if (choice != JOptionPane.YES_OPTION) return;
 
@@ -849,18 +867,17 @@ private JComponent createPromptInput(String label, String staticOptions, JSONObj
             try {
                 JiraMetadataHelper helper = new JiraMetadataHelper(mainFrame.getService(), mainFrame.getBaseUrl());
                 
-                // If not filtered, clear everything. If filtered, we keep others but overwrite these.
-                if (!isFiltered) {
+                if (!isIncremental) {
                     cachedFullMeta.clear(); 
                     cachedFieldOptions.clear();
-                    log("--- Starting Fresh Global Deep Sync ---");
+                    log("--- Starting Fresh " + (isFiltered ? "Filtered" : "Global") + " Sync ---");
                 } else {
-                    log("--- Starting Filtered Deep Sync: " + filterText + " ---");
+                    log("--- Starting Incremental Sync for: " + targetProjects + " ---");
                 }
 
                 List<String> projects;
                 if (isFiltered) {
-                    projects = Arrays.asList(filterText.split("\\s*,\\s*"));
+                    projects = targetProjects;
                 } else {
                     projects = helper.getProjectKeys();
                     log("Found " + projects.size() + " total projects.");
@@ -942,7 +959,7 @@ private JComponent createPromptInput(String label, String staticOptions, JSONObj
                 }
 
                 // Finalize and Save
-                if (isFiltered) {
+                if (isIncremental) {
                     fieldsConfig.updateMetadata(cachedFullMeta);
                 } else {
                     fieldsConfig.replaceMetadata(cachedFullMeta);
