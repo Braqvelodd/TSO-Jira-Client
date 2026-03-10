@@ -8,6 +8,7 @@ import tso.usmc.jira.workflow.AssetStep;
 import tso.usmc.jira.workflow.CreateStep;
 import tso.usmc.jira.workflow.LinkStep;
 import tso.usmc.jira.workflow.WorklogStep;
+import org.json.JSONObject;
 
 import javax.swing.*;
 import java.awt.BorderLayout;
@@ -37,6 +38,7 @@ public class StepEditorPanel extends JPanel {
     private final JPanel fieldsContainer;
     private final List<FieldActionPanel> actionPanels = new ArrayList<>();
     private final Map<String, String> fieldOptions; // Label -> ID mapping
+    private final Map<String, JSONObject> fullMetadata;
     private final StepMetadataListener metadataListener;
 
     private JTextField targetIssueField;
@@ -53,9 +55,10 @@ public class StepEditorPanel extends JPanel {
     private JTextField startedField;
     private JTextField subTaskFieldsComp;
 
-    public StepEditorPanel(WorkflowStep step, Map<String, String> fieldOptions, Runnable onRemove, StepActionListener stepListener, StepMetadataListener metadataListener) {
+    public StepEditorPanel(WorkflowStep step, Map<String, String> fieldOptions, Map<String, JSONObject> fullMetadata, Runnable onRemove, StepActionListener stepListener, StepMetadataListener metadataListener) {
         this.step = step;
         this.fieldOptions = fieldOptions;
+        this.fullMetadata = fullMetadata;
         this.metadataListener = metadataListener;
         setLayout(new BorderLayout());
         setBorder(BorderFactory.createCompoundBorder(
@@ -236,7 +239,7 @@ public class StepEditorPanel extends JPanel {
     }
 
     public void addField(FieldAction action) {
-        FieldActionPanel panel = new FieldActionPanel(action, fieldOptions, new FieldActionPanel.FieldActionListener() {
+        FieldActionPanel panel = new FieldActionPanel(action, fieldOptions, fullMetadata, new FieldActionPanel.FieldActionListener() {
             @Override
             public void onMoveUp(FieldActionPanel p) {
                 int idx = actionPanels.indexOf(p);
@@ -332,9 +335,9 @@ public class StepEditorPanel extends JPanel {
 
     public WorkflowStep getStep() { return step; }
 
-    public void refreshMetadata(Map<String, String> fieldOptions) {
+    public void refreshMetadata(Map<String, String> fieldOptions, Map<String, JSONObject> fullMetadata) {
         for (FieldActionPanel panel : actionPanels) {
-            panel.refreshMetadata(fieldOptions);
+            panel.refreshMetadata(fieldOptions, fullMetadata);
         }
     }
 

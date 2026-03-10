@@ -1,9 +1,12 @@
 package tso.usmc.jira.ui.workflow;
 
 import tso.usmc.jira.workflow.FieldAction;
+import org.json.JSONArray;
+import org.json.JSONObject;
 import javax.swing.*;
 import java.awt.*;
 import java.util.*;
+import java.util.List;
 
 public class FieldActionPanel extends JPanel {
     public interface FieldActionListener {
@@ -20,9 +23,11 @@ public class FieldActionPanel extends JPanel {
     private final JTextField promptOptionsField;
     private final CardLayout cardLayout;
     private Map<String, String> currentOptions;
+    private Map<String, JSONObject> fullMetadata;
 
-    public FieldActionPanel(FieldAction action, Map<String, String> fieldOptions, FieldActionListener listener) {
+    public FieldActionPanel(FieldAction action, Map<String, String> fieldOptions, Map<String, JSONObject> fullMetadata, FieldActionListener listener) {
         this.currentOptions = fieldOptions;
+        this.fullMetadata = fullMetadata;
         setLayout(new FlowLayout(FlowLayout.LEFT, 5, 0));
 
         // Rearrangement and Removal Buttons
@@ -86,12 +91,19 @@ public class FieldActionPanel extends JPanel {
         tso.usmc.jira.util.JiraUtils.setupExpandedView(promptQuestionField);
         tso.usmc.jira.util.JiraUtils.setupExpandedView(promptOptionsField);
         
+        valueField.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
+            public void insertUpdate(javax.swing.event.DocumentEvent e) { validateValue(); }
+            public void removeUpdate(javax.swing.event.DocumentEvent e) { validateValue(); }
+            public void changedUpdate(javax.swing.event.DocumentEvent e) { validateValue(); }
+        });
+
         valuePanel.add(valueField, FieldAction.MappingMode.SET.toString());
         valuePanel.add(promptPanel, FieldAction.MappingMode.PROMPT.toString());
         
         modeCombo.addActionListener(e -> {
             FieldAction.MappingMode mode = (FieldAction.MappingMode) modeCombo.getSelectedItem();
             cardLayout.show(valuePanel, mode.toString());
+            validateValue();
         });
 
         add(new JLabel("Field:"));
@@ -112,6 +124,7 @@ public class FieldActionPanel extends JPanel {
             }
             cardLayout.show(valuePanel, action.getMode().toString());
         }
+        validateValue();
     }
 
     public FieldAction getFieldAction() {
@@ -137,8 +150,9 @@ public class FieldActionPanel extends JPanel {
         return action;
     }
 
-    public void refreshMetadata(Map<String, String> fieldOptions) {
+    public void refreshMetadata(Map<String, String> fieldOptions, Map<String, JSONObject> fullMetadata) {
         this.currentOptions = fieldOptions;
+        this.fullMetadata = fullMetadata;
         Object current = keyCombo.getSelectedItem();
         String currentStr = current != null ? current.toString() : "";
         
@@ -157,9 +171,78 @@ public class FieldActionPanel extends JPanel {
         for (String label : fieldOptions.keySet()) {
             if (fieldOptions.get(label).equals(currentId)) {
                 keyCombo.setSelectedItem(label);
+                validateValue();
                 return;
             }
         }
         keyCombo.setSelectedItem(currentStr);
+        validateValue();
+    }
+
+    private void validateValue() {
+        if (modeCombo.getSelectedItem() != FieldAction.MappingMode.SET) {
+            valueField.setBorder(UIManager.getLookAndFeelDefaults().getBorder("TextField.border"));
+            return;
+        }
+
+        String val = valueField.getText().trim();
+        if (val.isEmpty() || val.contains("{{")) {
+            valueField.setBorder(UIManager.getLookAndFeelDefaults().getBorder("TextField.border"));
+            return;
+        }
+
+        String fieldId = getSelectedFieldId();
+        if (fullMetadata != null && fullMetadata.containsKey(fieldId)) {
+            JSONObject meta = fullMetadata.get(fieldId);
+            if (meta.has("allowedValues")) {
+                JSONArray allowed = meta.getJSONArray("allowedValues");
+                boolean found = false;
+                
+                // For arrays, split by comma
+                boolean isArray = false;
+                if (meta.has("schema")) isArray = "array".equals(meta.getJSONObject("schema").optString("type"));
+                
+                String[] parts = isArray ? val.split(",") : new String[]{val};
+                
+                for (String part : parts) {
+                    String p = part.trim();
+                    boolean partFound = false;
+                    for (int i = 0; i < allowed.length(); i++) {
+                        JSONObject av = allowed.getJSONObject(i);
+                        String name = av.optString("name", av.optString("value", ""));
+                        String id = av.optString("id", "");
+                        if (p.equalsIgnoreCase(name) || p.equalsIgnoreCase(id)) {
+                            partFound = true;
+                            break;
+                        }
+                    }
+                    if (!partFound) {
+                        found = false;
+                        break;
+                    }
+                    found = true;
+                }
+
+                if (!found) {
+                    valueField.setBorder(BorderFactory.createLineBorder(Color.RED, 2));
+                    valueField.setToolTipText("Value not in allowed list for this field.");
+                } else {
+                    valueField.setBorder(UIManager.getLookAndFeelDefaults().getBorder("TextField.border"));
+                    valueField.setToolTipText(null);
+                }
+                return;
+            }
+        }
+        valueField.setBorder(UIManager.getLookAndFeelDefaults().getBorder("TextField.border"));
+        valueField.setToolTipText(null);
+    }
+
+    private String getSelectedFieldId() {
+        Object selected = keyCombo.getSelectedItem();
+        String selectedStr = selected != null ? selected.toString() : "";
+        if (currentOptions != null && currentOptions.containsKey(selectedStr)) {
+            return currentOptions.get(selectedStr);
+        }
+        return selectedStr;
     }
 }

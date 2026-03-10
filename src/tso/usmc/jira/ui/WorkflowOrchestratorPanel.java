@@ -430,6 +430,12 @@ public class WorkflowOrchestratorPanel extends JPanel {
                 } else if (selected != null) {
                     val = selected.toString();
                 }
+            } else if (comp instanceof JScrollPane) {
+                Component view = ((JScrollPane) comp).getViewport().getView();
+                if (view instanceof JList) {
+                    List<String> selectedValues = ((JList<String>) view).getSelectedValuesList();
+                    val = String.join(",", selectedValues);
+                }
             } else if (comp instanceof PromptChoicePanel) {
                 val = ((PromptChoicePanel) comp).getValue();
             } else if (comp instanceof AssetOptionsPromptPanel) {
@@ -599,15 +605,45 @@ public class WorkflowOrchestratorPanel extends JPanel {
             }
         }
     }
+private JComponent createPromptInput(String label, String staticOptions, JSONObject contextIssue) {
+    String tagSource = null;
+    if (staticOptions != null && (staticOptions.contains("[config:") || staticOptions.contains("[choice:") || staticOptions.contains("[allowed:"))) tagSource = staticOptions;
+    else if (label != null && (label.contains("[config:") || label.contains("[choice:") || label.contains("[allowed:"))) tagSource = label;
 
-    private JComponent createPromptInput(String label, String staticOptions, JSONObject contextIssue) {
-        String tagSource = null;
-        if (staticOptions != null && (staticOptions.contains("[config:") || staticOptions.contains("[choice:"))) tagSource = staticOptions;
-        else if (label != null && (label.contains("[config:") || label.contains("[choice:"))) tagSource = label;
+    if (tagSource != null) {
+        try {
+            if (tagSource.contains("[allowed:")) {
+                int start = tagSource.indexOf("[allowed:") + 9;
+                int end = tagSource.indexOf("]", start);
+                if (end > start) {
+                    String fieldId = tagSource.substring(start, end).trim();
+                    if (cachedFullMeta.containsKey(fieldId)) {
+                        JSONObject meta = cachedFullMeta.get(fieldId);
+                        if (meta.has("allowedValues")) {
+                            JSONArray allowed = meta.getJSONArray("allowedValues");
+                            Vector<String> options = new Vector<>();
+                            for (int i = 0; i < allowed.length(); i++) {
+                                JSONObject av = allowed.getJSONObject(i);
+                                options.add(av.optString("name", av.optString("value", "")));
+                            }
 
-        if (tagSource != null) {
-            try {
-                if (tagSource.contains("[choice:")) {
+                            boolean isArray = false;
+                            if (meta.has("schema")) isArray = "array".equals(meta.getJSONObject("schema").optString("type"));
+
+                            if (isArray) {
+                                JList<String> list = new JList<>(options);
+                                list.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
+                                list.setVisibleRowCount(4);
+                                return new JScrollPane(list);
+                            } else {
+                                return new JComboBox<>(options);
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (tagSource.contains("[choice:")) {
                     int start = tagSource.indexOf("[choice:") + 8;
                     int end = tagSource.lastIndexOf("]");
                     if (end > start) {
@@ -861,7 +897,7 @@ public class WorkflowOrchestratorPanel extends JPanel {
                         for (Component c : stepsContainer.getComponents()) {
                             if (c instanceof StepEditorPanel) {
                                 StepEditorPanel sep = (StepEditorPanel) c;
-                                sep.refreshMetadata(cachedFieldOptions);
+                                sep.refreshMetadata(cachedFieldOptions, cachedFullMeta);
                                 sep.updateLinkTypes(cachedLinkTypes);
                             }
                         }
@@ -882,7 +918,7 @@ public class WorkflowOrchestratorPanel extends JPanel {
     }
 
     private void addStepUI(WorkflowStep step) {
-        StepEditorPanel panel = new StepEditorPanel(step, cachedFieldOptions, () -> {
+        StepEditorPanel panel = new StepEditorPanel(step, cachedFieldOptions, cachedFullMeta, () -> {
             stepsContainer.remove(getStepPanel(step));
             stepsContainer.revalidate();
             stepsContainer.repaint();
@@ -962,7 +998,7 @@ public class WorkflowOrchestratorPanel extends JPanel {
                     Component cp = getStepPanel(step);
                     if (cp instanceof StepEditorPanel) {
                         StepEditorPanel sep = (StepEditorPanel) cp;
-                        sep.refreshMetadata(cachedFieldOptions);
+                        sep.refreshMetadata(cachedFieldOptions, cachedFullMeta);
                         
                         // Automatically add required fields
                         int addedCount = 0;
@@ -1014,7 +1050,7 @@ public class WorkflowOrchestratorPanel extends JPanel {
                 SwingUtilities.invokeLater(() -> {
                     Component cp = getStepPanel(step);
                     if (cp instanceof StepEditorPanel) {
-                        ((StepEditorPanel) cp).refreshMetadata(cachedFieldOptions);
+                        ((StepEditorPanel) cp).refreshMetadata(cachedFieldOptions, cachedFullMeta);
                     }
                     JOptionPane.showMessageDialog(this, "Fetched " + meta.size() + " fields for transition '" + step.getTargetStatus() + "'");
                 });
@@ -1646,7 +1682,7 @@ public class WorkflowOrchestratorPanel extends JPanel {
                         for (Component c : stepsContainer.getComponents()) {
                             if (c instanceof StepEditorPanel) {
                                 StepEditorPanel sep = (StepEditorPanel) c;
-                                sep.refreshMetadata(cachedFieldOptions);
+                                sep.refreshMetadata(cachedFieldOptions, cachedFullMeta);
                                 sep.updateLinkTypes(cachedLinkTypes);
                             }
                         }
