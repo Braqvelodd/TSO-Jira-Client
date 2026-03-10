@@ -14,7 +14,8 @@ if "%ENV%"=="WORK" (
     set "JDK_BIN=C:\Program Files\Java\jdk21\TSO\bin"
     set "SOURCES=@sources.txt"
 ) else (
-    set "JDK_BIN=C:\Program Files\Java\jdk-25\bin"
+    @REM set "JDK_BIN=C:\Program Files\Java\jdk-25\bin"
+    set "JDK_BIN=C:\Program Files\Java\jdk-25.0.2\bin"
     set "SOURCES=@sources.txt"
 )
 
@@ -36,7 +37,8 @@ if "%EMBED_MODEL%"=="YES" (
     set "JAR_RESOURCES=-C bin . -C resources . -C embedding ."
 ) else (
     echo Skipping model assembly for fast build...
-    set "JAR_RESOURCES=-C bin . -C resources . -C embedding\bin ."
+    @REM set "JAR_RESOURCES=-C bin . -C resources . -C embedding\bin ."
+    set "JAR_RESOURCES=-C bin . -C resources ."
 )
 
 :: Setting up embedding bin
