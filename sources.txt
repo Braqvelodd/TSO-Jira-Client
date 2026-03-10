@@ -30,3 +30,4 @@ src\tso\usmc\jira\util\JsonUtils.java
 src\tso\usmc\jira\util\JiraUtils.java
 src\tso\usmc\jira\util\JiraConfig.java
 src\tso\usmc\jira\util\ConfigChangeListener.java
+src\tso\usmc\jira\util\WorkflowFieldsConfig.java
