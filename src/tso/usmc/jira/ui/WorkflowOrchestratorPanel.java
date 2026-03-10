@@ -143,7 +143,7 @@ public class WorkflowOrchestratorPanel extends JPanel {
         gbc.gridx=0; gbc.gridy=3; gbc.gridwidth=3; gbc.weightx=1.0; header.add(syncProgress, gbc);
 
         JButton saveBtn = new JButton("Save Recipe");
-        gbc.gridy=0; gbc.gridx=2; header.add(saveBtn, gbc);
+        gbc.gridy=0; gbc.gridx=2; gbc.weightx=0; header.add(saveBtn, gbc);
 
         JButton toggleTokensBtn = new JButton("Toggle Tokens");
         gbc.gridy=1; gbc.gridx=2; header.add(toggleTokensBtn, gbc);
@@ -882,6 +882,9 @@ private JComponent createPromptInput(String label, String staticOptions, JSONObj
                                 String fieldsResponse = mainFrame.getService().executeRequest(fieldsUrl, "GET", null);
                                 JSONObject fieldsJson = new JSONObject(fieldsResponse);
                                 if (fieldsJson.has("values")) {
+                                    // Store full project/type specific create meta
+                                    cachedFullMeta.put("createmeta:" + pKey + ":" + tName, fieldsJson);
+
                                     JSONArray values = fieldsJson.getJSONArray("values");
                                     for (int i = 0; i < values.length(); i++) {
                                         JSONObject f = values.getJSONObject(i);
@@ -894,7 +897,7 @@ private JComponent createPromptInput(String label, String staticOptions, JSONObj
                                 log("    ! CreateMeta Error for " + tName + ": " + e.getMessage());
                             }
 
-                            // 2. Edit Meta
+                            // 2. Edit Meta & Transitions
                             try {
                                 String jql = "project = '" + pKey + "' AND issuetype = '" + tName + "' order by created desc";
                                 String searchUrl = mainFrame.getBaseUrl() + "/rest/api/2/search?jql=" + java.net.URLEncoder.encode(jql, "UTF-8") + "&maxResults=1&fields=key";
@@ -902,12 +905,24 @@ private JComponent createPromptInput(String label, String staticOptions, JSONObj
                                 JSONArray issues = new JSONObject(searchResp).getJSONArray("issues");
                                 if (issues.length() > 0) {
                                     String issueKey = issues.getJSONObject(0).getString("key");
+                                    
                                     log("    > Found representative issue: " + issueKey + ". Fetching EditMeta...");
                                     Map<String, JSONObject> em = helper.getEditMetadata(issueKey);
                                     cachedFullMeta.putAll(em);
+
+                                    log("    > Fetching Transitions for: " + issueKey);
+                                    String transUrl = mainFrame.getBaseUrl() + "/rest/api/2/issue/" + issueKey + "/transitions?expand=transitions.fields";
+                                    String transResp = mainFrame.getService().executeRequest(transUrl, "GET", null);
+                                    JSONArray transArr = new JSONObject(transResp).getJSONArray("transitions");
+                                    for (int i = 0; i < transArr.length(); i++) {
+                                        JSONObject t = transArr.getJSONObject(i);
+                                        String transName = t.getString("name");
+                                        // Store project/type/name specific transition meta
+                                        cachedFullMeta.put("trans:" + pKey + ":" + tName + ":" + transName, t);
+                                    }
                                 }
                             } catch (Exception e) {
-                                log("    ! EditMeta Search Error for " + tName + ": " + e.getMessage());
+                                log("    ! Edit/Trans Meta Error for " + tName + ": " + e.getMessage());
                             }
                         }
                     } catch (Exception e) {
@@ -919,12 +934,8 @@ private JComponent createPromptInput(String label, String staticOptions, JSONObj
                 log("Fetching Issue Link Types...");
                 try {
                     List<JSONObject> lts = helper.getIssueLinkTypes();
-                    if (!lts.isEmpty()) {
-                        cachedLinkTypes.clear();
-                        for (JSONObject lt : lts) {
-                            cachedLinkTypes.add(lt.getString("name"));
-                        }
-                        Collections.sort(cachedLinkTypes);
+                    for (JSONObject lt : lts) {
+                        cachedFullMeta.put("linktype:" + lt.getString("name"), lt);
                     }
                 } catch (Exception e) {
                     log("  ! Link Types Error: " + e.getMessage());
@@ -1029,6 +1040,22 @@ private JComponent createPromptInput(String label, String staticOptions, JSONObj
             return;
         }
 
+        // Check Cache first
+        String cacheKey = "createmeta:" + pKey + ":" + iType;
+        if (cachedFullMeta.containsKey(cacheKey)) {
+            JSONObject cached = cachedFullMeta.get(cacheKey);
+            if (cached.has("values")) {
+                JSONArray values = cached.getJSONArray("values");
+                Map<String, JSONObject> meta = new HashMap<>();
+                for (int i = 0; i < values.length(); i++) {
+                    JSONObject f = values.getJSONObject(i);
+                    meta.put(f.getString("fieldId"), f);
+                }
+                applyCreateMetadata(step, meta);
+                return;
+            }
+        }
+
         new Thread(() -> {
             try {
                 JiraMetadataHelper helper = new JiraMetadataHelper(mainFrame.getService(), mainFrame.getBaseUrl());
@@ -1038,80 +1065,117 @@ private JComponent createPromptInput(String label, String staticOptions, JSONObj
                     return;
                 }
 
-                // Merge into global cache
+                // Update global cache (the individual fields)
                 for (String fId : meta.keySet()) {
                     cachedFullMeta.put(fId, meta.get(fId));
-                    String name = meta.get(fId).getString("name");
-                    cachedFieldOptions.put(name + " (" + fId + ")", fId);
                 }
                 fieldsConfig.updateMetadata(meta);
 
-                SwingUtilities.invokeLater(() -> {
-                    updateTokensFromCache();
-                    Component cp = getStepPanel(step);
-                    if (cp instanceof StepEditorPanel) {
-                        StepEditorPanel sep = (StepEditorPanel) cp;
-                        sep.refreshMetadata(cachedFieldOptions, cachedFullMeta);
-                        
-                        // Automatically add required fields
-                        int addedCount = 0;
-                        for (String fId : meta.keySet()) {
-                            JSONObject fMeta = meta.get(fId);
-                            if (fMeta.optBoolean("required", false)) {
-                                if (fId.equals("project") || fId.equals("issuetype")) continue;
-                                if (!step.getFieldActions().containsKey(fId)) {
-                                    sep.addField(new FieldAction(fId, FieldAction.MappingMode.SET, "", ""));
-                                    addedCount++;
-                                }
-                            }
-                        }
-                        JOptionPane.showMessageDialog(this, "Fetched " + meta.size() + " fields. Added " + addedCount + " required fields.");
-                    }
-                });
+                SwingUtilities.invokeLater(() -> applyCreateMetadata(step, meta));
             } catch (Exception ex) {
                 SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(this, "Create Meta Error: " + ex.getMessage()));
             }
         }).start();
     }
 
+    private void applyCreateMetadata(CreateStep step, Map<String, JSONObject> meta) {
+        updateTokensFromCache();
+        Component cp = getStepPanel(step);
+        if (cp instanceof StepEditorPanel) {
+            StepEditorPanel sep = (StepEditorPanel) cp;
+            sep.refreshMetadata(cachedFieldOptions, cachedFullMeta);
+            
+            int addedCount = 0;
+            for (String fId : meta.keySet()) {
+                JSONObject fMeta = meta.get(fId);
+                if (fMeta.optBoolean("required", false)) {
+                    if (fId.equals("project") || fId.equals("issuetype")) continue;
+                    if (!step.getFieldActions().containsKey(fId)) {
+                        sep.addField(new FieldAction(fId, FieldAction.MappingMode.SET, "", ""));
+                        addedCount++;
+                    }
+                }
+            }
+            JOptionPane.showMessageDialog(this, "Fetched " + meta.size() + " fields. Added " + addedCount + " required fields.");
+        }
+    }
+
     private void fetchTransitionMetadata(TransitionStep step) {
-        String key = contextIssueField.getText().trim();
-        if (key.isEmpty()) {
-            JOptionPane.showMessageDialog(this, "Please provide a Context Issue Key to fetch transition metadata.");
+        String filterText = contextIssueField.getText().trim();
+        
+        // Context Logic:
+        // 1. If it's a specific issue key (contains '-'), use it for live API
+        // 2. If it's a project key or project filter, check cache for trans:PROJ:TYPE:NAME
+        // 3. Fallback: ask for context
+        
+        String targetStatus = step.getTargetStatus();
+        
+        if (filterText.isEmpty()) {
+            JOptionPane.showMessageDialog(this, "Please provide a Context Issue Key (for live API) or Project Key (for cache) in the Filter field.");
             return;
         }
+
+        if (filterText.contains("-")) {
+            // Likely an issue key, do live API
+            fetchLiveTransitionMetadata(step, filterText);
+        } else {
+            // Likely project key(s), try cache for any project listed
+            String[] projects = filterText.split("\\s*,\\s*");
+            for (String p : projects) {
+                // We need to guess the issue type or just find the first match in cache for this project and status
+                for (String cKey : cachedFullMeta.keySet()) {
+                    if (cKey.startsWith("trans:" + p + ":") && cKey.endsWith(":" + targetStatus)) {
+                        JSONObject transMeta = cachedFullMeta.get(cKey);
+                        if (transMeta.has("fields")) {
+                            JSONObject fieldsJson = transMeta.getJSONObject("fields");
+                            Map<String, JSONObject> meta = new HashMap<>();
+                            for (String fId : fieldsJson.keySet()) {
+                                meta.put(fId, fieldsJson.getJSONObject(fId));
+                            }
+                            applyTransitionMetadata(step, meta);
+                            return;
+                        }
+                    }
+                }
+            }
+            // If not in cache, try one live fetch if it looks like we can
+            JOptionPane.showMessageDialog(this, "No cached transition metadata found for '" + targetStatus + "' in projects: " + filterText);
+        }
+    }
+
+    private void fetchLiveTransitionMetadata(TransitionStep step, String issueKey) {
         new Thread(() -> {
             try {
                 JiraMetadataHelper helper = new JiraMetadataHelper(mainFrame.getService(), mainFrame.getBaseUrl());
-                String transUrl = mainFrame.getBaseUrl() + "/rest/api/2/issue/" + key + "/transitions";
+                String transUrl = mainFrame.getBaseUrl() + "/rest/api/2/issue/" + issueKey + "/transitions";
                 String transMeta = mainFrame.getService().executeRequest(transUrl, "GET", null);
                 String tid = JiraUtils.findTransitionIdByName(transMeta, step.getTargetStatus());
                 
                 if (tid == null) {
-                    SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(this, "Transition '" + step.getTargetStatus() + "' not found on issue " + key));
+                    SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(this, "Transition '" + step.getTargetStatus() + "' not found on issue " + issueKey));
                     return;
                 }
                 
-                Map<String, JSONObject> meta = helper.getTransitionMetadata(key, tid);
-                // Merge into global cache for token browsing, but also focus for this step
+                Map<String, JSONObject> meta = helper.getTransitionMetadata(issueKey, tid);
+                // Update global cache
                 for (String fId : meta.keySet()) {
                     cachedFullMeta.put(fId, meta.get(fId));
-                    String name = meta.get(fId).getString("name");
-                    cachedFieldOptions.put(name + " (" + fId + ")", fId);
                 }
                 fieldsConfig.updateMetadata(meta);
                 
-                SwingUtilities.invokeLater(() -> {
-                    Component cp = getStepPanel(step);
-                    if (cp instanceof StepEditorPanel) {
-                        ((StepEditorPanel) cp).refreshMetadata(cachedFieldOptions, cachedFullMeta);
-                    }
-                    JOptionPane.showMessageDialog(this, "Fetched " + meta.size() + " fields for transition '" + step.getTargetStatus() + "'");
-                });
+                SwingUtilities.invokeLater(() -> applyTransitionMetadata(step, meta));
             } catch (Exception ex) {
                 SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(this, "Transition Meta Error: " + ex.getMessage()));
             }
         }).start();
+    }
+
+    private void applyTransitionMetadata(TransitionStep step, Map<String, JSONObject> meta) {
+        Component cp = getStepPanel(step);
+        if (cp instanceof StepEditorPanel) {
+            ((StepEditorPanel) cp).refreshMetadata(cachedFieldOptions, cachedFullMeta);
+        }
+        JOptionPane.showMessageDialog(this, "Fetched " + meta.size() + " fields for transition '" + step.getTargetStatus() + "'");
     }
 
     private Component getStepPanel(WorkflowStep step) {
@@ -1151,9 +1215,6 @@ private JComponent createPromptInput(String label, String staticOptions, JSONObj
                 }
                 stepsContainer.revalidate();
                 stepsContainer.repaint();
-                
-                // Background fetch metadata for the newly loaded recipe
-                autoFetchMetadataForRecipe(recipe);
             }
         } catch (Exception e) {
             e.printStackTrace();
@@ -1657,93 +1718,9 @@ private JComponent createPromptInput(String label, String staticOptions, JSONObj
         SwingUtilities.invokeLater(() -> { runnerLog.append(msg + "\n"); runnerLog.setCaretPosition(runnerLog.getDocument().getLength()); });
     }
 
-    private void autoFetchMetadataForRecipe(WorkflowRecipe recipe) {
-        new Thread(() -> {
-            try {
-                JiraMetadataHelper helper = new JiraMetadataHelper(mainFrame.getService(), mainFrame.getBaseUrl());
-                boolean updated = false;
-
-                for (WorkflowStep step : recipe.getSteps()) {
-                    if (step instanceof CreateStep) {
-                        CreateStep cs = (CreateStep) step;
-                        String pKey = cs.getProjectKey();
-                        String iType = cs.getIssueType();
-                        if (pKey != null && iType != null && !pKey.contains("{{") && !iType.contains("{{")) {
-                            Map<String, JSONObject> meta = helper.getCreateMetadata(pKey, iType);
-                            if (!meta.isEmpty()) {
-                                cachedFullMeta.putAll(meta);
-                                updated = true;
-                                
-                                // Auto-add required fields logic
-                                SwingUtilities.invokeLater(() -> {
-                                    Component cp = getStepPanel(step);
-                                    if (cp instanceof StepEditorPanel) {
-                                        StepEditorPanel sep = (StepEditorPanel) cp;
-                                        int addedCount = 0;
-                                        for (String fId : meta.keySet()) {
-                                            JSONObject fMeta = meta.get(fId);
-                                            if (fMeta.optBoolean("required", false)) {
-                                                if (fId.equals("project") || fId.equals("issuetype")) continue;
-                                                if (!step.getFieldActions().containsKey(fId)) {
-                                                    sep.addField(new FieldAction(fId, FieldAction.MappingMode.SET, "", ""));
-                                                    addedCount++;
-                                                }
-                                            }
-                                        }
-                                        if (addedCount > 0) {
-                                            System.out.println("Auto-added " + addedCount + " required fields to step: " + step.getLabel());
-                                        }
-                                    }
-                                });
-                            }
-                        }
-                    }
-                }
-
-                String ctxKey = contextIssueField.getText().trim();
-                if (ctxKey.isEmpty() && !jqlField.getText().trim().isEmpty()) {
-                    String searchUrl = mainFrame.getBaseUrl() + "/rest/api/2/search?jql=" + java.net.URLEncoder.encode(jqlField.getText().trim(), "UTF-8") + "&maxResults=1";
-                    String resp = mainFrame.getService().executeRequest(searchUrl, "GET", null);
-                    JSONArray issues = new JSONObject(resp).getJSONArray("issues");
-                    if (issues.length() > 0) ctxKey = issues.getJSONObject(0).getString("key");
-                }
-
-                if (!ctxKey.isEmpty()) {
-                    Map<String, JSONObject> editMeta = helper.getEditMetadata(ctxKey);
-                    cachedFullMeta.putAll(editMeta);
-                    updated = true;
-                }
-                
-                // Fetch Link Types
-                List<JSONObject> lts = helper.getIssueLinkTypes();
-                if (!lts.isEmpty()) {
-                    cachedLinkTypes.clear();
-                    for (JSONObject lt : lts) {
-                        cachedLinkTypes.add(lt.getString("name"));
-                    }
-                    Collections.sort(cachedLinkTypes);
-                    updated = true;
-                }
-
-                if (updated) {
-                    fieldsConfig.updateMetadata(cachedFullMeta);
-                    SwingUtilities.invokeLater(() -> {
-                        updateTokensFromCache();
-                        for (Component c : stepsContainer.getComponents()) {
-                            if (c instanceof StepEditorPanel) {
-                                StepEditorPanel sep = (StepEditorPanel) c;
-                                sep.refreshMetadata(cachedFieldOptions, cachedFullMeta);
-                                sep.updateLinkTypes(cachedLinkTypes);
-                            }
-                        }
-                    });
-                }
-            } catch (Exception ignored) {}
-        }).start();
-    }
-
     private void updateTokensFromCache() {
         cachedFieldOptions.clear();
+        cachedLinkTypes.clear();
         List<String> tokens = new ArrayList<>();
         tokens.add("Current Issue Key ({{issue.key}})");
         tokens.add("Current Summary ({{issue.fields.summary}})");
@@ -1758,13 +1735,23 @@ private JComponent createPromptInput(String label, String staticOptions, JSONObj
         tokens.add("Selected Team Component ({{team.component}})");
         tokens.add("Selected Team ID ({{team.id}})");
         
-        for (String fieldId : cachedFullMeta.keySet()) {
-            JSONObject fieldObj = cachedFullMeta.get(fieldId);
-            String name = fieldObj.optString("name", fieldId);
-            cachedFieldOptions.put(name + " (" + fieldId + ")", fieldId);
-            tokens.add(name + " ({{issue.fields." + fieldId + "}})");
+        for (String key : cachedFullMeta.keySet()) {
+            if (key.startsWith("linktype:")) {
+                cachedLinkTypes.add(key.substring(9));
+                continue;
+            }
+            if (key.startsWith("trans:") || key.startsWith("createmeta:")) {
+                continue; // Not tokens
+            }
+
+            JSONObject fieldObj = cachedFullMeta.get(key);
+            String name = fieldObj.optString("name", key);
+            cachedFieldOptions.put(name + " (" + key + ")", key);
+            tokens.add(name + " ({{issue.fields." + key + "}})");
         }
         Collections.sort(tokens);
+        Collections.sort(cachedLinkTypes);
+
         allTokens.clear();
         allTokens.addAll(tokens);
         filterTokens();
