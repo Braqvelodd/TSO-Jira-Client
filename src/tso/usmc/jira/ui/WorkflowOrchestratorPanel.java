@@ -133,9 +133,10 @@ public class WorkflowOrchestratorPanel extends JPanel {
         gbc.gridx=0; gbc.gridy=1; gbc.weightx=0; header.add(new JLabel("JQL Query:"), gbc);
         gbc.gridx=1; gbc.weightx=1.0; header.add(jqlField, gbc);
         
-        gbc.gridx=0; gbc.gridy=2; gbc.weightx=0; header.add(new JLabel("Context Issue (for metadata):"), gbc);
+        gbc.gridx=0; gbc.gridy=2; gbc.weightx=0; header.add(new JLabel("Project Filter / Context Issue:"), gbc);
         gbc.gridx=1; gbc.weightx=1.0; header.add(contextIssueField, gbc);
         gbc.gridx=2; gbc.weightx=0; header.add(fetchMetaBtn, gbc);
+        contextIssueField.setToolTipText("Deep Sync: Comma-separated project keys (or blank for ALL). Transition Meta: A specific issue key.");
 
         syncProgress.setIndeterminate(true);
         syncProgress.setVisible(false);
@@ -828,10 +829,15 @@ private JComponent createPromptInput(String label, String staticOptions, JSONObj
     }
 
     private void fetchLiveMetadata() {
+        String filterText = contextIssueField.getText().trim();
+        boolean isFiltered = !filterText.isEmpty();
+        
+        String msg = isFiltered ? 
+            "Deep Sync will REBUILD metadata for these projects: " + filterText :
+            "Deep Sync will CLEAN and REBUILD the metadata cache for ALL projects.";
+            
         int choice = JOptionPane.showConfirmDialog(this, 
-            "Deep Sync will CLEAN and REBUILD the metadata cache for ALL projects.\n" +
-            "This will erase existing cached fields and fetch them fresh.\n\n" +
-            "Continue?", "Rebuild Global Metadata Cache", JOptionPane.YES_NO_OPTION);
+            msg + "\nContinue?", "Rebuild Global Metadata Cache", JOptionPane.YES_NO_OPTION);
         
         if (choice != JOptionPane.YES_OPTION) return;
 
@@ -843,15 +849,25 @@ private JComponent createPromptInput(String label, String staticOptions, JSONObj
             try {
                 JiraMetadataHelper helper = new JiraMetadataHelper(mainFrame.getService(), mainFrame.getBaseUrl());
                 
-                // Start fresh - clear the local cache
-                cachedFullMeta.clear(); 
-                cachedFieldOptions.clear();
+                // If not filtered, clear everything. If filtered, we keep others but overwrite these.
+                if (!isFiltered) {
+                    cachedFullMeta.clear(); 
+                    cachedFieldOptions.clear();
+                    log("--- Starting Fresh Global Deep Sync ---");
+                } else {
+                    log("--- Starting Filtered Deep Sync: " + filterText + " ---");
+                }
 
-                log("--- Starting Fresh Deep Metadata Sync ---");
-                List<String> projects = helper.getProjectKeys();
-                log("Found " + projects.size() + " projects. Rebuilding fields...");
+                List<String> projects;
+                if (isFiltered) {
+                    projects = Arrays.asList(filterText.split("\\s*,\\s*"));
+                } else {
+                    projects = helper.getProjectKeys();
+                    log("Found " + projects.size() + " total projects.");
+                }
 
                 for (String pKey : projects) {
+                    if (pKey.isEmpty()) continue;
                     try {
                         log("Syncing Project: " + pKey);
                         List<JSONObject> types = helper.getIssueTypesForProject(pKey);
@@ -915,7 +931,11 @@ private JComponent createPromptInput(String label, String staticOptions, JSONObj
                 }
 
                 // Finalize and Save
-                fieldsConfig.replaceMetadata(cachedFullMeta);
+                if (isFiltered) {
+                    fieldsConfig.updateMetadata(cachedFullMeta);
+                } else {
+                    fieldsConfig.replaceMetadata(cachedFullMeta);
+                }
                 
                 SwingUtilities.invokeLater(() -> {
                     updateTokensFromCache();
@@ -930,7 +950,7 @@ private JComponent createPromptInput(String label, String staticOptions, JSONObj
                     fetchMetaBtn.setEnabled(true);
                     fetchMetaBtn.setText("Fetch Metadata");
                     syncProgress.setVisible(false);
-                    JOptionPane.showMessageDialog(this, "Metadata Cache Rebuilt!\nTotal Fields: " + cachedFullMeta.size());
+                    JOptionPane.showMessageDialog(this, "Metadata Sync Complete!\nTotal Fields: " + cachedFullMeta.size());
                 });
             } catch (Exception ex) {
                 log("CRITICAL METADATA ERROR: " + ex.getMessage());
