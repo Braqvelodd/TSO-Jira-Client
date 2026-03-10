@@ -5,6 +5,7 @@ import tso.usmc.jira.ui.workflow.StepEditorPanel;
 import tso.usmc.jira.workflow.*;
 import tso.usmc.jira.service.JiraMetadataHelper;
 import tso.usmc.jira.util.JiraUtils;
+import tso.usmc.jira.util.WorkflowFieldsConfig;
 import org.json.JSONObject;
 import org.json.JSONArray;
 
@@ -19,6 +20,7 @@ public class WorkflowOrchestratorPanel extends JPanel {
 
     private final JiraApiClientGui mainFrame;
     private final WorkflowManager workflowManager;
+    private final WorkflowFieldsConfig fieldsConfig;
     private final Map<String, String> cachedFieldOptions = new HashMap<>();
     private final List<String> cachedLinkTypes = new ArrayList<>();
     
@@ -58,6 +60,9 @@ public class WorkflowOrchestratorPanel extends JPanel {
     public WorkflowOrchestratorPanel(JiraApiClientGui mainFrame) {
         this.mainFrame = mainFrame;
         this.workflowManager = new WorkflowManager();
+        this.fieldsConfig = new WorkflowFieldsConfig();
+        this.cachedFullMeta.putAll(fieldsConfig.getFieldMetadata());
+        
         setLayout(new BorderLayout());
 
         JiraUtils.setupExpandedView(recipeNameField);
@@ -72,6 +77,7 @@ public class WorkflowOrchestratorPanel extends JPanel {
         add(mainTabs, BorderLayout.CENTER);
         
         refreshRecipeList();
+        updateTokensFromCache();
 
         runnerRecipeCombo.addActionListener(e -> updateRunnerInputs());
     }
@@ -892,6 +898,7 @@ private JComponent createPromptInput(String label, String staticOptions, JSONObj
                 }
 
                 if (updated) {
+                    fieldsConfig.updateMetadata(cachedFullMeta);
                     SwingUtilities.invokeLater(() -> {
                         updateTokensFromCache();
                         for (Component c : stepsContainer.getComponents()) {
@@ -992,6 +999,7 @@ private JComponent createPromptInput(String label, String staticOptions, JSONObj
                     String name = meta.get(fId).getString("name");
                     cachedFieldOptions.put(name + " (" + fId + ")", fId);
                 }
+                fieldsConfig.updateMetadata(meta);
 
                 SwingUtilities.invokeLater(() -> {
                     updateTokensFromCache();
@@ -1046,6 +1054,7 @@ private JComponent createPromptInput(String label, String staticOptions, JSONObj
                     String name = meta.get(fId).getString("name");
                     cachedFieldOptions.put(name + " (" + fId + ")", fId);
                 }
+                fieldsConfig.updateMetadata(meta);
                 
                 SwingUtilities.invokeLater(() -> {
                     Component cp = getStepPanel(step);
@@ -1134,11 +1143,6 @@ private JComponent createPromptInput(String label, String staticOptions, JSONObj
                 ((StepEditorPanel) c).saveToStep();
                 recipe.addStep(((StepEditorPanel) c).getStep());
             }
-        }
-        
-        // Store metadata snapshot if we have any
-        if (!cachedFullMeta.isEmpty()) {
-            recipe.setMetadataSnapshot(new JSONObject(cachedFullMeta));
         }
 
         try {
@@ -1677,6 +1681,7 @@ private JComponent createPromptInput(String label, String staticOptions, JSONObj
                 }
 
                 if (updated) {
+                    fieldsConfig.updateMetadata(cachedFullMeta);
                     SwingUtilities.invokeLater(() -> {
                         updateTokensFromCache();
                         for (Component c : stepsContainer.getComponents()) {
