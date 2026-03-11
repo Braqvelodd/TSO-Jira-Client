@@ -3,7 +3,7 @@
 [![Java Version](https://img.shields.io/badge/Java-8%2B-blue.svg)](https://www.oracle.com/java/technologies/javase/javase-jdk8-downloads.html)
 [![License](https://img.shields.io/badge/License-Internal_Use_Only-orange.svg)](#license)
 
-A specialized, GUI-driven Java application designed for the USMC TSO (Technology Services Orginization) to automate and streamline complex Jira Data Center workflows. This tool integrates secure CAC (Common Access Card) authentication with a comprehensive suite of developer productivity tools and local AI capabilities.
+A specialized, GUI-driven Java application designed for the USMC TSO (Technology Services Organization) to automate and streamline complex Jira Data Center workflows. This tool integrates secure CAC (Common Access Card) authentication with a comprehensive suite of developer productivity tools and local AI capabilities.
 
 ---
 
@@ -58,65 +58,44 @@ Or by double click
 *   **Privacy-First:** Sensitive USMC data never leaves the controlled environment; all AI analysis is performed on your local machine.
 
 ### 🛠️ Specialized Toolset
+*   **JQL Runner & Advanced Search:**
+    *   **Real-time Autocomplete:** Intelligent popup suggestions for fields, functions, and reserved words as you type.
+    *   **Value Suggestions:** Context-aware suggestions for field values (e.g., suggesting user names after `assignee =` or statuses after `status IN`).
+    *   **Saved Filters:** Save, load, and manage named JQL filters directly from the UI for quick access to frequent queries.
 *   **Raw API Sandbox:** 
     *   Dropdown selector with **50+ predefined Data Center API templates** (Issues, Projects, Users, Worklogs, Link Types, etc.).
     *   Dynamic discovery: Add new `api_template.` keys to the config to automatically expand the menu.
     *   Automatic JSON pretty-printing and smart execution buttons.
 *   **Enhanced Bulk Actions:** Perform mass updates including Transitions, Assignee changes, Comments, Labels, Priority, and Issue Linking.
 *   **Workflow Automation:** Automates the 5-step "Issue Processing" workflow including cloning, attachment migration, and SMARTS linking.
-*   **Workflow Orchestrator (v2.0):** Build, save, and execute complex "Workflow Recipes" without touching JSON.
+*   **Workflow Orchestrator (v3.0):** Build, save, and execute complex "Workflow Recipes" with enhanced multi-action support.
     *   **Designer Tab:** A visual builder to stack automated steps.
         *   **Dynamic Metadata:** Fetch live Jira field definitions to populate step editors with real field names.
-        *   **Mapping Modes:** Every field supports **Static** values, **Variable** tokens, or **Runtime Prompts** (pauses execution to ask the user for input).
-        *   **Intelligent Layout**: Steps and fields are automatically packed at the top of the workspace for better visibility and organization.
-    *   **Smart Token Engine:** 
-        *   Use recursive tokens like `{{fields.summary}}`, `{{fields.reporter.name}}`, or root-level `{{key}}` to dynamically populate data.
-        *   **New Tokens**: 
-            *   `{{issue.fields.parent.key}}` for referencing an issue's parent key.
-            *   `{{now}}`: Current ISO timestamp (e.g., `2026-03-09T13:45:00.000-0400`).
-            *   `{{today}}`: Current date in `YYYY-MM-DD` format.
-        *   **Fail-Safe Resolution**: Unresolved tokens now safely resolve to an empty string instead of literal brackets, preventing malformed API requests.
-    *   **Variable Chaining:** Capture the key of a newly created issue and reference it in later steps using `{{last_key}}` (e.g., for linking or updating).
-    *   **Advanced Step Types:**
-        *   **CREATE:** Spawn new issues with dynamic field mapping. Supports standard `parent` field mapping for sub-tasks and **comma-separated issue types** for multi-type metadata fetching.
-        *   **UPDATE:** Perform mass field updates using tokens or prompts.
-        *   **TRANSITION:** Move issues through the workflow.
-        *   **LINK:** Create links between original and newly created issues.
-        *   **CLONE:** Migrate all attachments and issue links between tickets.
-        *   **WORKLOG:** Add worklog entries. The `Started` field supports tokens (`{{now}}`, `{{today}}`) and automatic date-to-timestamp normalization.
-    *   **Developer Productivity & Debugging:**
-        *   **Automatic Key Cleaning**: All issue keys are automatically "cleaned" (removing parentheses or noise) to ensure valid API URLs and payloads.
-        *   **Persistent API Logs**: 
-            *   Toggle "Verbose API Logs" in the Runner tab or via `VERBOSE_API_LOGS = true` in `JiraConfig.ini`.
-            *   Full formatted JSON payloads and URLs are recorded to date-based log files in `%USERPROFILE%\.JiraApiClient\logs\`.
-        *   **Enhanced UI**: Increased scroll speed in the Orchestrator for smoother navigation of complex recipes.
+        *   **Mapping Modes:** Every field supports **Static** values, **Variable** tokens, or **Runtime Prompts**.
+    *   **Enhanced LINK Step:**
+        *   **Multi-Action Support:** A single Link step can now perform multiple link operations simultaneously.
+        *   **Unified Link Types:** Seamlessly mix standard Jira issue links and Remote URL links in one step.
+        *   **Editable Link Types:** Use a searchable dropdown or type in custom link types directly.
+        *   **Flexible Inward Tokens:** Specify the source issue (Inward key) per action, allowing you to link multiple different issues in a single step.
+    *   **Smart Token Engine:** Use recursive tokens like `{{fields.summary}}`, `{{fields.reporter.name}}`, or capture keys via `{{last_key}}`.
     *   **Persistent Recipes:** Recipes are stored as JSON in `%USERPROFILE%\.JiraApiClient\workflows\` for easy sharing and re-use.
 *   **Task Builder:** Rapidly generate sub-tasks from templates.
-    *   **JQL Integration:** Dynamic context menu in the **JQL Runner** results to instantly send tickets or templates to the builder.
+    *   **Mention-Style Autocomplete:** Trigger real-time Jira user suggestions by typing an `@` symbol on `Assignee:`, `DEFAULT_ASSIGNEE:`, or `notify:` lines. The `@` is automatically stripped upon selection.
+    *   **Integrated Defaults:** Full user autocomplete support in the "Defaults" configuration area.
     *   **Dynamic Parsing:** Real-time parsing of task blocks separated by `***`.
     *   **Interactive List:** Select specific tasks for execution; double-click a task to jump to its definition in the editor.
-    *   **Visual Highlighting:** Selected tasks are highlighted in the editor for easy identification.
-    *   **Advanced Syntax:**
-        *   `transition: [Status]`: Automatically move the task to a status after creation.
-        *   `notify: [user1, user2]`: Send Jira notifications to specific users.
-        *   `duedate: [YYYY-MM-DD]`: Set a specific due date.
-        *   `noassignee:`, `nocomponent:`, `notransition:`: Override defaults to leave fields empty.
-    *   **Editor Shortcuts:**
-        *   `Ctrl + Alt + ↑/↓`: Duplicate lines.
-        *   `Alt + ↑/↓`: Move lines.
-        *   `Ctrl + /`: Toggle comments (`--`).
-        *   `Ctrl + D`: Delete lines.
-    *   **Drag & Drop:** Drop text files directly into the editor to append templates.
+    *   **Advanced Syntax:** Supports `transition:`, `notify:`, `duedate:`, and field overrides.
+    *   **Editor Shortcuts:** `Ctrl + Alt + ↑/↓` (Duplicate), `Alt + ↑/↓` (Move), `Ctrl + /` (Comment), `Ctrl + D` (Delete).
 *   **Data Reconciliation:** Tools for comparing Jira sub-tasks against ISPW reports to ensure development synchronization.
 
 ---
 
 ## 🛠️ Technical Stack
 
-*   **Language:** Java 8+
+*   **Language:** Java 8+ (JDK 21+ for building)
 *   **GUI:** Java Swing (System Look & Feel)
 *   **AI Engine:** llama.cpp (llama-cli) + GGUF Models
-*   **JSON Handling:** `org.json`
+*   **Jira API:** Data Center REST API (v2) with JQL Autocomplete Metadata support.
 *   **Authentication:** mTLS via Windows-MY (SunMSCAPI)
 *   **Build System:** Windows Batch Script (`compile and build.bat`)
 
@@ -129,9 +108,6 @@ The application is fully configurable via files located in `%USERPROFILE%\.JiraA
 *   **`JiraConfig.ini`**: Main configuration for URLs, Teams, and Feature Toggles.
 *   **`jiratemplate.ini`**: Dedicated storage for Task Templates, Raw API Templates, and "baked-in" Workflow Recipes.
 *   **`workflows/`**: A directory containing custom Workflow Recipes saved via the Orchestrator.
-*   **Dynamic Discovery:** Teams, Task Templates, and API Templates are automatically discovered from the config files.
-*   **Feature Toggles:** Enable or disable optional tabs by toggling `tab.[Name].enabled = true`.
-*   **Auto-Upgrade:** The app detects the `config_version` and automatically appends missing required keys during updates.
 *   **Live Reloading:** Most settings refresh automatically in the GUI when the `.ini` file is saved.
 
 ---
@@ -139,4 +115,3 @@ The application is fully configurable via files located in `%USERPROFILE%\.JiraA
 ## 📄 License
 
 This software is for **Internal Use Only** within the USMC TSO. All rights reserved. 
- 
