@@ -29,7 +29,12 @@ public class JqlRunnerPanel extends JPanel implements tso.usmc.jira.util.ConfigC
     private final JButton saveFilterBtn = new JButton("Save Filter");
     private final JLabel statusLabel = new JLabel("Enter a JQL query and click Execute.");
 
-    private final DefaultTableModel tableModel = new DefaultTableModel();
+    private final DefaultTableModel tableModel = new DefaultTableModel() {
+        @Override
+        public boolean isCellEditable(int row, int column) {
+            return false;
+        }
+    };
     private final JTable resultsTable = new JTable(tableModel);
     private String selectedIssueKey;
     private boolean isRefreshingFilters = false;
@@ -178,8 +183,12 @@ public class JqlRunnerPanel extends JPanel implements tso.usmc.jira.util.ConfigC
                 if (e.getClickCount() == 2) {
                     JTable source = (JTable) e.getSource();
                     int row = source.rowAtPoint(e.getPoint());
-                    if (row >= 0) {
+                    int col = source.columnAtPoint(e.getPoint());
+                    
+                    if (row >= 0 && col >= 0) {
                         int modelRow = source.convertRowIndexToModel(row);
+                        
+                        // Find 'key' column index
                         int keyCol = -1;
                         for (int i = 0; i < tableModel.getColumnCount(); i++) {
                             if ("key".equalsIgnoreCase(tableModel.getColumnName(i))) {
@@ -187,9 +196,12 @@ public class JqlRunnerPanel extends JPanel implements tso.usmc.jira.util.ConfigC
                                 break;
                             }
                         }
+                        
                         if (keyCol != -1) {
-                            String key = (String) tableModel.getValueAt(modelRow, keyCol);
-                            tso.usmc.jira.util.JiraUtils.browseIssue(mainFrame.getBaseUrl(), key);
+                            Object val = tableModel.getValueAt(modelRow, keyCol);
+                            if (val != null) {
+                                tso.usmc.jira.util.JiraUtils.browseIssue(mainFrame.getBaseUrl(), val.toString());
+                            }
                         }
                     }
                 }
