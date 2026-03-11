@@ -176,6 +176,18 @@ public class JiraApiService {
         return response;
     }
 
+    public String getJqlAutoCompleteData(String baseUrl) throws Exception {
+        String url = baseUrl + "/rest/api/2/jql/autocompletedata";
+        return executeRequest(url, "GET", null);
+    }
+
+    public String getJqlSuggestions(String baseUrl, String fieldName, String fieldValue) throws Exception {
+        String url = baseUrl + "/rest/api/2/jql/autocompletedata/suggestions?fieldName=" + 
+                     java.net.URLEncoder.encode(fieldName, "UTF-8") + 
+                     "&fieldValue=" + java.net.URLEncoder.encode(fieldValue, "UTF-8");
+        return executeRequest(url, "GET", null);
+    }
+
     private void appendToFile(String msg) {
         if (!loggingEnabled) return;
         try {

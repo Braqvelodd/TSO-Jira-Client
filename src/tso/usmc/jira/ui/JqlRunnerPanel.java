@@ -1,6 +1,7 @@
 package tso.usmc.jira.ui;
 
 import tso.usmc.jira.app.JiraApiClientGui;
+import tso.usmc.jira.service.JqlAutocompleteService;
 import tso.usmc.jira.util.JsonUtils;
 
 import javax.swing.*;
@@ -18,9 +19,10 @@ public class JqlRunnerPanel extends JPanel implements tso.usmc.jira.util.ConfigC
 
     private final JiraApiClientGui mainFrame;
     private final tso.usmc.jira.util.JiraConfig jiraConfig;
+    private final JqlAutocompleteService jqlAutocompleteService;
 
     // UI Components
-    private final JTextArea jqlArea = new JTextArea("issuetype = Bug AND status = 'To Do' ORDER BY created DESC");
+    private final JqlAutocompleteTextArea jqlArea;
     private final JTextField fieldsField = new JTextField("key, summary, status, assignee, issuelinks");
     private final JButton executeBtn = new JButton("Execute JQL");
     private final JComboBox<String> filterCombo = new JComboBox<>();
@@ -36,6 +38,16 @@ public class JqlRunnerPanel extends JPanel implements tso.usmc.jira.util.ConfigC
         this.mainFrame = mainFrame;
         this.jiraConfig = mainFrame.getJiraConfig();
         this.jiraConfig.addConfigChangeListener(this);
+        
+        JqlAutocompleteService service = null;
+        try {
+            service = new JqlAutocompleteService(mainFrame.getService(), mainFrame.getBaseUrl());
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        this.jqlAutocompleteService = service;
+        this.jqlArea = new JqlAutocompleteTextArea(jqlAutocompleteService);
+        this.jqlArea.setText("issuetype = Bug AND status = 'To Do' ORDER BY created DESC");
 
         setLayout(new BorderLayout(10, 10));
         setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
