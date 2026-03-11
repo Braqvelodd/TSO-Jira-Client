@@ -8,6 +8,7 @@ src\tso\usmc\jira\ui\CommentSummarizerPanel.java
 src\tso\usmc\jira\service\JqlAutocompleteService.java
 src\tso\usmc\jira\ui\JqlAutocompleteTextArea.java
 src\tso\usmc\jira\ui\JiraUserAutocompleteTextArea.java
+src\tso\usmc\jira\ui\JiraUserAutocompleteTextField.java
 src\tso\usmc\jira\ui\JqlRunnerPanel.java
 src\tso\usmc\jira\ui\RawApiPanel.java
 src\tso\usmc\jira\ui\ReconciliationPanel.java

@@ -36,7 +36,7 @@ public class TaskBuilderPanel extends JPanel {
     // UI Components
     private final JTextField parentField = new JTextField(20);
     private final JComboBox<String> defTypeField = new JComboBox<>(new String[]{"Sub-task", "ST-PCU", "ST-Database", "ST-Interface"});
-    private final JTextField defAssigneeField = new JTextField(20);
+    private final JiraUserAutocompleteTextField defAssigneeField = new JiraUserAutocompleteTextField(20);
     private final JTextField defCompField = new JTextField(20);
     private final JTextField defTransField = new JTextField(20);
     private final JComboBox<String> templateSelector = new JComboBox<>();
@@ -993,6 +993,7 @@ public class TaskBuilderPanel extends JPanel {
         try {
             this.jqlAutocompleteService = new JqlAutocompleteService(mainFrame.getService(), mainFrame.getBaseUrl());
             this.inputArea.setService(jqlAutocompleteService);
+            this.defAssigneeField.setService(jqlAutocompleteService);
         } catch (Exception e) {
             // Fails if cert not selected
         }
