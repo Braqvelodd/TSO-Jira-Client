@@ -19,7 +19,7 @@ public class JqlRunnerPanel extends JPanel implements tso.usmc.jira.util.ConfigC
 
     private final JiraApiClientGui mainFrame;
     private final tso.usmc.jira.util.JiraConfig jiraConfig;
-    private final JqlAutocompleteService jqlAutocompleteService;
+    private JqlAutocompleteService jqlAutocompleteService;
 
     // UI Components
     private final JqlAutocompleteTextArea jqlArea;
@@ -39,15 +39,11 @@ public class JqlRunnerPanel extends JPanel implements tso.usmc.jira.util.ConfigC
         this.jiraConfig = mainFrame.getJiraConfig();
         this.jiraConfig.addConfigChangeListener(this);
         
-        JqlAutocompleteService service = null;
-        try {
-            service = new JqlAutocompleteService(mainFrame.getService(), mainFrame.getBaseUrl());
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-        this.jqlAutocompleteService = service;
-        this.jqlArea = new JqlAutocompleteTextArea(jqlAutocompleteService);
+        this.jqlArea = new JqlAutocompleteTextArea(null);
         this.jqlArea.setText("issuetype = Bug AND status = 'To Do' ORDER BY created DESC");
+        
+        // Try initial load
+        ensureAutocompleteServiceInitialized();
 
         setLayout(new BorderLayout(10, 10));
         setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
@@ -122,6 +118,18 @@ public class JqlRunnerPanel extends JPanel implements tso.usmc.jira.util.ConfigC
             filterCombo.setSelectedItem(currentSelection);
         }
         isRefreshingFilters = false;
+    }
+
+    private void ensureAutocompleteServiceInitialized() {
+        if (jqlAutocompleteService != null) return;
+        
+        try {
+            JqlAutocompleteService service = new JqlAutocompleteService(mainFrame.getService(), mainFrame.getBaseUrl());
+            this.jqlAutocompleteService = service;
+            this.jqlArea.setService(service);
+        } catch (Exception e) {
+            // Silently fail if cert not selected yet
+        }
     }
 
     private void applySelectedFilter() {

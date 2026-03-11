@@ -12,7 +12,7 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 public class JqlAutocompleteTextArea extends JTextArea {
-    private final JqlAutocompleteService service;
+    private JqlAutocompleteService service;
     private final JPopupMenu popup;
     private final DefaultListModel<String> listModel;
     private final JList<String> suggestionList;
@@ -26,6 +26,10 @@ public class JqlAutocompleteTextArea extends JTextArea {
         
         setupUI();
         setupListeners();
+    }
+
+    public void setService(JqlAutocompleteService service) {
+        this.service = service;
     }
 
     private void setupUI() {
@@ -85,7 +89,7 @@ public class JqlAutocompleteTextArea extends JTextArea {
     }
 
     private void updatePopup() {
-        if (isUpdating) return;
+        if (isUpdating || service == null) return;
         
         SwingUtilities.invokeLater(() -> {
             try {
