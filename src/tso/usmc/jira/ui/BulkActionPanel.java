@@ -135,6 +135,18 @@ public class BulkActionPanel extends JPanel {
         JPanel bottomContainer = new JPanel(new BorderLayout(10, 10));
         bottomContainer.setBorder(BorderFactory.createTitledBorder("3. Execution Results"));
         resultsTable.setFillsViewportHeight(true);
+        resultsTable.addMouseListener(new java.awt.event.MouseAdapter() {
+            @Override
+            public void mouseClicked(java.awt.event.MouseEvent e) {
+                if (e.getClickCount() == 2) {
+                    int row = resultsTable.rowAtPoint(e.getPoint());
+                    if (row >= 0) {
+                        String key = (String) resultsModel.getValueAt(resultsTable.convertRowIndexToModel(row), 0);
+                        tso.usmc.jira.util.JiraUtils.browseIssue(mainFrame.getBaseUrl(), key);
+                    }
+                }
+            }
+        });
         bottomContainer.add(new JScrollPane(resultsTable), BorderLayout.CENTER);
         
         JPanel statusPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));

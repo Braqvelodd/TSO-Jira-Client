@@ -79,6 +79,18 @@ public class WorkflowPanel extends JPanel implements tso.usmc.jira.util.ConfigCh
 
         // Table setup
         resultsTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        resultsTable.addMouseListener(new java.awt.event.MouseAdapter() {
+            @Override
+            public void mouseClicked(java.awt.event.MouseEvent e) {
+                if (e.getClickCount() == 2) {
+                    int row = resultsTable.rowAtPoint(e.getPoint());
+                    if (row >= 0) {
+                        String key = (String) tableModel.getValueAt(resultsTable.convertRowIndexToModel(row), 0);
+                        tso.usmc.jira.util.JiraUtils.browseIssue(mainFrame.getBaseUrl(), key);
+                    }
+                }
+            }
+        });
         JScrollPane tableScrollPane = new JScrollPane(resultsTable);
 
         // Panel for all the processing options

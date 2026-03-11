@@ -171,8 +171,30 @@ public class JqlRunnerPanel extends JPanel implements tso.usmc.jira.util.ConfigC
 
     // NEW: Method to set up the right-click context menu on the results table
     private void setupContextMenu() {
-        // Add a mouse listener to the table to detect right-clicks
+        // Add a mouse listener to the table to detect right-clicks and double-clicks
         resultsTable.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                if (e.getClickCount() == 2) {
+                    JTable source = (JTable) e.getSource();
+                    int row = source.rowAtPoint(e.getPoint());
+                    if (row >= 0) {
+                        int modelRow = source.convertRowIndexToModel(row);
+                        int keyCol = -1;
+                        for (int i = 0; i < tableModel.getColumnCount(); i++) {
+                            if ("key".equalsIgnoreCase(tableModel.getColumnName(i))) {
+                                keyCol = i;
+                                break;
+                            }
+                        }
+                        if (keyCol != -1) {
+                            String key = (String) tableModel.getValueAt(modelRow, keyCol);
+                            tso.usmc.jira.util.JiraUtils.browseIssue(mainFrame.getBaseUrl(), key);
+                        }
+                    }
+                }
+            }
+
             @Override
             public void mouseReleased(MouseEvent e) {
                 if (e.isPopupTrigger()) {

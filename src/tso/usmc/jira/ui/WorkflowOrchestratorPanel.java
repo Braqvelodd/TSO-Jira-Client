@@ -332,6 +332,18 @@ public class WorkflowOrchestratorPanel extends JPanel {
         // Center: Results Table & Log Split
         runnerTable.setFillsViewportHeight(true);
         runnerTable.setAutoCreateRowSorter(true);
+        runnerTable.addMouseListener(new java.awt.event.MouseAdapter() {
+            @Override
+            public void mouseClicked(java.awt.event.MouseEvent e) {
+                if (e.getClickCount() == 2) {
+                    int row = runnerTable.rowAtPoint(e.getPoint());
+                    if (row >= 0) {
+                        String key = (String) runnerTableModel.getValueAt(runnerTable.convertRowIndexToModel(row), 0);
+                        tso.usmc.jira.util.JiraUtils.browseIssue(mainFrame.getBaseUrl(), key);
+                    }
+                }
+            }
+        });
         runnerTableModel.setColumnIdentifiers(new String[]{"Key", "Summary", "Status", "Assignee"});
         
         JSplitPane split = new JSplitPane(JSplitPane.VERTICAL_SPLIT);

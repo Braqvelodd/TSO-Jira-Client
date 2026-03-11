@@ -94,6 +94,16 @@ public class JiraUtils {
         return s;
     }
 
+    public static void browseIssue(String baseUrl, String key) {
+        if (key == null || key.trim().isEmpty() || baseUrl == null || baseUrl.trim().isEmpty()) return;
+        try {
+            String url = baseUrl + "/browse/" + key.trim();
+            java.awt.Desktop.getDesktop().browse(new java.net.URI(url));
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
     public static void setupExpandedView(javax.swing.JTextField field) {
         field.addMouseListener(new java.awt.event.MouseAdapter() {
             @Override
