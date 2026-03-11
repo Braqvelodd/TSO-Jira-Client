@@ -96,4 +96,24 @@ public class JqlAutocompleteService {
             return Collections.emptyList();
         }
     }
+
+    public List<String> getUserSuggestions(String userInput) {
+        String cacheKey = "user:" + userInput;
+        if (suggestionCache.containsKey(cacheKey)) return suggestionCache.get(cacheKey);
+
+        try {
+            String raw = apiService.searchUsers(baseUrl, userInput);
+            JSONArray results = new JSONArray(raw);
+            List<String> suggestions = new ArrayList<>();
+            for (int i = 0; i < results.length(); i++) {
+                JSONObject user = results.getJSONObject(i);
+                // Return username (name) for assignment
+                suggestions.add(user.getString("name"));
+            }
+            suggestionCache.put(cacheKey, suggestions);
+            return suggestions;
+        } catch (Exception e) {
+            return Collections.emptyList();
+        }
+    }
 }

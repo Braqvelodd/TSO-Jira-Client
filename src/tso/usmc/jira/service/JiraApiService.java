@@ -188,6 +188,11 @@ public class JiraApiService {
         return executeRequest(url, "GET", null);
     }
 
+    public String searchUsers(String baseUrl, String query) throws Exception {
+        String url = baseUrl + "/rest/api/2/user/search?username=" + java.net.URLEncoder.encode(query, "UTF-8");
+        return executeRequest(url, "GET", null);
+    }
+
     private void appendToFile(String msg) {
         if (!loggingEnabled) return;
         try {

@@ -1,6 +1,7 @@
 package tso.usmc.jira.ui;
 
 import tso.usmc.jira.app.JiraApiClientGui;
+import tso.usmc.jira.service.JqlAutocompleteService;
 import tso.usmc.jira.util.JiraUtils;
 import tso.usmc.jira.util.JsonUtils;
 import javax.swing.*;
@@ -28,6 +29,7 @@ public class TaskBuilderPanel extends JPanel {
     private static final boolean MOCK_MODE = false;
 
     private final JiraApiClientGui mainFrame;
+    private JqlAutocompleteService jqlAutocompleteService;
 
     private boolean isUpdating = false;
 
@@ -38,7 +40,7 @@ public class TaskBuilderPanel extends JPanel {
     private final JTextField defCompField = new JTextField(20);
     private final JTextField defTransField = new JTextField(20);
     private final JComboBox<String> templateSelector = new JComboBox<>();
-    private final JTextArea inputArea = new JTextArea();
+    private final JiraUserAutocompleteTextArea inputArea = new JiraUserAutocompleteTextArea(null);
     private final DefaultListModel<JiraTask> taskListModel = new DefaultListModel<>();
     private final JList<JiraTask> taskList = new JList<>(taskListModel);
     private final List<JiraTask> parsedTasks = new ArrayList<>();
@@ -84,6 +86,14 @@ public class TaskBuilderPanel extends JPanel {
         loadTemplatesFromDisk();
         templateSelector.addActionListener(e -> loadSelectedTemplate());
         leftPanel.add(configPanel, BorderLayout.NORTH);
+        
+        inputArea.addFocusListener(new java.awt.event.FocusAdapter() {
+            @Override
+            public void focusGained(java.awt.event.FocusEvent e) {
+                ensureAutocompleteServiceInitialized();
+            }
+        });
+
         inputArea.setFont(new Font("Monospaced", Font.PLAIN, 12));
         inputArea.setSelectionColor(new Color(160, 200, 255)); // Slightly deeper blue
         inputArea.setSelectedTextColor(Color.BLACK); // Keep text black when selected
@@ -975,6 +985,16 @@ public class TaskBuilderPanel extends JPanel {
             taskList.setSelectionInterval(0, taskListModel.getSize() - 1);
         } else {
             taskList.clearSelection();
+        }
+    }
+
+    private void ensureAutocompleteServiceInitialized() {
+        if (jqlAutocompleteService != null) return;
+        try {
+            this.jqlAutocompleteService = new JqlAutocompleteService(mainFrame.getService(), mainFrame.getBaseUrl());
+            this.inputArea.setService(jqlAutocompleteService);
+        } catch (Exception e) {
+            // Fails if cert not selected
         }
     }
     
