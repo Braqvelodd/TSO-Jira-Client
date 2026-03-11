@@ -91,8 +91,20 @@ public class JiraUserAutocompleteTextField extends JTextField {
         
         SwingUtilities.invokeLater(() -> {
             try {
-                String userInput = getText();
-                if (userInput.length() < 2) {
+                String text = getText();
+                int pos = getCaretPosition();
+                if (pos == 0) { popup.setVisible(false); return; }
+
+                String beforeCaret = text.substring(0, pos);
+                int atIndex = beforeCaret.lastIndexOf('@');
+                
+                if (atIndex == -1) {
+                    popup.setVisible(false);
+                    return;
+                }
+
+                String userInput = beforeCaret.substring(atIndex + 1);
+                if (userInput.length() < 1) {
                     popup.setVisible(false);
                     return;
                 }
@@ -106,7 +118,7 @@ public class JiraUserAutocompleteTextField extends JTextField {
                     matches.stream().distinct().limit(20).forEach(listModel::addElement);
                     suggestionList.setSelectedIndex(0);
                     
-                    Rectangle rect = modelToView(getCaretPosition());
+                    Rectangle rect = modelToView(pos);
                     if (rect != null) {
                         popup.show(this, rect.x, rect.y + rect.height);
                     }
@@ -123,7 +135,16 @@ public class JiraUserAutocompleteTextField extends JTextField {
         
         try {
             isUpdating = true;
-            setText(selected);
+            String text = getText();
+            int pos = getCaretPosition();
+            String beforeCaret = text.substring(0, pos);
+            int atIndex = beforeCaret.lastIndexOf('@');
+            
+            if (atIndex != -1) {
+                String newText = text.substring(0, atIndex) + selected + text.substring(pos);
+                setText(newText);
+                setCaretPosition(atIndex + selected.length());
+            }
             popup.setVisible(false);
         } finally {
             isUpdating = false;

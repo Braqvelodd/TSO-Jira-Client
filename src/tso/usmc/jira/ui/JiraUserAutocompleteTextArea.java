@@ -103,25 +103,15 @@ public class JiraUserAutocompleteTextArea extends JTextArea {
                 String userInput = "";
                 boolean shouldShow = false;
                 
-                if (lineLower.startsWith("assignee:")) {
-                    userInput = line.substring(9).trim();
-                    shouldShow = true;
-                } else if (lineLower.startsWith("default_assignee:")) {
-                    userInput = line.substring(17).trim();
-                    shouldShow = true;
-                } else if (lineLower.startsWith("notify:")) {
-                    // Notify can be a CSV list, so get the last part
-                    String csvPart = line.substring(7);
-                    int lastComma = csvPart.lastIndexOf(',');
-                    if (lastComma != -1) {
-                        userInput = csvPart.substring(lastComma + 1).trim();
-                    } else {
-                        userInput = csvPart.trim();
+                if (lineLower.startsWith("assignee:") || lineLower.startsWith("default_assignee:") || lineLower.startsWith("notify:")) {
+                    int atIndex = line.lastIndexOf('@');
+                    if (atIndex != -1) {
+                        userInput = line.substring(atIndex + 1);
+                        shouldShow = true;
                     }
-                    shouldShow = true;
                 }
 
-                if (!shouldShow || userInput.length() < 2) {
+                if (!shouldShow || userInput.length() < 1) {
                     popup.setVisible(false);
                     return;
                 }
@@ -157,25 +147,12 @@ public class JiraUserAutocompleteTextArea extends JTextArea {
             int lineStart = getLineStartOffset(getLineOfOffset(pos));
             String line = text.substring(lineStart, pos);
             
-            int replaceStart = pos;
-            if (line.toLowerCase().startsWith("assignee:")) {
-                replaceStart = lineStart + 9;
-                while (replaceStart < pos && Character.isWhitespace(text.charAt(replaceStart))) replaceStart++;
-            } else if (line.toLowerCase().startsWith("default_assignee:")) {
-                replaceStart = lineStart + 17;
-                while (replaceStart < pos && Character.isWhitespace(text.charAt(replaceStart))) replaceStart++;
-            } else if (line.toLowerCase().startsWith("notify:")) {
-                int lastComma = line.lastIndexOf(',');
-                if (lastComma != -1) {
-                    replaceStart = lineStart + lastComma + 1;
-                } else {
-                    replaceStart = lineStart + 7;
-                }
-                while (replaceStart < pos && Character.isWhitespace(text.charAt(replaceStart))) replaceStart++;
+            int atIndex = line.lastIndexOf('@');
+            if (atIndex != -1) {
+                int replaceStart = lineStart + atIndex;
+                replaceRange(selected, replaceStart, pos);
+                setCaretPosition(replaceStart + selected.length());
             }
-
-            replaceRange(selected, replaceStart, pos);
-            setCaretPosition(replaceStart + selected.length());
             popup.setVisible(false);
         } catch (BadLocationException e) {
             e.printStackTrace();
