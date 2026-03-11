@@ -8,6 +8,10 @@ import javax.swing.table.DefaultTableModel;
 import java.awt.*;
 import java.io.PrintWriter;
 import java.io.StringWriter;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -175,6 +179,16 @@ public class BulkActionPanel extends JPanel {
         resultsModel.setRowCount(0); // Clear previous results
         setButtonsEnabled(false);
 
+        // Configuration values (captured from UI thread)
+        final String transName = transitionNameField.getText().trim();
+        final String assignee = assigneeField.getText().trim();
+        final String comment = commentField.getText().trim();
+        final String addLabel = labelField.getText().trim();
+        final String remLabel = labelField.getText().trim();
+        final String priority = (String) priorityCombo.getSelectedItem();
+        final String targetKeyLink = targetIssueField.getText().trim().toUpperCase();
+        final String linkType = (String) linkTypeCombo.getSelectedItem();
+
         new Thread(() -> {
             JiraApiService service = null;
             try {
@@ -187,96 +201,99 @@ public class BulkActionPanel extends JPanel {
                 });
                 return;
             }
-            
-            for (int i = 0; i < keys.length; i++) {
-                String key = keys[i];
-                final int current = i + 1;
-                SwingUtilities.invokeLater(() -> statusLabel.setText("Processing " + current + " of " + keys.length + ": " + key));
 
-                try {
-                    String actionDesc = "";
-                    switch (actionType) {
-                        case "Transition":
-                            String transName = transitionNameField.getText().trim();
-                            if (transName.isEmpty()) throw new Exception("Transition name required");
-                            actionDesc = "Transition to '" + transName + "'";
-                            
-                            String transJson = service.executeRequest(mainFrame.getBaseUrl() + "/rest/api/2/issue/" + key + "/transitions", "GET", null);
-                            String transId = findTransitionIdByName(transJson, transName);
-                            if (transId == null) throw new Exception("Transition '" + transName + "' not available for this issue status");
-                            
-                            JSONObject transPayload = new JSONObject();
-                            transPayload.put("transition", new JSONObject().put("id", transId));
-                            service.executeRequest(mainFrame.getBaseUrl() + "/rest/api/2/issue/" + key + "/transitions", "POST", transPayload.toString());
-                            break;
+            final JiraApiService finalService = service;
+            ExecutorService executor = Executors.newFixedThreadPool(5);
+            AtomicInteger completedCount = new AtomicInteger(0);
+            int total = keys.length;
 
-                        case "Change Assignee":
-                            String assignee = assigneeField.getText().trim();
-                            actionDesc = "Assign to '" + assignee + "'";
-                            JSONObject assignPayload = new JSONObject();
-                            assignPayload.put("name", assignee); // Use "accountId" if Jira Cloud, but USMC likely uses "name" (ID)
-                            service.executeRequest(mainFrame.getBaseUrl() + "/rest/api/2/issue/" + key + "/assignee", "PUT", assignPayload.toString());
-                            break;
+            for (String key : keys) {
+                executor.submit(() -> {
+                    try {
+                        String actionDesc = "";
+                        switch (actionType) {
+                            case "Transition":
+                                if (transName.isEmpty()) throw new Exception("Transition name required");
+                                actionDesc = "Transition to '" + transName + "'";
+                                
+                                String transJson = finalService.executeRequest(mainFrame.getBaseUrl() + "/rest/api/2/issue/" + key + "/transitions", "GET", null);
+                                String transId = findTransitionIdByName(transJson, transName);
+                                if (transId == null) throw new Exception("Transition '" + transName + "' not available");
+                                
+                                JSONObject transPayload = new JSONObject();
+                                transPayload.put("transition", new JSONObject().put("id", transId));
+                                finalService.executeRequest(mainFrame.getBaseUrl() + "/rest/api/2/issue/" + key + "/transitions", "POST", transPayload.toString());
+                                break;
 
-                        case "Add Comment":
-                            String comment = commentField.getText().trim();
-                            if (comment.isEmpty()) throw new Exception("Comment body required");
-                            actionDesc = "Add Comment";
-                            JSONObject commentPayload = new JSONObject();
-                            commentPayload.put("body", comment);
-                            service.executeRequest(mainFrame.getBaseUrl() + "/rest/api/2/issue/" + key + "/comment", "POST", commentPayload.toString());
-                            break;
+                            case "Change Assignee":
+                                actionDesc = "Assign to '" + assignee + "'";
+                                JSONObject assignPayload = new JSONObject();
+                                assignPayload.put("name", assignee);
+                                finalService.executeRequest(mainFrame.getBaseUrl() + "/rest/api/2/issue/" + key + "/assignee", "PUT", assignPayload.toString());
+                                break;
 
-                        case "Add Label":
-                            String addLabel = labelField.getText().trim();
-                            if (addLabel.isEmpty()) throw new Exception("Label required");
-                            actionDesc = "Add Label '" + addLabel + "'";
-                            JSONObject addPayload = new JSONObject();
-                            JSONArray addLabels = new JSONArray().put(new JSONObject().put("add", addLabel));
-                            addPayload.put("update", new JSONObject().put("labels", addLabels));
-                            service.executeRequest(mainFrame.getBaseUrl() + "/rest/api/2/issue/" + key, "PUT", addPayload.toString());
-                            break;
+                            case "Add Comment":
+                                if (comment.isEmpty()) throw new Exception("Comment body required");
+                                actionDesc = "Add Comment";
+                                JSONObject commentPayload = new JSONObject();
+                                commentPayload.put("body", comment);
+                                finalService.executeRequest(mainFrame.getBaseUrl() + "/rest/api/2/issue/" + key + "/comment", "POST", commentPayload.toString());
+                                break;
 
-                        case "Remove Label":
-                            String remLabel = labelField.getText().trim();
-                            if (remLabel.isEmpty()) throw new Exception("Label required");
-                            actionDesc = "Remove Label '" + remLabel + "'";
-                            JSONObject remPayload = new JSONObject();
-                            JSONArray remLabels = new JSONArray().put(new JSONObject().put("remove", remLabel));
-                            remPayload.put("update", new JSONObject().put("labels", remLabels));
-                            service.executeRequest(mainFrame.getBaseUrl() + "/rest/api/2/issue/" + key, "PUT", remPayload.toString());
-                            break;
+                            case "Add Label":
+                                if (addLabel.isEmpty()) throw new Exception("Label required");
+                                actionDesc = "Add Label '" + addLabel + "'";
+                                JSONObject addPayload = new JSONObject();
+                                JSONArray addLabels = new JSONArray().put(new JSONObject().put("add", addLabel));
+                                addPayload.put("update", new JSONObject().put("labels", addLabels));
+                                finalService.executeRequest(mainFrame.getBaseUrl() + "/rest/api/2/issue/" + key, "PUT", addPayload.toString());
+                                break;
 
-                        case "Change Priority":
-                            String priority = (String) priorityCombo.getSelectedItem();
-                            actionDesc = "Set Priority to '" + priority + "'";
-                            JSONObject priorityPayload = new JSONObject();
-                            priorityPayload.put("fields", new JSONObject().put("priority", new JSONObject().put("name", priority)));
-                            service.executeRequest(mainFrame.getBaseUrl() + "/rest/api/2/issue/" + key, "PUT", priorityPayload.toString());
-                            break;
+                            case "Remove Label":
+                                if (remLabel.isEmpty()) throw new Exception("Label required");
+                                actionDesc = "Remove Label '" + remLabel + "'";
+                                JSONObject remPayload = new JSONObject();
+                                JSONArray remLabels = new JSONArray().put(new JSONObject().put("remove", remLabel));
+                                remPayload.put("update", new JSONObject().put("labels", remLabels));
+                                finalService.executeRequest(mainFrame.getBaseUrl() + "/rest/api/2/issue/" + key, "PUT", remPayload.toString());
+                                break;
 
-                        case "Link Issues":
-                            String targetKey = targetIssueField.getText().trim().toUpperCase();
-                            String linkType = (String) linkTypeCombo.getSelectedItem();
-                            if (targetKey.isEmpty()) throw new Exception("Target issue key required");
-                            actionDesc = "Link to '" + targetKey + "' as '" + linkType + "'";
-                            
-                            JSONObject linkPayload = new JSONObject();
-                            linkPayload.put("type", new JSONObject().put("name", linkType));
-                            linkPayload.put("inwardIssue", new JSONObject().put("key", key));
-                            linkPayload.put("outwardIssue", new JSONObject().put("key", targetKey));
-                            service.executeRequest(mainFrame.getBaseUrl() + "/rest/api/2/issueLink", "POST", linkPayload.toString());
-                            break;
+                            case "Change Priority":
+                                actionDesc = "Set Priority to '" + priority + "'";
+                                JSONObject priorityPayload = new JSONObject();
+                                priorityPayload.put("fields", new JSONObject().put("priority", new JSONObject().put("name", priority)));
+                                finalService.executeRequest(mainFrame.getBaseUrl() + "/rest/api/2/issue/" + key, "PUT", priorityPayload.toString());
+                                break;
+
+                            case "Link Issues":
+                                if (targetKeyLink.isEmpty()) throw new Exception("Target issue key required");
+                                actionDesc = "Link to '" + targetKeyLink + "' as '" + linkType + "'";
+                                
+                                JSONObject linkPayload = new JSONObject();
+                                linkPayload.put("type", new JSONObject().put("name", linkType));
+                                linkPayload.put("inwardIssue", new JSONObject().put("key", key));
+                                linkPayload.put("outwardIssue", new JSONObject().put("key", targetKeyLink));
+                                finalService.executeRequest(mainFrame.getBaseUrl() + "/rest/api/2/issueLink", "POST", linkPayload.toString());
+                                break;
+                        }
+                        
+                        addResultRow(key, actionDesc, "SUCCESS");
+                    } catch (Exception e) {
+                        addResultRow(key, actionType, "ERROR: " + e.getMessage());
+                    } finally {
+                        int current = completedCount.incrementAndGet();
+                        SwingUtilities.invokeLater(() -> statusLabel.setText("Parallel Processing: " + current + " of " + total + " complete..."));
                     }
-                    
-                    addResultRow(key, actionDesc, "SUCCESS");
-                } catch (Exception e) {
-                    addResultRow(key, actionType, "ERROR: " + e.getMessage());
-                }
+                });
             }
 
+            executor.shutdown();
+            try {
+                executor.awaitTermination(1, TimeUnit.HOURS);
+            } catch (InterruptedException ignored) {}
+
             SwingUtilities.invokeLater(() -> {
-                statusLabel.setText("Bulk execution complete. Processed " + keys.length + " issues.");
+                statusLabel.setText("Bulk execution complete. Processed " + total + " issues in parallel.");
                 setButtonsEnabled(true);
             });
         }).start();
