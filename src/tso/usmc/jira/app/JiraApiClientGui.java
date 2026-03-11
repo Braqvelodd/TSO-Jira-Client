@@ -18,6 +18,7 @@ import tso.usmc.jira.ui.ReconciliationPanel;
 import tso.usmc.jira.ui.ReportPanel; // --- NEW: Import Certificate
 import tso.usmc.jira.ui.TaskBuilderPanel;
 import tso.usmc.jira.ui.TemplateExtractorPanel;
+import tso.usmc.jira.ui.WorkflowOrchestratorPanel;
 import tso.usmc.jira.ui.WorkflowPanel;
 import tso.usmc.jira.util.ConfigChangeListener;
 import tso.usmc.jira.util.JiraConfig; 
@@ -30,6 +31,7 @@ public class JiraApiClientGui extends JFrame implements ConfigChangeListener {
     private final JiraConfig jiraConfig;
     private JTabbedPane tabs;
     private TaskBuilderPanel taskBuilderPanel;
+    private WorkflowOrchestratorPanel workflowOrchestratorPanel;
 
     public JiraApiClientGui() {
         this.jiraConfig = new JiraConfig();
@@ -137,6 +139,11 @@ public class JiraApiClientGui extends JFrame implements ConfigChangeListener {
             tabs.addTab("Workflow Automation", new WorkflowPanel(this, this.jiraConfig));
         }
 
+        if (jiraConfig.isTabEnabled("WorkflowOrchestrator")) {
+            this.workflowOrchestratorPanel = new WorkflowOrchestratorPanel(this);
+            tabs.addTab("Workflow Orchestrator", this.workflowOrchestratorPanel);
+        }
+
         // Layout Assembly
         setLayout(new BorderLayout());
         add(headerPanel, BorderLayout.NORTH);
@@ -147,6 +154,9 @@ public class JiraApiClientGui extends JFrame implements ConfigChangeListener {
     }
     public TaskBuilderPanel getTaskBuilderPanel() {
         return this.taskBuilderPanel;
+    }
+    public WorkflowOrchestratorPanel getWorkflowOrchestratorPanel() {
+        return this.workflowOrchestratorPanel;
     }
     public JiraConfig getJiraConfig() {
         return this.jiraConfig;
@@ -206,6 +216,11 @@ public class JiraApiClientGui extends JFrame implements ConfigChangeListener {
         if (apiService == null) {
             apiService = new JiraApiService(selectedAlias);
         }
+        
+        // Update logging state based on config
+        String verbose = jiraConfig.getProperty("VERBOSE_API_LOGS");
+        apiService.setLoggingEnabled("YES".equalsIgnoreCase(verbose));
+        
         return apiService;
     }
 
