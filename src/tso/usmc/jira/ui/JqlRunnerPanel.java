@@ -42,6 +42,13 @@ public class JqlRunnerPanel extends JPanel implements tso.usmc.jira.util.ConfigC
         this.jqlArea = new JqlAutocompleteTextArea(null);
         this.jqlArea.setText("issuetype = Bug AND status = 'To Do' ORDER BY created DESC");
         
+        this.jqlArea.addFocusListener(new java.awt.event.FocusAdapter() {
+            @Override
+            public void focusGained(java.awt.event.FocusEvent e) {
+                ensureAutocompleteServiceInitialized();
+            }
+        });
+
         // Try initial load
         ensureAutocompleteServiceInitialized();
 

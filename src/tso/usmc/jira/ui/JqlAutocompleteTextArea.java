@@ -89,7 +89,11 @@ public class JqlAutocompleteTextArea extends JTextArea {
     }
 
     private void updatePopup() {
-        if (isUpdating || service == null) return;
+        if (isUpdating) return;
+        if (service == null) {
+            System.out.println("DEBUG: Autocomplete service is null, skipping popup.");
+            return;
+        }
         
         SwingUtilities.invokeLater(() -> {
             try {
@@ -103,6 +107,7 @@ public class JqlAutocompleteTextArea extends JTextArea {
                     start--;
                 }
                 String word = text.substring(start, pos);
+                System.out.println("DEBUG: Current word: '" + word + "'");
                 
                 if (word.isEmpty() || word.trim().isEmpty()) {
                     popup.setVisible(false);
@@ -115,12 +120,16 @@ public class JqlAutocompleteTextArea extends JTextArea {
                 matches.addAll(filter(service.getFunctionNames(), word));
                 matches.addAll(filter(service.getReservedWords(), word));
                 
+                System.out.println("DEBUG: Metadata matches found: " + matches.size());
+
                 // If it's likely a value (after = or IN), fetch suggestions
                 String context = text.substring(0, start).trim();
                 if (context.endsWith("=") || context.toLowerCase().endsWith(" in") || context.toLowerCase().endsWith(" is")) {
                     String fieldName = getPreviousField(context);
                     if (fieldName != null) {
-                        matches.addAll(service.getSuggestions(fieldName, word));
+                        List<String> suggestions = service.getSuggestions(fieldName, word);
+                        System.out.println("DEBUG: Value suggestions for " + fieldName + ": " + suggestions.size());
+                        matches.addAll(suggestions);
                     }
                 }
 
@@ -133,8 +142,9 @@ public class JqlAutocompleteTextArea extends JTextArea {
                     
                     Rectangle rect = modelToView(start);
                     if (rect != null) {
+                        System.out.println("DEBUG: Showing popup at " + rect.x + ", " + (rect.y + rect.height));
                         popup.show(this, rect.x, rect.y + rect.height);
-                        requestFocusInWindow();
+                        // requestFocusInWindow(); // Removed as it might steal focus and hide the popup
                     }
                 }
             } catch (BadLocationException e) {
