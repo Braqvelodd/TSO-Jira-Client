@@ -6,6 +6,7 @@ import tso.usmc.jira.workflow.TransitionStep;
 import tso.usmc.jira.workflow.UpdateStep;
 import tso.usmc.jira.workflow.AssetStep;
 import tso.usmc.jira.workflow.CreateStep;
+import tso.usmc.jira.workflow.LinkAction;
 import tso.usmc.jira.workflow.LinkStep;
 import tso.usmc.jira.workflow.WorklogStep;
 import org.json.JSONObject;
@@ -37,6 +38,7 @@ public class StepEditorPanel extends JPanel {
     private final JTextField labelField;
     private final JPanel fieldsContainer;
     private final List<FieldActionPanel> actionPanels = new ArrayList<>();
+    private final List<LinkActionPanel> linkActionPanels = new ArrayList<>();
     private final Map<String, String> fieldOptions; // Label -> ID mapping
     private final Map<String, JSONObject> fullMetadata;
     private final StepMetadataListener metadataListener;
@@ -45,15 +47,13 @@ public class StepEditorPanel extends JPanel {
     private JTextField projField;
     private JTextField typeField;
     private JTextField inwardField;
-    private JTextField linkTypeField;
-    private JComboBox<String> linkTypeCombo;
-    private JTextField outwardField;
     private JTextField sourceTokenField;
     private JTextField targetTokenField;
     private JTextField timeSpentField;
     private JTextField commentField;
     private JTextField startedField;
     private JTextField subTaskFieldsComp;
+    private List<String> cachedLinkTypes = new ArrayList<>();
 
     public StepEditorPanel(WorkflowStep step, Map<String, String> fieldOptions, Map<String, JSONObject> fullMetadata, Runnable onRemove, StepActionListener stepListener, StepMetadataListener metadataListener) {
         this.step = step;
@@ -104,27 +104,7 @@ public class StepEditorPanel extends JPanel {
         }
 
         if (step instanceof LinkStep) {
-            LinkStep ls = (LinkStep) step;
-            inwardField = new JTextField(ls.getInwardIssueToken(), 10);
-            tso.usmc.jira.util.JiraUtils.setupExpandedView(inwardField);
-            header.add(createPair("Inward:", inwardField));
-            
-            linkTypeCombo = new JComboBox<>();
-            linkTypeCombo.setPreferredSize(new Dimension(120, 22));
-            linkTypeCombo.addActionListener(e -> {
-                String selected = (String) linkTypeCombo.getSelectedItem();
-                if (selected != null && !selected.isEmpty()) {
-                    linkTypeField.setText(selected);
-                }
-            });
-            linkTypeField = new JTextField(ls.getLinkType(), 10);
-            tso.usmc.jira.util.JiraUtils.setupExpandedView(linkTypeField);
-            header.add(createPair("Type:", linkTypeField));
-            header.add(linkTypeCombo);
-            
-            outwardField = new JTextField(ls.getOutwardIssueToken(), 10);
-            tso.usmc.jira.util.JiraUtils.setupExpandedView(outwardField);
-            header.add(createPair("Outward:", outwardField));
+            // No header fields needed anymore as they are per-action
         }
 
         if (step instanceof AssetStep) {
@@ -207,15 +187,27 @@ public class StepEditorPanel extends JPanel {
         fieldsContainer = new JPanel();
         fieldsContainer.setLayout(new BoxLayout(fieldsContainer, BoxLayout.Y_AXIS));
         fieldsContainer.setAlignmentX(Component.LEFT_ALIGNMENT);
-        for (FieldAction action : step.getFieldActions().values()) {
-            addField(action);
+        
+        if (step instanceof LinkStep) {
+            for (LinkAction la : ((LinkStep) step).getLinkActions()) {
+                addLinkAction(la);
+            }
+        } else {
+            for (FieldAction action : step.getFieldActions().values()) {
+                addField(action);
+            }
         }
         contentPanel.add(fieldsContainer);
 
-        // Footer (Add Field) - Only for steps that support fields
-        if (step.getType() != WorkflowStep.StepType.ASSET && step.getType() != WorkflowStep.StepType.LINK && step.getType() != WorkflowStep.StepType.WORKLOG) {
-            JPanel footer = new JPanel(new FlowLayout(FlowLayout.LEFT));
-            footer.setAlignmentX(Component.LEFT_ALIGNMENT);
+        // Footer (Add Field/Link)
+        JPanel footer = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        footer.setAlignmentX(Component.LEFT_ALIGNMENT);
+        
+        if (step instanceof LinkStep) {
+            JButton addLinkBtn = new JButton("+ Add Link");
+            addLinkBtn.addActionListener(e -> addLinkAction(new LinkAction()));
+            footer.add(addLinkBtn);
+        } else if (step.getType() != WorkflowStep.StepType.ASSET && step.getType() != WorkflowStep.StepType.WORKLOG) {
             JButton addFieldBtn = new JButton("+ Add Field");
             addFieldBtn.addActionListener(e -> addField(new FieldAction("", FieldAction.MappingMode.SET, "", "")));
             footer.add(addFieldBtn);
@@ -230,8 +222,8 @@ public class StepEditorPanel extends JPanel {
                 });
                 footer.add(fetchBtn);
             }
-            contentPanel.add(footer);
         }
+        contentPanel.add(footer);
 
         JPanel centerWrapper = new JPanel(new BorderLayout());
         centerWrapper.add(contentPanel, BorderLayout.NORTH);
@@ -246,7 +238,7 @@ public class StepEditorPanel extends JPanel {
                 if (idx > 0) {
                     actionPanels.remove(idx);
                     actionPanels.add(idx - 1, p);
-                    refreshFieldLayout();
+                    refreshActionLayout();
                 }
             }
 
@@ -256,7 +248,7 @@ public class StepEditorPanel extends JPanel {
                 if (idx >= 0 && idx < actionPanels.size() - 1) {
                     actionPanels.remove(idx);
                     actionPanels.add(idx + 1, p);
-                    refreshFieldLayout();
+                    refreshActionLayout();
                 }
             }
 
@@ -275,6 +267,43 @@ public class StepEditorPanel extends JPanel {
         fieldsContainer.repaint();
     }
 
+    public void addLinkAction(LinkAction action) {
+        LinkActionPanel panel = new LinkActionPanel(action, cachedLinkTypes, new LinkActionPanel.LinkActionListener() {
+            @Override
+            public void onMoveUp(LinkActionPanel p) {
+                int idx = linkActionPanels.indexOf(p);
+                if (idx > 0) {
+                    linkActionPanels.remove(idx);
+                    linkActionPanels.add(idx - 1, p);
+                    refreshActionLayout();
+                }
+            }
+
+            @Override
+            public void onMoveDown(LinkActionPanel p) {
+                int idx = linkActionPanels.indexOf(p);
+                if (idx >= 0 && idx < linkActionPanels.size() - 1) {
+                    linkActionPanels.remove(idx);
+                    linkActionPanels.add(idx + 1, p);
+                    refreshActionLayout();
+                }
+            }
+
+            @Override
+            public void onRemove(LinkActionPanel p) {
+                linkActionPanels.remove(p);
+                fieldsContainer.remove(p);
+                fieldsContainer.revalidate();
+                fieldsContainer.repaint();
+            }
+        });
+        panel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        linkActionPanels.add(panel);
+        fieldsContainer.add(panel);
+        fieldsContainer.revalidate();
+        fieldsContainer.repaint();
+    }
+
     private JPanel createPair(String label, JComponent comp) {
         JPanel p = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
         p.setOpaque(false);
@@ -285,10 +314,12 @@ public class StepEditorPanel extends JPanel {
         return p;
     }
 
-    private void refreshFieldLayout() {
+    private void refreshActionLayout() {
         fieldsContainer.removeAll();
-        for (FieldActionPanel p : actionPanels) {
-            fieldsContainer.add(p);
+        if (step instanceof LinkStep) {
+            for (LinkActionPanel p : linkActionPanels) fieldsContainer.add(p);
+        } else {
+            for (FieldActionPanel p : actionPanels) fieldsContainer.add(p);
         }
         fieldsContainer.revalidate();
         fieldsContainer.repaint();
@@ -307,9 +338,11 @@ public class StepEditorPanel extends JPanel {
             ((CreateStep)step).setIssueType(typeField.getText());
         }
         if (step instanceof LinkStep) {
-            ((LinkStep)step).setInwardIssueToken(inwardField.getText());
-            ((LinkStep)step).setLinkType(linkTypeField.getText());
-            ((LinkStep)step).setOutwardIssueToken(outwardField.getText());
+            LinkStep ls = (LinkStep) step;
+            ls.getLinkActions().clear();
+            for (LinkActionPanel lap : linkActionPanels) {
+                ls.addLinkAction(lap.getLinkAction());
+            }
         }
         if (step instanceof AssetStep) {
             AssetStep as = (AssetStep) step;
@@ -342,14 +375,9 @@ public class StepEditorPanel extends JPanel {
     }
 
     public void updateLinkTypes(List<String> linkTypes) {
-        if (linkTypeCombo != null) {
-            String current = (String) linkTypeCombo.getSelectedItem();
-            linkTypeCombo.removeAllItems();
-            linkTypeCombo.addItem(""); // Default empty
-            for (String lt : linkTypes) {
-                linkTypeCombo.addItem(lt);
-            }
-            if (current != null) linkTypeCombo.setSelectedItem(current);
+        this.cachedLinkTypes = linkTypes;
+        for (LinkActionPanel panel : linkActionPanels) {
+            panel.updateLinkTypes(linkTypes);
         }
     }
 

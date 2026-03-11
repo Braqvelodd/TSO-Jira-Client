@@ -33,22 +33,27 @@ public abstract class WorkflowStep {
     public abstract JSONObject toJson();
 
     public static WorkflowStep fromJson(JSONObject json) {
-        StepType type = StepType.valueOf(json.getString("type"));
+        String typeStr = json.getString("type");
         WorkflowStep step = null;
-        if (type == StepType.TRANSITION) {
+        
+        if (typeStr.equals("TRANSITION")) {
             step = TransitionStep.fromJson(json);
-        } else if (type == StepType.UPDATE) {
+        } else if (typeStr.equals("UPDATE")) {
             step = UpdateStep.fromJson(json);
-        } else if (type == StepType.ASSET) {
+        } else if (typeStr.equals("ASSET") || typeStr.equals("CLONE")) {
             step = AssetStep.fromJson(json);
-        } else if (json.getString("type").equals("CLONE")) {
-            // Backward compatibility
-            step = AssetStep.fromJson(json);
-        } else if (type == StepType.CREATE) {
+        } else if (typeStr.equals("CREATE")) {
             step = CreateStep.fromJson(json);
-        } else if (type == StepType.LINK) {
+        } else if (typeStr.equals("LINK")) {
             step = LinkStep.fromJson(json);
-        } else if (type == StepType.WORKLOG) {
+        } else if (typeStr.equals("REMOTE_LINK")) {
+            LinkStep ls = new LinkStep();
+            LinkAction la = LinkAction.fromJson(json);
+            la.setRemote(true);
+            if (json.has("targetIssueToken")) la.setInwardIssueToken(json.getString("targetIssueToken"));
+            ls.addLinkAction(la);
+            step = ls;
+        } else if (typeStr.equals("WORKLOG")) {
             step = WorklogStep.fromJson(json);
         } else {
             step = new UpdateStep(); 

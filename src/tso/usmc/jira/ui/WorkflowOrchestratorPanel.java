@@ -1378,29 +1378,63 @@ private JComponent createPromptInput(String label, String staticOptions, JSONObj
             } else log("  > ERROR: Transition '" + ts.getTargetStatus() + "' not found on " + targetKey);
         } else if (step instanceof LinkStep) {
             LinkStep ls = (LinkStep) step;
-            String inward = JiraUtils.cleanIssueKey(resolveTokens(ls.getInwardIssueToken(), issue));
-            String outward = JiraUtils.cleanIssueKey(resolveTokens(ls.getOutwardIssueToken(), issue));
             
-            if (inward == null || inward.trim().isEmpty() || outward == null || outward.trim().isEmpty()) {
-                log("  > SKIP: Link step skipped due to empty key (Inward: '" + inward + "', Outward: '" + outward + "')");
-                return;
-            }
+            for (LinkAction la : ls.getLinkActions()) {
+                String inward = JiraUtils.cleanIssueKey(resolveTokens(la.getInwardIssueToken(), issue));
+                if (inward == null || inward.trim().isEmpty()) {
+                    log("  > SKIP: Individual link action skipped due to empty inward key");
+                    continue;
+                }
 
-            JSONObject body = new JSONObject();
-            body.put("type", new JSONObject().put("name", ls.getLinkType()));
-            body.put("inwardIssue", new JSONObject().put("key", inward));
-            body.put("outwardIssue", new JSONObject().put("key", outward));
-            
-            String payload = body.toString(4);
-            String url = baseUrl + "/rest/api/2/issueLink";
-            if (verboseLogCheck.isSelected()) {
-                log("  > Request URL: POST " + url);
-                log("  > Request Body:\n" + payload);
-            }
+                if (la.isRemote()) {
+                    String resolvedUrl = resolveTokens(la.getUrl(), issue);
+                    String resolvedTitle = resolveTokens(la.getTitle(), issue);
+                    String resolvedSummary = resolveTokens(la.getSummary(), issue);
+                    String resolvedRel = resolveTokens(la.getRelationship(), issue);
 
-            mainFrame.getService().executeRequest(url, "POST", payload);
-            log("  > Linked " + inward + " to " + outward);
-        } else if (step instanceof AssetStep) {
+                    JSONObject remoteObj = new JSONObject();
+                    remoteObj.put("url", resolvedUrl);
+                    remoteObj.put("title", resolvedTitle);
+                    if (resolvedSummary != null && !resolvedSummary.isEmpty()) remoteObj.put("summary", resolvedSummary);
+
+                    JSONObject body = new JSONObject();
+                    body.put("object", remoteObj);
+                    body.put("relationship", resolvedRel);
+
+                    String payload = body.toString(4);
+                    String url = baseUrl + "/rest/api/2/issue/" + inward + "/remotelink";
+                    if (verboseLogCheck.isSelected()) {
+                        log("  > Request URL: POST " + url);
+                        log("  > Request Body:\n" + payload);
+                    }
+
+                    mainFrame.getService().executeRequest(url, "POST", payload);
+                    log("  > Remote Linked " + inward + " to " + resolvedUrl);
+                } else {
+                    String outward = JiraUtils.cleanIssueKey(resolveTokens(la.getOutwardIssueToken(), issue));
+                    if (outward == null || outward.trim().isEmpty()) {
+                        log("  > SKIP: Individual Jira Link action skipped due to empty outward key");
+                        continue;
+                    }
+
+                    JSONObject body = new JSONObject();
+                    body.put("type", new JSONObject().put("name", la.getLinkType()));
+                    body.put("inwardIssue", new JSONObject().put("key", inward));
+                    body.put("outwardIssue", new JSONObject().put("key", outward));
+
+                    String payload = body.toString(4);
+                    String url = baseUrl + "/rest/api/2/issueLink";
+                    if (verboseLogCheck.isSelected()) {
+                        log("  > Request URL: POST " + url);
+                        log("  > Request Body:\n" + payload);
+                    }
+
+                    mainFrame.getService().executeRequest(url, "POST", payload);
+                    log("  > Linked " + inward + " to " + outward + " (" + la.getLinkType() + ")");
+                }
+            }
+        }
+ else if (step instanceof AssetStep) {
             AssetStep as = (AssetStep) step;
             String srcKey = JiraUtils.cleanIssueKey(resolveTokens(as.getSourceIssueToken(), issue));
             String targetKey = JiraUtils.cleanIssueKey(resolveTokens(as.getTargetIssueToken(), issue));
@@ -1481,19 +1515,32 @@ private JComponent createPromptInput(String label, String staticOptions, JSONObj
     }
 
     private void copySubTasks(JSONObject sourceIssue, String targetParentKey, AssetStep as) throws Exception {
-        if (!sourceIssue.getJSONObject("fields").has("subtasks")) return;
-        JSONArray subtasks = sourceIssue.getJSONObject("fields").getJSONArray("subtasks");
+        String sourceKey = sourceIssue.getString("key");
         String baseUrl = mainFrame.getBaseUrl();
+        
+        // Use the specialized subtask endpoint to get all sub-tasks and their data in one call
+        String subtaskUrl = baseUrl + "/rest/api/2/issue/" + sourceKey + "/subtask";
+        if (verboseLogCheck.isSelected()) {
+            log("  > Fetching sub-tasks for " + sourceKey + ": GET " + subtaskUrl);
+        }
+        
+        String subtaskResp = mainFrame.getService().executeRequest(subtaskUrl, "GET", null);
+        JSONArray subtasks;
+        
+        if (subtaskResp.trim().startsWith("[")) {
+            subtasks = new JSONArray(subtaskResp);
+        } else {
+            JSONObject respObj = new JSONObject(subtaskResp);
+            subtasks = respObj.optJSONArray("subtasks");
+            if (subtasks == null) return;
+        }
 
         for (int i = 0; i < subtasks.length(); i++) {
-            String subKey = subtasks.getJSONObject(i).getString("key");
-            log("  > Copying sub-task: " + subKey);
-
-            // Fetch full sub-task data
-            String url = baseUrl + "/rest/api/2/issue/" + subKey + "?expand=names,renderedFields&fields=*all";
-            String subResp = mainFrame.getService().executeRequest(url, "GET", null);
-            JSONObject subData = new JSONObject(subResp);
+            JSONObject subData = subtasks.getJSONObject(i);
+            String subKey = subData.getString("key");
             JSONObject subFields = subData.getJSONObject("fields");
+            
+            log("  > Copying sub-task: " + subKey);
 
             // Build new sub-task payload
             JSONObject newSubFields = new JSONObject();
@@ -1754,7 +1801,8 @@ private JComponent createPromptInput(String label, String staticOptions, JSONObj
         
         for (String key : cachedFullMeta.keySet()) {
             if (key.startsWith("linktype:")) {
-                cachedLinkTypes.add(key.substring(9));
+                String lt = key.substring(9);
+                if (!cachedLinkTypes.contains(lt)) cachedLinkTypes.add(lt);
                 continue;
             }
             if (key.startsWith("trans:") || key.startsWith("createmeta:")) {
@@ -1762,6 +1810,15 @@ private JComponent createPromptInput(String label, String staticOptions, JSONObj
             }
 
             JSONObject fieldObj = cachedFullMeta.get(key);
+            if (fieldObj == null) continue;
+            
+            // Check if this object is actually a link type metadata
+            if (fieldObj.has("inward") && fieldObj.has("outward") && fieldObj.has("name")) {
+                String lt = fieldObj.getString("name");
+                if (!cachedLinkTypes.contains(lt)) cachedLinkTypes.add(lt);
+                continue;
+            }
+
             String name = fieldObj.optString("name", key);
             cachedFieldOptions.put(name + " (" + key + ")", key);
             tokens.add(name + " ({{issue.fields." + key + "}})");
