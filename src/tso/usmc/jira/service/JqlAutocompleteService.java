@@ -28,7 +28,6 @@ public class JqlAutocompleteService {
             return;
         }
         
-        System.out.println("DEBUG: Fetching JQL autocomplete metadata from Jira...");
         try {
             String raw = apiService.getJqlAutoCompleteData(baseUrl);
             JSONObject json = new JSONObject(raw);
@@ -50,7 +49,6 @@ public class JqlAutocompleteService {
                     }
                 }
             }
-            System.out.println("DEBUG: Loaded " + fieldNames.size() + " fields.");
             
             functionNames.clear();
             if (json.has("visibleFunctionNames")) {
@@ -59,7 +57,6 @@ public class JqlAutocompleteService {
                     functionNames.add(funcs.getJSONObject(i).getString("value"));
                 }
             }
-            System.out.println("DEBUG: Loaded " + functionNames.size() + " functions.");
             
             reservedWords.clear();
             if (json.has("jqlReservedWords")) {
@@ -69,7 +66,7 @@ public class JqlAutocompleteService {
             
             lastFetchTime = System.currentTimeMillis();
         } catch (Exception e) {
-            System.err.println("DEBUG ERROR: Failed to fetch JQL metadata: " + e.getMessage());
+            System.err.println("Error fetching JQL autocomplete data: " + e.getMessage());
             e.printStackTrace();
         }
     }
