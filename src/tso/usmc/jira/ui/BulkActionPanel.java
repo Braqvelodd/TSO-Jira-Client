@@ -203,7 +203,8 @@ public class BulkActionPanel extends JPanel {
             }
 
             final JiraApiService finalService = service;
-            ExecutorService executor = Executors.newFixedThreadPool(5);
+            int threadCount = mainFrame.getJiraConfig().getParallelThreads();
+            ExecutorService executor = Executors.newFixedThreadPool(threadCount);
             AtomicInteger completedCount = new AtomicInteger(0);
             int total = keys.length;
 

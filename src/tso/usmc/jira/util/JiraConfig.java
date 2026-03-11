@@ -562,4 +562,16 @@ public class JiraConfig {
             return defaultMin;
         }
     }
+
+    public int getParallelThreads() {
+        String val = getProperty("parallel_threads");
+        if (val == null) return 5;
+        try {
+            int threads = Integer.parseInt(val.trim());
+            return Math.max(1, Math.min(threads, 50)); // Safety cap at 50
+        } catch (Exception e) {
+            return 5;
+        }
+    }
 }
+

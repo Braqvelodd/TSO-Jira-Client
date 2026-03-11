@@ -703,7 +703,8 @@ public class TaskBuilderPanel extends JPanel {
 
                 // 2. Parallel Action Phase (Transitions and Notifications)
                 updateStatus("Created " + total + " tasks. Processing transitions and notifications in parallel...");
-                ExecutorService executor = Executors.newFixedThreadPool(5);
+                int threadCount = mainFrame.getJiraConfig().getParallelThreads();
+                ExecutorService executor = Executors.newFixedThreadPool(threadCount);
                 AtomicInteger completedCount = new AtomicInteger(0);
 
                 for (int i = 0; i < total; i++) {
