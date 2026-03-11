@@ -20,7 +20,7 @@ import javax.swing.JOptionPane;
  * Loads and provides access to configuration settings from the JiraConfig.ini file.
  */
 public class JiraConfig {
-    private static final String CURRENT_CONFIG_VERSION = "1.2";
+    private static final String CURRENT_CONFIG_VERSION = "1.3";
     private final Properties properties = new Properties();
     private final File configFile;
     private final File templateFile;
@@ -231,9 +231,10 @@ public class JiraConfig {
                 try (InputStream input = new FileInputStream(this.templateFile)) {
                     Properties tempProps = new Properties();
                     tempProps.load(input);
-                    // Only merge template and api_template keys
+                    // Only merge template, api_template, workflow, and jql_filter keys
                     for (String key : tempProps.stringPropertyNames()) {
-                        if (key.startsWith("template.") || key.startsWith("api_template.")) {
+                        if (key.startsWith("template.") || key.startsWith("api_template.") || 
+                            key.startsWith("workflow.") || key.startsWith("jql_filter.")) {
                             properties.setProperty(key, tempProps.getProperty(key));
                         }
                     }
@@ -249,6 +250,59 @@ public class JiraConfig {
     }
     public File getTemplateFile() {
         return this.templateFile;
+    }
+    // NEW: Public method to save a JQL filter to the template file
+    public void saveJqlFilter(String name, String fields, String jql) {
+        synchronized (lock) {
+            try {
+                Path path = templateFile.toPath();
+                List<String> lines = templateFile.exists() ? Files.readAllLines(path) : new ArrayList<>();
+                String key = "jql_filter." + name;
+                String value = fields + "|" + jql;
+                String newLine = key + " = " + value;
+                
+                boolean found = false;
+                for (int i = 0; i < lines.size(); i++) {
+                    String line = lines.get(i).trim();
+                    if (!line.startsWith("#") && line.startsWith(key + "=")) {
+                        lines.set(i, newLine);
+                        found = true;
+                        break;
+                    } else if (!line.startsWith("#") && line.startsWith(key + " ")) {
+                        // Handle potential space before =
+                        String potentialKey = line.split("=", 2)[0].trim();
+                        if (potentialKey.equals(key)) {
+                            lines.set(i, newLine);
+                            found = true;
+                            break;
+                        }
+                    }
+                }
+                
+                if (!found) {
+                    if (lines.isEmpty() || !lines.get(lines.size() - 1).trim().isEmpty()) {
+                        lines.add(""); // Add newline before new section if not already there
+                    }
+                    if (lines.stream().noneMatch(l -> l.contains("# JQL Filters"))) {
+                        lines.add("# JQL Filters (Format: fields|query)");
+                    }
+                    lines.add(newLine);
+                }
+                
+                Files.write(path, lines);
+                reload();
+            } catch (IOException e) {
+                System.err.println("Error saving JQL filter: " + e.getMessage());
+            }
+        }
+    }
+
+    public String[] getJqlFilterKeys() {
+        return getKeysByPrefix("jql_filter.");
+    }
+
+    public String getJqlFilter(String key) {
+        return getProperty("jql_filter." + key);
     }
     // NEW: Method to start the file watcher background thread
     private void startFileWatcher() {
@@ -310,12 +364,13 @@ public class JiraConfig {
      * @return The assignee's JIRA user ID.
      */
     public String getUnassignedBacklogAssignee() {
-        String assignee = getProperty("unassigned_backlog_assignee_id");
+        String assignee = getTeamProperty("unassigned", "lead");
+        if (assignee == null) assignee = getProperty("unassigned_backlog_assignee_id");
+        
         if (assignee == null || assignee.trim().isEmpty()) {
-            // This is a required field, so throw an error if it's missing.
-            throw new IllegalStateException("The 'unassigned_backlog_assignee_id' is missing or empty in the JiraConfig.ini file.");
+            return "LINCOLN.TODD.ALAN"; // Default fallback
         }
-        return assignee;
+        return assignee.trim();
     }
 
     /**
@@ -350,8 +405,27 @@ public class JiraConfig {
         return getKeysByPrefix("team.");
     }
 
+    public String getTeamProperty(String teamKey, String subKey) {
+        return getProperty("team." + teamKey + "." + subKey);
+    }
+
     public String getTeamDetails(String key) {
-        return getProperty("team." + key);
+        String direct = getProperty("team." + key);
+        if (direct != null) return direct;
+        
+        // If not found directly, try to reconstruct from hierarchical subkeys for backward compatibility
+        String name = getTeamProperty(key, "name");
+        String lead = getTeamProperty(key, "lead");
+        String component = getTeamProperty(key, "component");
+        String id = getTeamProperty(key, "id");
+        
+        if (name != null || lead != null || component != null || id != null) {
+            return (name != null ? name : "") + "|" + 
+                   (lead != null ? lead : "") + "|" + 
+                   (component != null ? component : "") + "|" + 
+                   (id != null ? id : "");
+        }
+        return null;
     }
 
     public String[] getTemplateKeys() {
@@ -397,6 +471,10 @@ public class JiraConfig {
         return getProperty("api_template." + key);
     }
 
+    public String[] getWorkflowRecipeKeys() {
+        return getKeysByPrefix("workflow.");
+    }
+
     /**
      * Helper to find all keys with a specific prefix in the config file, 
      * preserving the order they appear in.
@@ -423,7 +501,7 @@ public class JiraConfig {
         };
 
         processFile.accept(configFile);
-        if (prefix.startsWith("template.") || prefix.startsWith("api_template.")) {
+        if (prefix.startsWith("template.") || prefix.startsWith("api_template.") || prefix.startsWith("workflow.") || prefix.startsWith("team.")) {
             processFile.accept(templateFile);
         }
 
@@ -484,4 +562,16 @@ public class JiraConfig {
             return defaultMin;
         }
     }
+
+    public int getParallelThreads() {
+        String val = getProperty("parallel_threads");
+        if (val == null) return 5;
+        try {
+            int threads = Integer.parseInt(val.trim());
+            return Math.max(1, Math.min(threads, 50)); // Safety cap at 50
+        } catch (Exception e) {
+            return 5;
+        }
+    }
 }
+

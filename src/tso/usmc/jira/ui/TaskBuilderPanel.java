@@ -1,6 +1,7 @@
 package tso.usmc.jira.ui;
 
 import tso.usmc.jira.app.JiraApiClientGui;
+import tso.usmc.jira.service.JqlAutocompleteService;
 import tso.usmc.jira.util.JiraUtils;
 import tso.usmc.jira.util.JsonUtils;
 import javax.swing.*;
@@ -19,6 +20,10 @@ import java.io.File;
 import java.nio.file.Files;
 import java.util.*;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -28,17 +33,18 @@ public class TaskBuilderPanel extends JPanel {
     private static final boolean MOCK_MODE = false;
 
     private final JiraApiClientGui mainFrame;
+    private JqlAutocompleteService jqlAutocompleteService;
 
     private boolean isUpdating = false;
 
     // UI Components
     private final JTextField parentField = new JTextField(20);
     private final JComboBox<String> defTypeField = new JComboBox<>(new String[]{"Sub-task", "ST-PCU", "ST-Database", "ST-Interface"});
-    private final JTextField defAssigneeField = new JTextField(20);
+    private final JiraUserAutocompleteTextField defAssigneeField = new JiraUserAutocompleteTextField(20);
     private final JTextField defCompField = new JTextField(20);
     private final JTextField defTransField = new JTextField(20);
     private final JComboBox<String> templateSelector = new JComboBox<>();
-    private final JTextArea inputArea = new JTextArea();
+    private final JiraUserAutocompleteTextArea inputArea = new JiraUserAutocompleteTextArea(null);
     private final DefaultListModel<JiraTask> taskListModel = new DefaultListModel<>();
     private final JList<JiraTask> taskList = new JList<>(taskListModel);
     private final List<JiraTask> parsedTasks = new ArrayList<>();
@@ -84,6 +90,14 @@ public class TaskBuilderPanel extends JPanel {
         loadTemplatesFromDisk();
         templateSelector.addActionListener(e -> loadSelectedTemplate());
         leftPanel.add(configPanel, BorderLayout.NORTH);
+        
+        inputArea.addFocusListener(new java.awt.event.FocusAdapter() {
+            @Override
+            public void focusGained(java.awt.event.FocusEvent e) {
+                ensureAutocompleteServiceInitialized();
+            }
+        });
+
         inputArea.setFont(new Font("Monospaced", Font.PLAIN, 12));
         inputArea.setSelectionColor(new Color(160, 200, 255)); // Slightly deeper blue
         inputArea.setSelectedTextColor(Color.BLACK); // Keep text black when selected
@@ -635,19 +649,22 @@ public class TaskBuilderPanel extends JPanel {
     private void executeTasks() {
         resultsTableModel.setRowCount(0);
         parseInput(); // Ensure defaults are fresh before execution
+        
+        List<JiraTask> selected = taskList.getSelectedValuesList();
+        if (selected.isEmpty()) {
+            updateStatus("No tasks selected.");
+            return;
+        }
+
+        final String defaultParent = parentField.getText().trim().toUpperCase();
+        final int total = selected.size();
+        final List<String> createdKeys = Collections.synchronizedList(new ArrayList<>());
+        final Map<Integer, JiraTask> taskByIndex = new HashMap<>();
+        for (int i = 0; i < selected.size(); i++) taskByIndex.put(i, selected.get(i));
+
         new Thread(() -> {
-            List<JiraTask> selected = taskList.getSelectedValuesList();
-
-            if (selected.isEmpty()) {
-                updateStatus("No tasks selected.");
-                return;
-            }
-
-            String defaultParent = parentField.getText().trim().toUpperCase();
-            int total = selected.size();
-            List<String> createdKeys = new ArrayList<>();
-
             try {
+                // 1. Creation Phase (Bulk or Sequential)
                 if (total > 1 && !MOCK_MODE) {
                     updateStatus("Creating " + total + " tasks in bulk...");
                     List<String> taskJsons = new ArrayList<>();
@@ -656,9 +673,7 @@ public class TaskBuilderPanel extends JPanel {
                         String proj = parent.contains("-") ? parent.split("-")[0] : "PROJ";
                         String assignee = t.assignee;
                         List<String> noAssigneeTypes = Arrays.asList("ST-PCU", "ST-Database", "ST-Interface");
-                        if (t.type != null && noAssigneeTypes.contains(t.type)) {
-                            assignee = null;
-                        }
+                        if (t.type != null && noAssigneeTypes.contains(t.type)) assignee = null;
                         taskJsons.add(JsonUtils.buildManualJson(proj, parent, t.summary, t.description, t.type, assignee, t.component, t.duedate));
                     }
                     String bulkJson = JsonUtils.buildBulkJson(taskJsons);
@@ -666,24 +681,19 @@ public class TaskBuilderPanel extends JPanel {
                     
                     JSONObject bulkResp = new JSONObject(resp);
                     JSONArray issues = bulkResp.getJSONArray("issues");
-                    for (int i = 0; i < issues.length(); i++) {
-                        createdKeys.add(issues.getJSONObject(i).getString("key"));
-                    }
+                    for (int i = 0; i < issues.length(); i++) createdKeys.add(issues.getJSONObject(i).getString("key"));
                 } else {
-                    // Single create or Mock mode
                     for (int i = 0; i < total; i++) {
                         JiraTask t = selected.get(i);
                         String parent = (t.parent != null && !t.parent.isEmpty()) ? t.parent : defaultParent;
                         String proj = parent.contains("-") ? parent.split("-")[0] : "PROJ";
                         if (MOCK_MODE) {
-                            Thread.sleep(400);
+                            Thread.sleep(200);
                             createdKeys.add(proj + "-" + (100 + new Random().nextInt(900)));
                         } else {
                             String assignee = t.assignee;
                             List<String> noAssigneeTypes = Arrays.asList("ST-PCU", "ST-Database", "ST-Interface");
-                            if (t.type != null && noAssigneeTypes.contains(t.type)) {
-                                assignee = null;
-                            }
+                            if (t.type != null && noAssigneeTypes.contains(t.type)) assignee = null;
                             String createJson = JsonUtils.buildManualJson(proj, parent, t.summary, t.description, t.type, assignee, t.component, t.duedate);
                             String resp = mainFrame.getService().executeRequest(mainFrame.getBaseUrl() + "/rest/api/2/issue", "POST", createJson);
                             createdKeys.add(new JSONObject(resp).getString("key"));
@@ -691,68 +701,73 @@ public class TaskBuilderPanel extends JPanel {
                     }
                 }
 
-                // Now process transitions and notifications for the created issues
-                for (int i = 0; i < selected.size(); i++) {
-                    JiraTask t = selected.get(i);
-                    String key = createdKeys.get(i);
-                    String link = mainFrame.getBaseUrl() + "/browse/" + key;
-                    String status = "CREATED";
+                // 2. Parallel Action Phase (Transitions and Notifications)
+                updateStatus("Created " + total + " tasks. Processing transitions and notifications in parallel...");
+                int threadCount = mainFrame.getJiraConfig().getParallelThreads();
+                ExecutorService executor = Executors.newFixedThreadPool(threadCount);
+                AtomicInteger completedCount = new AtomicInteger(0);
 
-                    if (!t.transition.isEmpty()) {
-                        updateStatus("Transitioning " + key + " to " + t.transition + "...");
+                for (int i = 0; i < total; i++) {
+                    final int idx = i;
+                    final String key = createdKeys.get(idx);
+                    final JiraTask t = selected.get(idx);
+                    
+                    executor.submit(() -> {
+                        String link = mainFrame.getBaseUrl() + "/browse/" + key;
+                        String status = "CREATED";
                         try {
-                            String transitionId = null;
-                            if (MOCK_MODE) {
-                                Thread.sleep(300);
-                                transitionId = "711";
-                            } else {
-                                String transitionsResponse = mainFrame.getService().executeRequest(mainFrame.getBaseUrl() + "/rest/api/2/issue/" + key + "/transitions", "GET", null);
-                                transitionId = JiraUtils.findTransitionIdByName(transitionsResponse, t.transition);
-                            }
-                            if (transitionId != null) {
-                                if (!MOCK_MODE) {
-                                    JSONObject transitionPayload = new JSONObject();
-                                    transitionPayload.put("transition", new JSONObject().put("id", transitionId));
-                                    mainFrame.getService().executeRequest(mainFrame.getBaseUrl() + "/rest/api/2/issue/" + key + "/transitions", "POST", transitionPayload.toString());
+                            if (!t.transition.isEmpty()) {
+                                String transitionId = null;
+                                if (MOCK_MODE) {
+                                    Thread.sleep(300);
+                                    transitionId = "711";
+                                } else {
+                                    String transResp = mainFrame.getService().executeRequest(mainFrame.getBaseUrl() + "/rest/api/2/issue/" + key + "/transitions", "GET", null);
+                                    transitionId = JiraUtils.findTransitionIdByName(transResp, t.transition);
                                 }
-                                status = "CREATED & MOVED TO: " + t.transition.toUpperCase();
-                            } else {
-                                status = "CREATED (Trans. '" + t.transition + "' not found)";
-                            }
-                        } catch (Exception ex) {
-                            status = "CREATED (Trans. Failed: " + ex.getMessage() + ")";
-                        }
-                    }
-
-                    if (t.notify != null && !t.notify.trim().isEmpty()) {
-                        updateStatus("Notifying users for " + key + "...");
-                        try {
-                            if (MOCK_MODE) {
-                                Thread.sleep(200);
-                            } else {
-                                JSONObject notifyPayload = new JSONObject();
-                                notifyPayload.put("subject", "Task Created: " + t.summary);
-                                notifyPayload.put("textBody", "A new issue has been created that you were listed to be notified about.\n\n" +
-                                        "Summary: " + t.summary + "\n" +
-                                        "Link: " + link);
-                                JSONArray usersToNotify = new JSONArray();
-                                String[] userNames = t.notify.split("\\s*,\\s*");
-                                for (String userName : userNames) {
-                                    if (!userName.trim().isEmpty()) {
-                                        usersToNotify.put(new JSONObject().put("name", userName.trim()));
+                                
+                                if (transitionId != null) {
+                                    if (!MOCK_MODE) {
+                                        JSONObject payload = new JSONObject();
+                                        payload.put("transition", new JSONObject().put("id", transitionId));
+                                        mainFrame.getService().executeRequest(mainFrame.getBaseUrl() + "/rest/api/2/issue/" + key + "/transitions", "POST", payload.toString());
                                     }
+                                    status = "CREATED & MOVED TO: " + t.transition.toUpperCase();
+                                } else {
+                                    status = "CREATED (Trans. '" + t.transition + "' not found)";
                                 }
-                                notifyPayload.put("to", new JSONObject().put("users", usersToNotify));
-                                mainFrame.getService().executeRequest(mainFrame.getBaseUrl() + "/rest/api/2/issue/" + key + "/notify", "POST", notifyPayload.toString());
                             }
-                            status += " & NOTIFIED";
-                        } catch (Exception notifyEx) {
-                            status += " (Notify Failed: " + notifyEx.getMessage() + ")";
+
+                            if (t.notify != null && !t.notify.trim().isEmpty()) {
+                                if (MOCK_MODE) {
+                                    Thread.sleep(200);
+                                } else {
+                                    JSONObject notifyPayload = new JSONObject();
+                                    notifyPayload.put("subject", "Task Created: " + t.summary);
+                                    notifyPayload.put("textBody", "A new issue has been created that you were listed to be notified about.\n\nSummary: " + t.summary + "\nLink: " + link);
+                                    JSONArray usersToNotify = new JSONArray();
+                                    for (String user : t.notify.split("\\s*,\\s*")) {
+                                        if (!user.trim().isEmpty()) usersToNotify.put(new JSONObject().put("name", user.trim()));
+                                    }
+                                    notifyPayload.put("to", new JSONObject().put("users", usersToNotify));
+                                    mainFrame.getService().executeRequest(mainFrame.getBaseUrl() + "/rest/api/2/issue/" + key + "/notify", "POST", notifyPayload.toString());
+                                }
+                                status += " & NOTIFIED";
+                            }
+                            addRow(t.summary, status, link);
+                        } catch (Exception ex) {
+                            addRow(t.summary, "CREATED (Err: " + ex.getMessage() + ")", link);
+                        } finally {
+                            int count = completedCount.incrementAndGet();
+                            updateStatus("Parallel Progress: " + count + " of " + total + " actions complete...");
                         }
-                    }
-                    addRow(t.summary, status, link);
+                    });
                 }
-                updateStatus("Execution Complete. " + total + " tasks processed.");
+
+                executor.shutdown();
+                executor.awaitTermination(1, TimeUnit.HOURS);
+                updateStatus("Execution Complete. " + total + " tasks and actions processed.");
+
             } catch (Exception e) {
                 updateStatus("Execution Failed: " + e.getMessage());
                 addRow("SYSTEM ERROR", e.getMessage(), "N/A");
@@ -975,6 +990,17 @@ public class TaskBuilderPanel extends JPanel {
             taskList.setSelectionInterval(0, taskListModel.getSize() - 1);
         } else {
             taskList.clearSelection();
+        }
+    }
+
+    private void ensureAutocompleteServiceInitialized() {
+        if (jqlAutocompleteService != null) return;
+        try {
+            this.jqlAutocompleteService = new JqlAutocompleteService(mainFrame.getService(), mainFrame.getBaseUrl());
+            this.inputArea.setService(jqlAutocompleteService);
+            this.defAssigneeField.setService(jqlAutocompleteService);
+        } catch (Exception e) {
+            // Fails if cert not selected
         }
     }
     

@@ -115,12 +115,50 @@ import javax.net.ssl.*;
 
 public class JiraApiService {
     private SSLContext sslContext;
+    private boolean loggingEnabled = false;
 
     public JiraApiService(String selectedAlias) throws Exception {
         this.sslContext = createSslContext(selectedAlias);
     }
 
+    public void setLoggingEnabled(boolean enabled) {
+        this.loggingEnabled = enabled;
+    }
+
     public String executeRequest(String urlString, String method, String jsonBody) throws Exception {
+        int maxRetries = 5;
+        int attempt = 0;
+        long waitTime = 2000; // Start with 2s default wait
+
+        while (true) {
+            attempt++;
+            try {
+                return executeRequestInternal(urlString, method, jsonBody);
+            } catch (RateLimitException e) {
+                if (attempt >= maxRetries) {
+                    throw new Exception("Jira API Rate Limit exceeded. Failed after " + maxRetries + " attempts. Last error: " + e.getMessage());
+                }
+                
+                long sleepTime = e.getRetryAfterSeconds() > 0 ? e.getRetryAfterSeconds() * 1000L : waitTime;
+                String retryMsg = "[RATE LIMIT] Attempt " + attempt + " failed. Retrying in " + (sleepTime / 1000.0) + " seconds...";
+                System.out.println(retryMsg);
+                if (loggingEnabled) appendToFile("\n" + retryMsg + "\n");
+                
+                Thread.sleep(sleepTime);
+                waitTime *= 2; // Exponential backoff for next time
+            }
+        }
+    }
+
+    private String executeRequestInternal(String urlString, String method, String jsonBody) throws Exception {
+        if (loggingEnabled) {
+            String logMsg = "\n[" + new java.util.Date() + "] [API REQUEST] " + method + " " + urlString + "\n";
+            if (jsonBody != null) {
+                logMsg += "[API REQUEST BODY]\n" + jsonBody + "\n";
+            }
+            appendToFile(logMsg);
+        }
+
         URL url = new URL(urlString);
         HttpsURLConnection conn = (HttpsURLConnection) url.openConnection();
         conn.setSSLSocketFactory(this.sslContext.getSocketFactory());
@@ -136,6 +174,12 @@ public class JiraApiService {
         }
 
         int code = conn.getResponseCode();
+        
+        if (code == 429) {
+            int retryAfter = conn.getHeaderFieldInt("Retry-After", -1);
+            throw new RateLimitException("Rate limit hit", retryAfter);
+        }
+
         InputStream is = (code >= 200 && code < 300) ? conn.getInputStream() : conn.getErrorStream();
         
         StringBuilder sb = new StringBuilder();
@@ -147,12 +191,68 @@ public class JiraApiService {
                 }
             }
         }
-        if (code >= 300) {
-            throw new Exception("Jira API request failed with code " + code + ": " + sb.toString());
+
+        String response = sb.toString();
+        if (loggingEnabled) {
+            String respLog = "[API RESPONSE CODE] " + code + "\n";
+            if (response != null && !response.isEmpty()) {
+                respLog += "[API RESPONSE BODY]\n" + response + "\n";
+            }
+            appendToFile(respLog);
         }
-        return sb.toString();
+
+        if (code >= 300) {
+            throw new Exception("Jira API request failed with code " + code + ": " + response);
+        }
+        return response;
+    }
+
+    private static class RateLimitException extends Exception {
+        private final int retryAfterSeconds;
+        public RateLimitException(String message, int retryAfterSeconds) {
+            super(message);
+            this.retryAfterSeconds = retryAfterSeconds;
+        }
+        public int getRetryAfterSeconds() { return retryAfterSeconds; }
+    }
+
+    public String getJqlAutoCompleteData(String baseUrl) throws Exception {
+        String url = baseUrl + "/rest/api/2/jql/autocompletedata";
+        return executeRequest(url, "GET", null);
+    }
+
+    public String getJqlSuggestions(String baseUrl, String fieldName, String fieldValue) throws Exception {
+        String url = baseUrl + "/rest/api/2/jql/autocompletedata/suggestions?fieldName=" + 
+                     java.net.URLEncoder.encode(fieldName, "UTF-8") + 
+                     "&fieldValue=" + java.net.URLEncoder.encode(fieldValue, "UTF-8");
+        return executeRequest(url, "GET", null);
+    }
+
+    public String searchUsers(String baseUrl, String query) throws Exception {
+        String url = baseUrl + "/rest/api/2/user/search?username=" + java.net.URLEncoder.encode(query, "UTF-8");
+        return executeRequest(url, "GET", null);
+    }
+
+    private void appendToFile(String msg) {
+        if (!loggingEnabled) return;
+        try {
+            String userHome = System.getProperty("user.home");
+            File logDir = new File(userHome, ".JiraApiClient/logs");
+            if (!logDir.exists()) logDir.mkdirs();
+            
+            String dateStr = new java.text.SimpleDateFormat("yyyy-MM-dd").format(new java.util.Date());
+            File logFile = new File(logDir, "jira_api_" + dateStr + ".log");
+            
+            try (FileWriter fw = new FileWriter(logFile, true);
+                 PrintWriter pw = new PrintWriter(fw)) {
+                pw.println(msg);
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
     public File downloadAttachmentToTempFile(String fileUrl, String originalFilename) throws Exception {
+        if (loggingEnabled) appendToFile("\n[" + new java.util.Date() + "] [API ATTACHMENT DOWNLOAD] " + fileUrl);
         URL downloadUrl = new URL(fileUrl);
         HttpsURLConnection dlConn = (HttpsURLConnection) downloadUrl.openConnection();
         
@@ -174,11 +274,13 @@ public class JiraApiService {
                 out.write(buffer, 0, bytesRead);
             }
         }
+        if (loggingEnabled) appendToFile("[API ATTACHMENT DOWNLOAD] Success: " + originalFilename + " -> " + tempFile.getAbsolutePath());
         
         // Return the handle to the downloaded temporary file.
         return tempFile;
     }
     public String uploadAttachment(String urlString, File fileToUpload, String originalFilename) throws Exception {
+        if (loggingEnabled) appendToFile("\n[" + new java.util.Date() + "] [API ATTACHMENT UPLOAD] POST " + urlString + " (File: " + originalFilename + ")");
         String boundary = "---" + System.currentTimeMillis() + "---";
         URL url = new URL(urlString);
         HttpsURLConnection conn = (HttpsURLConnection) url.openConnection();
@@ -219,11 +321,14 @@ public class JiraApiService {
             }
         }
 
+        String response = sb.toString();
+        if (loggingEnabled) appendToFile("[API RESPONSE CODE] " + code + "\n[API RESPONSE BODY]\n" + response);
+
         if (code >= 300) {
-            throw new Exception("Jira API request failed with code " + code + ": " + sb.toString());
+            throw new Exception("Jira API request failed with code " + code + ": " + response);
         }
 
-        return sb.toString();
+        return response;
     }
 
     private SSLContext createSslContext(final String alias) throws Exception {

@@ -1,6 +1,7 @@
 package tso.usmc.jira.ui;
 
 import tso.usmc.jira.app.JiraApiClientGui;
+import tso.usmc.jira.service.JqlAutocompleteService;
 import tso.usmc.jira.util.JsonUtils;
 
 import javax.swing.*;
@@ -18,21 +19,43 @@ public class JqlRunnerPanel extends JPanel implements tso.usmc.jira.util.ConfigC
 
     private final JiraApiClientGui mainFrame;
     private final tso.usmc.jira.util.JiraConfig jiraConfig;
+    private JqlAutocompleteService jqlAutocompleteService;
 
     // UI Components
-    private final JTextArea jqlArea = new JTextArea("issuetype = Bug AND status = 'To Do' ORDER BY created DESC");
+    private final JqlAutocompleteTextArea jqlArea;
     private final JTextField fieldsField = new JTextField("key, summary, status, assignee, issuelinks");
     private final JButton executeBtn = new JButton("Execute JQL");
+    private final JComboBox<String> filterCombo = new JComboBox<>();
+    private final JButton saveFilterBtn = new JButton("Save Filter");
     private final JLabel statusLabel = new JLabel("Enter a JQL query and click Execute.");
 
-    private final DefaultTableModel tableModel = new DefaultTableModel();
+    private final DefaultTableModel tableModel = new DefaultTableModel() {
+        @Override
+        public boolean isCellEditable(int row, int column) {
+            return false;
+        }
+    };
     private final JTable resultsTable = new JTable(tableModel);
     private String selectedIssueKey;
+    private boolean isRefreshingFilters = false;
 
     public JqlRunnerPanel(JiraApiClientGui mainFrame) {
         this.mainFrame = mainFrame;
         this.jiraConfig = mainFrame.getJiraConfig();
         this.jiraConfig.addConfigChangeListener(this);
+        
+        this.jqlArea = new JqlAutocompleteTextArea(null);
+        this.jqlArea.setText("issuetype = Bug AND status = 'To Do' ORDER BY created DESC");
+        
+        this.jqlArea.addFocusListener(new java.awt.event.FocusAdapter() {
+            @Override
+            public void focusGained(java.awt.event.FocusEvent e) {
+                ensureAutocompleteServiceInitialized();
+            }
+        });
+
+        // Try initial load
+        ensureAutocompleteServiceInitialized();
 
         setLayout(new BorderLayout(10, 10));
         setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
@@ -40,6 +63,12 @@ public class JqlRunnerPanel extends JPanel implements tso.usmc.jira.util.ConfigC
         // --- TOP: Input Configuration Panel ---
         JPanel configPanel = new JPanel(new BorderLayout(10, 10));
         
+        JPanel filterPanel = new JPanel(new BorderLayout(5, 5));
+        filterPanel.add(new JLabel("Saved Filters:"), BorderLayout.WEST);
+        filterPanel.add(filterCombo, BorderLayout.CENTER);
+        filterPanel.add(saveFilterBtn, BorderLayout.EAST);
+        configPanel.add(filterPanel, BorderLayout.NORTH);
+
         JScrollPane jqlScroll = new JScrollPane(jqlArea);
         jqlArea.setFont(new Font("Monospaced", Font.PLAIN, 12));
         jqlScroll.setBorder(BorderFactory.createTitledBorder("JQL Query"));
@@ -72,21 +101,112 @@ public class JqlRunnerPanel extends JPanel implements tso.usmc.jira.util.ConfigC
         add(tableScroll, BorderLayout.CENTER);
         add(statusPanel, BorderLayout.SOUTH);
 
-        // --- Action Listener ---
+        // --- Action Listeners ---
         executeBtn.addActionListener(e -> executeJql());
+        saveFilterBtn.addActionListener(e -> saveCurrentFilter());
+        filterCombo.addActionListener(e -> applySelectedFilter());
+
         setupContextMenu();
+        refreshFilters();
     }
 
     @Override
     public void onConfigChanged() {
-        // Context menu is built on-the-fly or needs refresh?
-        // Current setupContextMenu attaches a listener that builds it.
+        SwingUtilities.invokeLater(this::refreshFilters);
+    }
+
+    private void refreshFilters() {
+        isRefreshingFilters = true;
+        String currentSelection = (String) filterCombo.getSelectedItem();
+        filterCombo.removeAllItems();
+        filterCombo.addItem("-- Select a saved filter --");
+        
+        String[] filterKeys = jiraConfig.getJqlFilterKeys();
+        for (String key : filterKeys) {
+            filterCombo.addItem(key);
+        }
+        
+        if (currentSelection != null) {
+            filterCombo.setSelectedItem(currentSelection);
+        }
+        isRefreshingFilters = false;
+    }
+
+    private void ensureAutocompleteServiceInitialized() {
+        if (jqlAutocompleteService != null) return;
+        
+        try {
+            JqlAutocompleteService service = new JqlAutocompleteService(mainFrame.getService(), mainFrame.getBaseUrl());
+            this.jqlAutocompleteService = service;
+            this.jqlArea.setService(service);
+        } catch (Exception e) {
+            // Silently fail if cert not selected yet
+        }
+    }
+
+    private void applySelectedFilter() {
+        if (isRefreshingFilters) return;
+        
+        String selected = (String) filterCombo.getSelectedItem();
+        if (selected == null || selected.startsWith("--")) return;
+        
+        String filterData = jiraConfig.getJqlFilter(selected);
+        if (filterData != null && filterData.contains("|")) {
+            String[] parts = filterData.split("\\|", 2);
+            fieldsField.setText(parts[0]);
+            jqlArea.setText(parts[1]);
+        }
+    }
+
+    private void saveCurrentFilter() {
+        String name = JOptionPane.showInputDialog(this, "Enter a name for this filter:", "Save JQL Filter", JOptionPane.QUESTION_MESSAGE);
+        if (name == null || name.trim().isEmpty()) return;
+        
+        String fields = fieldsField.getText().trim();
+        String jql = jqlArea.getText().trim();
+        
+        if (jql.isEmpty()) {
+            JOptionPane.showMessageDialog(this, "JQL query cannot be empty.", "Error", JOptionPane.ERROR_MESSAGE);
+            return;
+        }
+        
+        jiraConfig.saveJqlFilter(name, fields, jql);
+        JOptionPane.showMessageDialog(this, "Filter '" + name + "' saved successfully.", "Success", JOptionPane.INFORMATION_MESSAGE);
     }
 
     // NEW: Method to set up the right-click context menu on the results table
     private void setupContextMenu() {
-        // Add a mouse listener to the table to detect right-clicks
+        // Add a mouse listener to the table to detect right-clicks and double-clicks
         resultsTable.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                if (e.getClickCount() == 2) {
+                    JTable source = (JTable) e.getSource();
+                    int row = source.rowAtPoint(e.getPoint());
+                    int col = source.columnAtPoint(e.getPoint());
+                    
+                    if (row >= 0 && col >= 0) {
+                        int modelRow = source.convertRowIndexToModel(row);
+                        
+                        // Find 'key' column index
+                        int keyCol = -1;
+                        for (int i = 0; i < tableModel.getColumnCount(); i++) {
+                            if ("key".equalsIgnoreCase(tableModel.getColumnName(i))) {
+                                keyCol = i;
+                                break;
+                            }
+                        }
+                        
+                        if (keyCol != -1) {
+                            Object val = tableModel.getValueAt(modelRow, keyCol);
+                            if (val != null) {
+                                tso.usmc.jira.util.JiraUtils.browseIssue(mainFrame.getBaseUrl(), val.toString());
+                            }
+                        }
+                    }
+                }
+            }
+
             @Override
             public void mouseReleased(MouseEvent e) {
                 if (e.isPopupTrigger()) {
@@ -106,7 +226,11 @@ public class JqlRunnerPanel extends JPanel implements tso.usmc.jira.util.ConfigC
                 int row = source.rowAtPoint(e.getPoint());
 
                 if (row >= 0 && row < source.getRowCount()) {
-                    source.setRowSelectionInterval(row, row);
+                    // Select row if not already selected, else keep current selection
+                    if (!source.isRowSelected(row)) {
+                        source.setRowSelectionInterval(row, row);
+                    }
+                    
                     int keyColumnIndex = -1;
                     for (int i = 0; i < tableModel.getColumnCount(); i++) {
                         if ("key".equalsIgnoreCase(tableModel.getColumnName(i))) {
@@ -116,7 +240,12 @@ public class JqlRunnerPanel extends JPanel implements tso.usmc.jira.util.ConfigC
                     }
 
                     if (keyColumnIndex != -1) {
-                        selectedIssueKey = (String) source.getModel().getValueAt(source.convertRowIndexToModel(row), keyColumnIndex);
+                        int[] selectedRows = source.getSelectedRows();
+                        java.util.List<String> keys = new java.util.ArrayList<>();
+                        for (int r : selectedRows) {
+                            keys.add((String) source.getModel().getValueAt(source.convertRowIndexToModel(r), keyColumnIndex));
+                        }
+                        selectedIssueKey = String.join(",", keys);
                         
                         // BUILD DYNAMIC MENU
                         final JPopupMenu contextMenu = new JPopupMenu();
@@ -148,6 +277,71 @@ public class JqlRunnerPanel extends JPanel implements tso.usmc.jira.util.ConfigC
                                     });
                                     contextMenu.add(item);
                                 }
+                            }
+                        }
+
+                        // ORCHESTRATOR WORKFLOWS
+                        if (jiraConfig.isTabEnabled("WorkflowOrchestrator")) {
+                            contextMenu.addSeparator();
+                            JMenu workflowMenu = new JMenu("Run Workflow");
+                            tso.usmc.jira.workflow.WorkflowManager wm = new tso.usmc.jira.workflow.WorkflowManager();
+                            java.util.List<String> recipes = wm.listWorkflows();
+                            
+                            for (String rName : recipes) {
+                                try {
+                                    tso.usmc.jira.workflow.WorkflowRecipe recipe = wm.loadWorkflow(rName);
+                                    if (recipe != null && (recipe.getJqlQuery() == null || recipe.getJqlQuery().trim().isEmpty())) {
+                                        JMenuItem item = new JMenuItem(rName);
+                                        item.addActionListener(al -> {
+                                            boolean hasPrompts = false;
+                                            for (tso.usmc.jira.workflow.WorkflowStep step : recipe.getSteps()) {
+                                                if (step instanceof tso.usmc.jira.workflow.CreateStep) {
+                                                    tso.usmc.jira.workflow.CreateStep cs = (tso.usmc.jira.workflow.CreateStep) step;
+                                                    String pk = cs.getProjectKey();
+                                                    String it = cs.getIssueType();
+                                                    if ((pk != null && (pk.contains(",") || pk.contains("[config:") || pk.contains("[choice:"))) ||
+                                                        (it != null && (it.contains(",") || it.contains("[config:") || it.contains("[choice:")))) {
+                                                        hasPrompts = true; break;
+                                                    }
+                                                }
+                                                if (step instanceof tso.usmc.jira.workflow.WorklogStep) {
+                                                    tso.usmc.jira.workflow.WorklogStep ws = (tso.usmc.jira.workflow.WorklogStep) step;
+                                                    String ts = ws.getTimeSpent();
+                                                    String c = ws.getComment();
+                                                    String s = ws.getStarted();
+                                                    if ((ts != null && (ts.contains(",") || ts.contains("[config:") || ts.contains("[choice:"))) ||
+                                                        (c != null && (c.contains(",") || c.contains("[config:") || c.contains("[choice:"))) ||
+                                                        (s != null && (s.contains(",") || s.contains("[config:") || s.contains("[choice:")))) {
+                                                        hasPrompts = true; break;
+                                                    }
+                                                }
+                                                for (tso.usmc.jira.workflow.FieldAction fa : step.getFieldActions().values()) {
+                                                    if (fa.getMode() == tso.usmc.jira.workflow.FieldAction.MappingMode.PROMPT) {
+                                                        hasPrompts = true; break;
+                                                    }
+                                                }
+                                                if (hasPrompts) break;
+                                            }
+
+                                            if (hasPrompts) {
+                                                mainFrame.showPanel("Workflow Orchestrator");
+                                                WorkflowOrchestratorPanel wop = mainFrame.getWorkflowOrchestratorPanel();
+                                                if (wop != null) {
+                                                    wop.setRunnerIssueKey(rName, selectedIssueKey);
+                                                }
+                                            } else {
+                                                WorkflowOrchestratorPanel wop = mainFrame.getWorkflowOrchestratorPanel();
+                                                if (wop != null) {
+                                                    wop.runWorkflowDirectly(rName, selectedIssueKey);
+                                                }
+                                            }
+                                        });
+                                        workflowMenu.add(item);
+                                    }
+                                } catch (Exception ignored) {}
+                            }
+                            if (workflowMenu.getItemCount() > 0) {
+                                contextMenu.add(workflowMenu);
                             }
                         }
 
