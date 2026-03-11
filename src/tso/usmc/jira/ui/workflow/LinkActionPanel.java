@@ -20,7 +20,6 @@ public class LinkActionPanel extends JPanel {
     private final JTextField inwardField;
 
     // Jira Link fields
-    private final JTextField linkTypeField;
     private final JComboBox<String> linkTypeCombo;
     private final JTextField outwardField;
 
@@ -65,15 +64,15 @@ public class LinkActionPanel extends JPanel {
 
         // Jira Panel
         JPanel jiraPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
-        linkTypeField = new JTextField(action.getLinkType(), 10);
+        
         linkTypeCombo = new JComboBox<>(new Vector<>(linkTypes));
-        linkTypeCombo.setPreferredSize(new Dimension(100, 22));
-        linkTypeCombo.addActionListener(e -> {
-            String s = (String) linkTypeCombo.getSelectedItem();
-            if (s != null && !s.isEmpty()) linkTypeField.setText(s);
-        });
+        linkTypeCombo.setEditable(true);
+        linkTypeCombo.setPreferredSize(new Dimension(150, 22));
+        // Set initial value
+        linkTypeCombo.setSelectedItem(action.getLinkType());
+
         outwardField = new JTextField(action.getOutwardIssueToken(), 10);
-        jiraPanel.add(new JLabel("Type:")); jiraPanel.add(linkTypeField); jiraPanel.add(linkTypeCombo);
+        jiraPanel.add(new JLabel("Type:")); jiraPanel.add(linkTypeCombo);
         jiraPanel.add(new JLabel("Outward:")); jiraPanel.add(outwardField);
         
         // Remote Panel
@@ -97,7 +96,6 @@ public class LinkActionPanel extends JPanel {
         updateModeUI();
 
         tso.usmc.jira.util.JiraUtils.setupExpandedView(inwardField);
-        tso.usmc.jira.util.JiraUtils.setupExpandedView(linkTypeField);
         tso.usmc.jira.util.JiraUtils.setupExpandedView(outwardField);
         tso.usmc.jira.util.JiraUtils.setupExpandedView(remoteUrlField);
         tso.usmc.jira.util.JiraUtils.setupExpandedView(remoteTitleField);
@@ -118,7 +116,8 @@ public class LinkActionPanel extends JPanel {
             action.setRelationship(remoteRelField.getText());
             action.setSummary(remoteSummaryField.getText());
         } else {
-            action.setLinkType(linkTypeField.getText());
+            Object selected = linkTypeCombo.getSelectedItem();
+            action.setLinkType(selected != null ? selected.toString() : "");
             action.setOutwardIssueToken(outwardField.getText());
         }
     }
