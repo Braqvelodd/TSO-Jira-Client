@@ -126,6 +126,31 @@ public class JiraApiService {
     }
 
     public String executeRequest(String urlString, String method, String jsonBody) throws Exception {
+        int maxRetries = 5;
+        int attempt = 0;
+        long waitTime = 2000; // Start with 2s default wait
+
+        while (true) {
+            attempt++;
+            try {
+                return executeRequestInternal(urlString, method, jsonBody);
+            } catch (RateLimitException e) {
+                if (attempt >= maxRetries) {
+                    throw new Exception("Jira API Rate Limit exceeded. Failed after " + maxRetries + " attempts. Last error: " + e.getMessage());
+                }
+                
+                long sleepTime = e.getRetryAfterSeconds() > 0 ? e.getRetryAfterSeconds() * 1000L : waitTime;
+                String retryMsg = "[RATE LIMIT] Attempt " + attempt + " failed. Retrying in " + (sleepTime / 1000.0) + " seconds...";
+                System.out.println(retryMsg);
+                if (loggingEnabled) appendToFile("\n" + retryMsg + "\n");
+                
+                Thread.sleep(sleepTime);
+                waitTime *= 2; // Exponential backoff for next time
+            }
+        }
+    }
+
+    private String executeRequestInternal(String urlString, String method, String jsonBody) throws Exception {
         if (loggingEnabled) {
             String logMsg = "\n[" + new java.util.Date() + "] [API REQUEST] " + method + " " + urlString + "\n";
             if (jsonBody != null) {
@@ -149,6 +174,12 @@ public class JiraApiService {
         }
 
         int code = conn.getResponseCode();
+        
+        if (code == 429) {
+            int retryAfter = conn.getHeaderFieldInt("Retry-After", -1);
+            throw new RateLimitException("Rate limit hit", retryAfter);
+        }
+
         InputStream is = (code >= 200 && code < 300) ? conn.getInputStream() : conn.getErrorStream();
         
         StringBuilder sb = new StringBuilder();
@@ -174,6 +205,15 @@ public class JiraApiService {
             throw new Exception("Jira API request failed with code " + code + ": " + response);
         }
         return response;
+    }
+
+    private static class RateLimitException extends Exception {
+        private final int retryAfterSeconds;
+        public RateLimitException(String message, int retryAfterSeconds) {
+            super(message);
+            this.retryAfterSeconds = retryAfterSeconds;
+        }
+        public int getRetryAfterSeconds() { return retryAfterSeconds; }
     }
 
     public String getJqlAutoCompleteData(String baseUrl) throws Exception {
