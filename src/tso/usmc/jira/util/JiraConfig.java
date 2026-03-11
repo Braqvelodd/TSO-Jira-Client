@@ -231,9 +231,10 @@ public class JiraConfig {
                 try (InputStream input = new FileInputStream(this.templateFile)) {
                     Properties tempProps = new Properties();
                     tempProps.load(input);
-                    // Only merge template and api_template keys
+                    // Only merge template, api_template, workflow, and jql_filter keys
                     for (String key : tempProps.stringPropertyNames()) {
-                        if (key.startsWith("template.") || key.startsWith("api_template.") || key.startsWith("workflow.")) {
+                        if (key.startsWith("template.") || key.startsWith("api_template.") || 
+                            key.startsWith("workflow.") || key.startsWith("jql_filter.")) {
                             properties.setProperty(key, tempProps.getProperty(key));
                         }
                     }
@@ -249,6 +250,59 @@ public class JiraConfig {
     }
     public File getTemplateFile() {
         return this.templateFile;
+    }
+    // NEW: Public method to save a JQL filter to the template file
+    public void saveJqlFilter(String name, String fields, String jql) {
+        synchronized (lock) {
+            try {
+                Path path = templateFile.toPath();
+                List<String> lines = templateFile.exists() ? Files.readAllLines(path) : new ArrayList<>();
+                String key = "jql_filter." + name;
+                String value = fields + "|" + jql;
+                String newLine = key + " = " + value;
+                
+                boolean found = false;
+                for (int i = 0; i < lines.size(); i++) {
+                    String line = lines.get(i).trim();
+                    if (!line.startsWith("#") && line.startsWith(key + "=")) {
+                        lines.set(i, newLine);
+                        found = true;
+                        break;
+                    } else if (!line.startsWith("#") && line.startsWith(key + " ")) {
+                        // Handle potential space before =
+                        String potentialKey = line.split("=", 2)[0].trim();
+                        if (potentialKey.equals(key)) {
+                            lines.set(i, newLine);
+                            found = true;
+                            break;
+                        }
+                    }
+                }
+                
+                if (!found) {
+                    if (lines.isEmpty() || !lines.get(lines.size() - 1).trim().isEmpty()) {
+                        lines.add(""); // Add newline before new section if not already there
+                    }
+                    if (lines.stream().noneMatch(l -> l.contains("# JQL Filters"))) {
+                        lines.add("# JQL Filters (Format: fields|query)");
+                    }
+                    lines.add(newLine);
+                }
+                
+                Files.write(path, lines);
+                reload();
+            } catch (IOException e) {
+                System.err.println("Error saving JQL filter: " + e.getMessage());
+            }
+        }
+    }
+
+    public String[] getJqlFilterKeys() {
+        return getKeysByPrefix("jql_filter.");
+    }
+
+    public String getJqlFilter(String key) {
+        return getProperty("jql_filter." + key);
     }
     // NEW: Method to start the file watcher background thread
     private void startFileWatcher() {
