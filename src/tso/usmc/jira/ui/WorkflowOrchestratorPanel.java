@@ -53,6 +53,7 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
     private final JTextArea runnerLog = new JTextArea();
     private final JButton runBtn = new JButton("Run Workflow on Selected");
     private final JCheckBox verboseLogCheck = new JCheckBox("Verbose API Logs");
+    private final JLabel statusLabel = new JLabel("Ready.");
 
     // Results data
     private final List<JSONObject> currentSearchIssues = new ArrayList<>();
