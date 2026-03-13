@@ -41,6 +41,17 @@ public class AssetStep extends WorkflowStep {
         return String.join(",", subTaskFields);
     }
 
+    /**
+     * Legacy setter for backward compatibility with UI.
+     */
+    public void setSubTaskFields(String csv) {
+        if (csv == null || csv.trim().isEmpty()) {
+            this.subTaskFields = new ArrayList<>();
+        } else {
+            this.subTaskFields = new ArrayList<>(java.util.Arrays.asList(csv.split("\\s*,\\s*")));
+        }
+    }
+
     public String getSourceIssueToken() { return sourceIssueToken; }
     public void setSourceIssueToken(String sourceIssueToken) { this.sourceIssueToken = sourceIssueToken; }
 
