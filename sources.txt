@@ -2,6 +2,7 @@ src\tso\usmc\jira\app\JiraApiClientGui.java
 src\tso\usmc\jira\service\JiraApiService.java
 src\tso\usmc\jira\service\EmbeddedLlmService.java
 src\tso\usmc\jira\service\JiraMetadataHelper.java
+src\tso\usmc\jira\service\MetadataCacheService.java
 src\tso\usmc\jira\ui\AssigneeOption.java
 src\tso\usmc\jira\ui\BulkActionPanel.java
 src\tso\usmc\jira\ui\CommentSummarizerPanel.java
@@ -36,3 +37,4 @@ src\tso\usmc\jira\util\JiraUtils.java
 src\tso\usmc\jira\util\JiraConfig.java
 src\tso\usmc\jira\util\ConfigChangeListener.java
 src\tso\usmc\jira\util\WorkflowFieldsConfig.java
+src\tso\usmc\jira\util\ExecutionService.java

@@ -21,11 +21,13 @@ public class EmbeddedLlmService {
 
     private final String cliPath;
     private final String modelPath;
+    private final int timeoutMinutes;
     private Process currentProcess;
 
     public EmbeddedLlmService(JiraConfig config, ProgressListener listener) throws IOException {
         this.cliPath = config.getLlamaCliPath();
         this.modelPath = config.getLlamaModelPath();
+        this.timeoutMinutes = config.getLlmTimeoutMinutes();
 
         // 1. Ensure resources are extracted
         ensureResourceExtracted("/bin/llama-cli.exe", cliPath, listener);
@@ -161,10 +163,10 @@ public class EmbeddedLlmService {
             }
         }
 
-        boolean finished = currentProcess.waitFor(5, TimeUnit.MINUTES); 
+        boolean finished = currentProcess.waitFor(timeoutMinutes, TimeUnit.MINUTES); 
         if (!finished) {
             currentProcess.destroyForcibly();
-            throw new Exception("LLM summarization timed out after 5 minutes.");
+            throw new Exception("LLM summarization timed out after " + timeoutMinutes + " minutes.");
         }
 
         tempPromptFile.delete();

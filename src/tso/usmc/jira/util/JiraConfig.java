@@ -20,7 +20,7 @@ import javax.swing.JOptionPane;
  * Loads and provides access to configuration settings from the JiraConfig.ini file.
  */
 public class JiraConfig {
-    private static final String CURRENT_CONFIG_VERSION = "1.3";
+    private static final String CURRENT_CONFIG_VERSION = "1.4";
     private final Properties properties = new Properties();
     private final File configFile;
     private final File templateFile;
@@ -571,6 +571,26 @@ public class JiraConfig {
             return Math.max(1, Math.min(threads, 50)); // Safety cap at 50
         } catch (Exception e) {
             return 5;
+        }
+    }
+
+    public int getLlmTimeoutMinutes() {
+        String val = getProperty("llm_timeout_minutes");
+        if (val == null) return 5;
+        try {
+            return Integer.parseInt(val.trim());
+        } catch (Exception e) {
+            return 5;
+        }
+    }
+
+    public int getApiTimeoutSeconds() {
+        String val = getProperty("api_timeout_seconds");
+        if (val == null) return 30;
+        try {
+            return Integer.parseInt(val.trim());
+        } catch (Exception e) {
+            return 30;
         }
     }
 }

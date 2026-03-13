@@ -1,171 +1,132 @@
 package tso.usmc.jira.util;
 
 import java.util.List;
-
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+/**
+ * Standardized utility class for Jira JSON operations using the org.json library.
+ * This class replaces all manual string concatenation and index-based parsing
+ * to ensure data integrity and prevent JSON injection.
+ */
 public class JsonUtils {
-    // In your JsonUtils.java file
 
+    /**
+     * Builds JSON for a single issue creation.
+     */
     public static String buildManualJson(String project, String parent, String summary, String description, String issueType, String assignee, String component, String duedate) {
-        JSONObject payload = new JSONObject();
         JSONObject fields = new JSONObject();
 
         fields.put("project", new JSONObject().put("key", project));
-        fields.put("parent", new JSONObject().put("key", parent));
+        
+        if (parent != null && !parent.trim().isEmpty()) {
+            fields.put("parent", new JSONObject().put("key", parent.trim()));
+        }
+        
         fields.put("summary", summary);
         fields.put("description", description);
         fields.put("issuetype", new JSONObject().put("name", issueType));
 
-        if (assignee != null && !assignee.isEmpty()) {
-            fields.put("assignee", new JSONObject().put("name", assignee));
+        if (assignee != null && !assignee.trim().isEmpty()) {
+            fields.put("assignee", new JSONObject().put("name", assignee.trim()));
         }
 
-        if (component != null && !component.isEmpty()) {
-            JSONArray components = new JSONArray();
+        if (component != null && !component.trim().isEmpty()) {
+            JSONArray componentsArr = new JSONArray();
             String[] parts = component.split(",");
             for (String part : parts) {
                 String trimmed = part.trim();
                 if (!trimmed.isEmpty()) {
-                    components.put(new JSONObject().put("name", trimmed));
+                    componentsArr.put(new JSONObject().put("name", trimmed));
                 }
             }
-            if (components.length() > 0) {
-                fields.put("components", components);
+            if (componentsArr.length() > 0) {
+                fields.put("components", componentsArr);
             }
         }
         
-        // Add this new block to handle the due date
-        if (duedate != null && !duedate.isEmpty()) {
-            fields.put("duedate", duedate); // Jira API field for due date is "duedate"
+        if (duedate != null && !duedate.trim().isEmpty()) {
+            fields.put("duedate", duedate.trim());
         }
 
-        payload.put("fields", fields);
-        return payload.toString();
+        return new JSONObject().put("fields", fields).toString();
     }
-
-    /**
-     * Builds JSON for a single issue. 
-     * Forces Project and Parent to UpperCase as requested.
-     */
-    // public static String buildManualJson(String projectKey, String parent, String summary, String desc, String type, String assignee, String components) {
-    //     StringBuilder json = new StringBuilder();
-    //     json.append("{ \"fields\": { ");
-    //     json.append("\"project\": {\"key\": \"").append(escape(projectKey.toUpperCase())).append("\"}, ");
-    //     json.append("\"summary\": \"").append(escape(summary)).append("\", ");
-    //     json.append("\"description\": \"").append(escape(desc)).append("\", ");
-    //     json.append("\"issuetype\": {\"name\": \"").append(escape(type)).append("\"} ");
-
-    //     if (parent != null && !parent.trim().isEmpty()) {
-    //         json.append(", \"parent\": {\"key\": \"").append(escape(parent.toUpperCase())).append("\"} ");
-    //     }
-
-    //     if (assignee != null && !assignee.trim().isEmpty()) {
-    //         json.append(", \"assignee\": {\"name\": \"").append(escape(assignee)).append("\"} ");
-    //     }
-
-    //     // --- COMPONENTS LOGIC (Comma Separated) ---
-    //     if (components != null && !components.isEmpty()) {
-    //         json.append(", \"components\": [");
-    //         String[] parts = components.split(",");
-    //         for (int i = 0; i < parts.length; i++) {
-    //             String compName = parts[i].trim();
-    //             if (!compName.isEmpty()) {
-    //                 json.append("{\"name\": \"").append(escape(compName)).append("\"}");
-    //                 if (i < parts.length - 1) json.append(",");
-    //             }
-    //         }   
-    //         if (duedate != null && !duedate.isEmpty()) {
-    //             fields.put("duedate", duedate); // Jira API field for due date is "duedate"
-    //         }
-    //         // Clean up trailing comma if last part was empty
-    //         if (json.toString().endsWith(",")) {
-    //             json.setLength(json.length() - 1);
-    //         }
-    //         json.append("]");
-    //     }
-
-    //     json.append("}}");
-    //     return json.toString();
-    // }
 
     /**
      * Wraps multiple issue objects into a single bulk update request.
+     * Takes a list of issue JSON strings and combines them under an "issueUpdates" key.
      */
     public static String buildBulkJson(List<String> individualJsons) {
-        StringBuilder bulk = new StringBuilder();
-        bulk.append("{ \"issueUpdates\": [");
-        for (int i = 0; i < individualJsons.size(); i++) {
-            bulk.append(individualJsons.get(i));
-            if (i < individualJsons.size() - 1) bulk.append(",");
+        JSONArray issueUpdates = new JSONArray();
+        for (String json : individualJsons) {
+            try {
+                if (json != null && !json.trim().isEmpty()) {
+                    issueUpdates.put(new JSONObject(json));
+                }
+            } catch (Exception e) {
+                // Silently skip invalid JSON issues to prevent total failure
+            }
         }
-        bulk.append("] }");
-        return bulk.toString();
+        return new JSONObject().put("issueUpdates", issueUpdates).toString();
     }
 
     /**
-     * Builds JSON for a transition using the transition Name.
+     * Builds JSON for a transition request using the transition Name.
      */
     public static String buildTransitionJson(String transitionName) {
-        return "{ \"transition\": { \"name\": \"" + escape(transitionName) + "\" } }";
+        return new JSONObject()
+                .put("transition", new JSONObject().put("name", transitionName))
+                .toString();
     }
 
     /**
      * Extracts a value for a specific key from a JSON string.
+     * Supports dot notation for nested fields (e.g., "fields.summary").
      */
     public static String getFieldValue(String json, String field) {
+        if (json == null || json.isEmpty() || field == null || field.isEmpty()) return "";
         try {
-            String key = "\"" + field + "\":\"";
-            int start = json.indexOf(key);
-            if (start == -1) return "";
-            start += key.length();
-            int end = json.indexOf("\"", start);
-            return json.substring(start, end);
+            JSONObject obj = new JSONObject(json);
+            
+            // Direct path
+            if (obj.has(field)) {
+                return String.valueOf(obj.get(field));
+            }
+
+            // Nested path (dot notation)
+            if (field.contains(".")) {
+                String[] parts = field.split("\\.");
+                Object current = obj;
+                for (int i = 0; i < parts.length; i++) {
+                    if (!(current instanceof JSONObject)) return "";
+                    JSONObject curObj = (JSONObject) current;
+                    if (!curObj.has(parts[i])) return "";
+                    current = curObj.get(parts[i]);
+                }
+                return String.valueOf(current);
+            }
         } catch (Exception e) {
-            return "";
+            // Return empty string on parsing or path failure to match legacy behavior
         }
+        return "";
     }
 
     /**
-     * Formats JSON for the UI display.
+     * Formats JSON for UI display using the org.json standard implementation.
+     * Handles both JSONObject and JSONArray strings.
      */
     public static String prettyPrintJson(String json) {
-        if (json == null || json.isEmpty()) return "";
-        StringBuilder sb = new StringBuilder();
-        int indentLevel = 0;
-        boolean inQuotes = false;
-        for (char c : json.toCharArray()) {
-            if (c == '\"') inQuotes = !inQuotes;
-            if (!inQuotes) {
-                if (c == '{' || c == '[') {
-                    sb.append(c).append("\n").append(indent(++indentLevel));
-                    continue;
-                } else if (c == '}' || c == ']') {
-                    sb.append("\n").append(indent(--indentLevel)).append(c);
-                    continue;
-                } else if (c == ',') {
-                    sb.append(c).append("\n").append(indent(indentLevel));
-                    continue;
-                }
+        if (json == null || json.trim().isEmpty()) return "";
+        try {
+            String trimmed = json.trim();
+            if (trimmed.startsWith("[")) {
+                return new JSONArray(trimmed).toString(4);
+            } else if (trimmed.startsWith("{")) {
+                return new JSONObject(trimmed).toString(4);
             }
-            sb.append(c);
+        } catch (Exception e) {
+            // Not a valid JSON structure, return as is
         }
-        return sb.toString();
-    }
-
-    public static String escape(String s) {
-        if (s == null) return "";
-        return s.replace("\\", "\\\\")
-                .replace("\"", "\\\"")
-                .replace("\n", "\\n")
-                .replace("\r", "\\r")
-                .replace("\t", "\\t");
-    }
-
-    private static String indent(int level) {
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < level; i++) sb.append("    ");
-        return sb.toString();
+        return json;
     }
 }
