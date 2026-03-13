@@ -197,41 +197,6 @@ public class MetadataCacheService {
         return fields;
     }
 
-    public List<JSONObject> getIssueLinkTypes() throws Exception {
-        String cacheKey = "linktypes:all";
-        JSONObject json = getOrFetch(cacheKey, () -> {
-            String url = baseUrl + "/rest/api/2/issueLinkType";
-            return new JSONObject(apiService.executeRequest(url, "GET", null));
-        });
-
-        List<JSONObject> types = new ArrayList<>();
-        if (json.has("issueLinkTypes")) {
-            JSONArray arr = json.getJSONArray("issueLinkTypes");
-            for (int i = 0; i < arr.length(); i++) {
-                types.add(arr.getJSONObject(i));
-            }
-        }
-        return types;
-    }
-
-    public List<JSONObject> getAllFields() throws Exception {
-        String cacheKey = "fields:all";
-        JSONObject json = getOrFetch(cacheKey, () -> {
-            String url = baseUrl + "/rest/api/2/field";
-            String resp = apiService.executeRequest(url, "GET", null);
-            return new JSONObject().put("fields", new JSONArray(resp));
-        });
-
-        List<JSONObject> fields = new ArrayList<>();
-        if (json.has("fields")) {
-            JSONArray arr = json.getJSONArray("fields");
-            for (int i = 0; i < arr.length(); i++) {
-                fields.add(arr.getJSONObject(i));
-            }
-        }
-        return fields;
-    }
-
     public List<String> getProjectKeys() throws Exception {
         String cacheKey = "projects:all";
         JSONObject json = getOrFetch(cacheKey, () -> {
