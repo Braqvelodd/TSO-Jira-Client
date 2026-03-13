@@ -1,6 +1,7 @@
 package tso.usmc.jira.ui.workflow;
 
 import tso.usmc.jira.workflow.LinkAction;
+import tso.usmc.jira.ui.SwingUtils;
 import javax.swing.*;
 import java.awt.*;
 import java.util.List;
@@ -95,12 +96,12 @@ public class LinkActionPanel extends JPanel {
         remoteToggle.addActionListener(e -> updateModeUI());
         updateModeUI();
 
-        tso.usmc.jira.util.JiraUtils.setupExpandedView(inwardField);
-        tso.usmc.jira.util.JiraUtils.setupExpandedView(outwardField);
-        tso.usmc.jira.util.JiraUtils.setupExpandedView(remoteUrlField);
-        tso.usmc.jira.util.JiraUtils.setupExpandedView(remoteTitleField);
-        tso.usmc.jira.util.JiraUtils.setupExpandedView(remoteRelField);
-        tso.usmc.jira.util.JiraUtils.setupExpandedView(remoteSummaryField);
+        SwingUtils.setupExpandedView(inwardField);
+        SwingUtils.setupExpandedView(outwardField);
+        SwingUtils.setupExpandedView(remoteUrlField);
+        SwingUtils.setupExpandedView(remoteTitleField);
+        SwingUtils.setupExpandedView(remoteRelField);
+        SwingUtils.setupExpandedView(remoteSummaryField);
     }
 
     private void updateModeUI() {

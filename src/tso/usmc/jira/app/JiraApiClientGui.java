@@ -10,6 +10,7 @@ import java.util.Enumeration;
 import java.util.List;
 import javax.swing.*;
 import tso.usmc.jira.service.JiraApiService;
+import tso.usmc.jira.service.JiraIssueService;
 import tso.usmc.jira.service.MetadataCacheService;
 import tso.usmc.jira.ui.BulkActionPanel;
 import tso.usmc.jira.ui.CommentSummarizerPanel;
@@ -30,6 +31,7 @@ public class JiraApiClientGui extends JFrame implements ConfigChangeListener {
     private JTextField baseUrlField;
     private JiraApiService apiService;
     private MetadataCacheService metadataService;
+    private JiraIssueService issueService;
     private final JiraConfig jiraConfig;
     private JTabbedPane tabs;
     private TaskBuilderPanel taskBuilderPanel;
@@ -231,6 +233,13 @@ public class JiraApiClientGui extends JFrame implements ConfigChangeListener {
             metadataService = new MetadataCacheService(getService(), getBaseUrl());
         }
         return metadataService;
+    }
+
+    public JiraIssueService getIssueService() throws Exception {
+        if (issueService == null) {
+            issueService = new JiraIssueService(getService(), getBaseUrl(), getMetadataService());
+        }
+        return issueService;
     }
 
     public String getBaseUrl() {

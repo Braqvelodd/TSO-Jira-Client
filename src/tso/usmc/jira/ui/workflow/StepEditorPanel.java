@@ -10,6 +10,7 @@ import tso.usmc.jira.workflow.LinkAction;
 import tso.usmc.jira.workflow.LinkStep;
 import tso.usmc.jira.workflow.WorklogStep;
 import org.json.JSONObject;
+import tso.usmc.jira.ui.SwingUtils;
 
 import javax.swing.*;
 import java.awt.BorderLayout;
@@ -71,23 +72,23 @@ public class StepEditorPanel extends JPanel {
         header.setBackground(new Color(230, 230, 230));
 
         labelField = new JTextField(step.getLabel(), 20);
-        tso.usmc.jira.util.JiraUtils.setupExpandedView(labelField);
+        SwingUtils.setupExpandedView(labelField);
         header.add(createPair("[" + step.getType() + "] Label:", labelField));
         
         if (step instanceof UpdateStep) {
             targetIssueField = new JTextField(((UpdateStep)step).getTargetIssueToken(), 10);
-            tso.usmc.jira.util.JiraUtils.setupExpandedView(targetIssueField);
+            SwingUtils.setupExpandedView(targetIssueField);
             header.add(createPair("Target Issue:", targetIssueField));
         }
 
         if (step instanceof TransitionStep) {
             TransitionStep ts = (TransitionStep) step;
             targetIssueField = new JTextField(ts.getTargetIssueToken(), 10);
-            tso.usmc.jira.util.JiraUtils.setupExpandedView(targetIssueField);
+            SwingUtils.setupExpandedView(targetIssueField);
             header.add(createPair("Target Issue:", targetIssueField));
             
             JTextField targetField = new JTextField(ts.getTargetStatus(), 15);
-            tso.usmc.jira.util.JiraUtils.setupExpandedView(targetField);
+            SwingUtils.setupExpandedView(targetField);
             targetField.getDocument().addDocumentListener(new SimpleDocumentListener(() -> ts.setTargetStatus(targetField.getText())));
             header.add(createPair("Target Status:", targetField));
         }
@@ -95,11 +96,11 @@ public class StepEditorPanel extends JPanel {
         if (step instanceof CreateStep) {
             CreateStep cs = (CreateStep) step;
             projField = new JTextField(cs.getProjectKey(), 5);
-            tso.usmc.jira.util.JiraUtils.setupExpandedView(projField);
+            SwingUtils.setupExpandedView(projField);
             header.add(createPair("Project:", projField));
             
             typeField = new JTextField(cs.getIssueType(), 10);
-            tso.usmc.jira.util.JiraUtils.setupExpandedView(typeField);
+            SwingUtils.setupExpandedView(typeField);
             header.add(createPair("Type:", typeField));
         }
 
@@ -110,11 +111,11 @@ public class StepEditorPanel extends JPanel {
         if (step instanceof AssetStep) {
             AssetStep as = (AssetStep) step;
             sourceTokenField = new JTextField(as.getSourceIssueToken(), 10);
-            tso.usmc.jira.util.JiraUtils.setupExpandedView(sourceTokenField);
+            SwingUtils.setupExpandedView(sourceTokenField);
             header.add(createPair("From:", sourceTokenField));
             
             targetTokenField = new JTextField(as.getTargetIssueToken(), 10);
-            tso.usmc.jira.util.JiraUtils.setupExpandedView(targetTokenField);
+            SwingUtils.setupExpandedView(targetTokenField);
             header.add(createPair("To:", targetTokenField));
             
             JCheckBox pOpt = new JCheckBox("Prompt?", as.isPromptOptions());
@@ -133,26 +134,26 @@ public class StepEditorPanel extends JPanel {
             header.add(createPair("", subtasks));
 
             subTaskFieldsComp = new JTextField(as.getSubTaskFields(), 20);
-            tso.usmc.jira.util.JiraUtils.setupExpandedView(subTaskFieldsComp);
+            SwingUtils.setupExpandedView(subTaskFieldsComp);
             header.add(createPair("Fields to Asset (CSV):", subTaskFieldsComp));
         }
 
         if (step instanceof WorklogStep) {
             WorklogStep ws = (WorklogStep) step;
             targetIssueField = new JTextField(ws.getTargetIssueToken(), 10);
-            tso.usmc.jira.util.JiraUtils.setupExpandedView(targetIssueField);
+            SwingUtils.setupExpandedView(targetIssueField);
             header.add(createPair("Target Issue:", targetIssueField));
             
             timeSpentField = new JTextField(ws.getTimeSpent(), 8);
-            tso.usmc.jira.util.JiraUtils.setupExpandedView(timeSpentField);
+            SwingUtils.setupExpandedView(timeSpentField);
             header.add(createPair("Time Spent:", timeSpentField));
             
             commentField = new JTextField(ws.getComment(), 15);
-            tso.usmc.jira.util.JiraUtils.setupExpandedView(commentField);
+            SwingUtils.setupExpandedView(commentField);
             header.add(createPair("Comment:", commentField));
             
             startedField = new JTextField(ws.getStarted(), 12);
-            tso.usmc.jira.util.JiraUtils.setupExpandedView(startedField);
+            SwingUtils.setupExpandedView(startedField);
             header.add(createPair("Started:", startedField));
         }
 

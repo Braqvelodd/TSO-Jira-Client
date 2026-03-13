@@ -3,42 +3,10 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 /**
- * A utility class for common Jira-related helper functions.
+ * A utility class for core Jira-related helper functions.
+ * UI-specific utilities have been moved to tso.usmc.jira.ui.SwingUtils.
  */
 public class JiraUtils {
-
-    /**
-     * Searches a JSON string containing an array of transitions and returns the ID of the
-     * transition that matches the given name (case-insensitive).
-     *
-     * @param transitionsJson The JSON string response from a /transitions API call.
-     * @param transitionName  The display name of the transition to find (e.g., "In Progress", "Done").
-     * @return The string ID of the found transition, or null if no match is found.
-     */
-    public static String findTransitionIdByName(String transitionsJson, String transitionName) {
-        // Guard against null or empty input
-        if (transitionsJson == null || transitionsJson.isEmpty() || transitionName == null) {
-            return null;
-        }
-
-        JSONObject response = new JSONObject(transitionsJson);
-
-        // Check if the 'transitions' key exists and is an array
-        if (!response.has("transitions")) {
-            return null;
-        }
-
-        JSONArray transitions = response.getJSONArray("transitions");
-        for (int i = 0; i < transitions.length(); i++) {
-            JSONObject t = transitions.getJSONObject(i);
-            if (t.has("name") && t.getString("name").equalsIgnoreCase(transitionName)) {
-                return t.getString("id");
-            }
-        }
-
-        // Return null if no transition with that name was found
-        return null;
-    }
 
     /**
      * Cleans an issue key string by removing parentheses and extracting the standard 
@@ -94,105 +62,38 @@ public class JiraUtils {
         return s;
     }
 
+    /**
+     * Opens the default system browser to the Jira issue page.
+     */
     public static void browseIssue(String baseUrl, String key) {
         if (key == null || key.trim().isEmpty() || baseUrl == null || baseUrl.trim().isEmpty()) return;
         try {
             String url = baseUrl + "/browse/" + key.trim();
-            java.awt.Desktop.getDesktop().browse(new java.net.URI(url));
+            if (java.awt.Desktop.isDesktopSupported()) {
+                java.awt.Desktop.getDesktop().browse(new java.net.URI(url));
+            }
         } catch (Exception e) {
             e.printStackTrace();
         }
     }
 
-    public static void setupExpandedView(javax.swing.JTextField field) {
-        field.addMouseListener(new java.awt.event.MouseAdapter() {
-            @Override
-            public void mouseClicked(java.awt.event.MouseEvent e) {
-                if (e.getClickCount() == 2) {
-                    javax.swing.JTextArea area = new javax.swing.JTextArea(15, 50);
-                    area.setText(field.getText());
-                    area.setLineWrap(true);
-                    area.setWrapStyleWord(true);
-                    int result = javax.swing.JOptionPane.showConfirmDialog(field, new javax.swing.JScrollPane(area), 
-                        "Expanded Input", javax.swing.JOptionPane.OK_CANCEL_OPTION, javax.swing.JOptionPane.PLAIN_MESSAGE);
-                    if (result == javax.swing.JOptionPane.OK_OPTION) {
-                        field.setText(area.getText());
-                    }
-                }
-            }
-        });
-        field.setToolTipText("Double-click to expand");
-    }
-
     /**
-     * FlowLayout subclass that correctly calculates its preferred size when its
-     * components wrap.
+     * Helper to find a transition ID by its display name.
+     * @deprecated Use JiraIssueService.findTransitionIdByName instead.
      */
-    public static class WrapLayout extends java.awt.FlowLayout {
-        public WrapLayout() { super(java.awt.FlowLayout.LEFT); }
-        public WrapLayout(int align) { super(align); }
-        public WrapLayout(int align, int hgap, int vgap) { super(align, hgap, vgap); }
-
-        @Override
-        public java.awt.Dimension preferredLayoutSize(java.awt.Container target) {
-            return layoutSize(target, true);
-        }
-
-        @Override
-        public java.awt.Dimension minimumLayoutSize(java.awt.Container target) {
-            java.awt.Dimension size = layoutSize(target, false);
-            size.width -= getHgap() + 1;
-            return size;
-        }
-
-        private java.awt.Dimension layoutSize(java.awt.Container target, boolean preferred) {
-            synchronized (target.getTreeLock()) {
-                int targetWidth = target.getSize().width;
-                if (targetWidth == 0) targetWidth = Integer.MAX_VALUE;
-
-                int hgap = getHgap();
-                int vgap = getVgap();
-                java.awt.Insets insets = target.getInsets();
-                int horizontalInsetsAndGap = insets.left + insets.right + (hgap * 2);
-                int maxWidth = targetWidth - horizontalInsetsAndGap;
-
-                java.awt.Dimension dim = new java.awt.Dimension(0, 0);
-                int rowWidth = 0;
-                int rowHeight = 0;
-                int nmembers = target.getComponentCount();
-
-                for (int i = 0; i < nmembers; i++) {
-                    java.awt.Component m = target.getComponent(i);
-                    if (m.isVisible()) {
-                        java.awt.Dimension d = preferred ? m.getPreferredSize() : m.getMinimumSize();
-                        if (rowWidth + d.width > maxWidth) {
-                            addRow(dim, rowWidth, rowHeight);
-                            rowWidth = 0;
-                            rowHeight = 0;
-                        }
-                        if (rowWidth > 0) rowWidth += hgap;
-                        rowWidth += d.width;
-                        rowHeight = Math.max(rowHeight, d.height);
-                    }
-                }
-                addRow(dim, rowWidth, rowHeight);
-
-                dim.width += horizontalInsetsAndGap;
-                dim.height += insets.top + insets.bottom + vgap * 2;
-
-                java.awt.Container scrollPane = javax.swing.SwingUtilities.getAncestorOfClass(javax.swing.JScrollPane.class, target);
-                if (scrollPane != null && target.isValid()) {
-                    dim.width -= (hgap + 1);
-                }
-
-                return dim;
+    @Deprecated
+    public static String findTransitionIdByName(String jsonResponse, String transitionName) {
+        if (jsonResponse == null || jsonResponse.trim().isEmpty()) return null;
+        JSONObject response = new JSONObject(jsonResponse);
+        if (!response.has("transitions")) return null;
+        
+        JSONArray transitions = response.getJSONArray("transitions");
+        for (int i = 0; i < transitions.length(); i++) {
+            JSONObject t = transitions.getJSONObject(i);
+            if (t.getString("name").equalsIgnoreCase(transitionName)) {
+                return t.getString("id");
             }
         }
-
-        private void addRow(java.awt.Dimension dim, int rowWidth, int rowHeight) {
-            dim.width = Math.max(dim.width, rowWidth);
-            if (dim.height > 0) dim.height += getVgap();
-            dim.height += rowHeight;
-        }
+        return null;
     }
 }

@@ -1,6 +1,7 @@
 package tso.usmc.jira.ui.workflow;
 
 import tso.usmc.jira.workflow.FieldAction;
+import tso.usmc.jira.ui.SwingUtils;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import javax.swing.*;
@@ -87,9 +88,9 @@ public class FieldActionPanel extends JPanel {
         promptPanel.add(new JLabel("Opts:"));
         promptPanel.add(promptOptionsField);
 
-        tso.usmc.jira.util.JiraUtils.setupExpandedView(valueField);
-        tso.usmc.jira.util.JiraUtils.setupExpandedView(promptQuestionField);
-        tso.usmc.jira.util.JiraUtils.setupExpandedView(promptOptionsField);
+        SwingUtils.setupExpandedView(valueField);
+        SwingUtils.setupExpandedView(promptQuestionField);
+        SwingUtils.setupExpandedView(promptOptionsField);
         
         valueField.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
             public void insertUpdate(javax.swing.event.DocumentEvent e) { validateValue(); }

@@ -4,6 +4,8 @@ import tso.usmc.jira.app.JiraApiClientGui;
 import tso.usmc.jira.ui.workflow.StepEditorPanel;
 import tso.usmc.jira.workflow.*;
 import tso.usmc.jira.service.MetadataCacheService;
+import tso.usmc.jira.service.JiraIssueService;
+import tso.usmc.jira.ui.SwingUtils;
 import tso.usmc.jira.util.JiraUtils;
 import tso.usmc.jira.util.WorkflowFieldsConfig;
 import tso.usmc.jira.util.ExecutionService;
@@ -19,7 +21,7 @@ import java.io.IOException;
 import java.util.*;
 import java.util.List;
 
-public class WorkflowOrchestratorPanel extends JPanel {
+public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgressListener {
 
     private final JiraApiClientGui mainFrame;
     private final WorkflowManager workflowManager;
@@ -55,10 +57,6 @@ public class WorkflowOrchestratorPanel extends JPanel {
     // Results data
     private final List<JSONObject> currentSearchIssues = new ArrayList<>();
 
-    // Execution Variables
-    private final Map<String, String> executionVars = new HashMap<>();
-    private final Map<String, JSONObject> jsonContexts = new HashMap<>();
-
     private final Map<String, JSONObject> cachedFullMeta = new HashMap<>();
     private final List<String> allTokens = new ArrayList<>();
 
@@ -70,10 +68,10 @@ public class WorkflowOrchestratorPanel extends JPanel {
         
         setLayout(new BorderLayout());
 
-        JiraUtils.setupExpandedView(recipeNameField);
-        JiraUtils.setupExpandedView(jqlField);
-        JiraUtils.setupExpandedView(contextIssueField);
-        JiraUtils.setupExpandedView(runnerJqlField);
+        SwingUtils.setupExpandedView(recipeNameField);
+        SwingUtils.setupExpandedView(jqlField);
+        SwingUtils.setupExpandedView(contextIssueField);
+        SwingUtils.setupExpandedView(runnerJqlField);
 
         JTabbedPane mainTabs = new JTabbedPane();
         mainTabs.addTab("Designer", createDesignerPanel());
@@ -85,6 +83,30 @@ public class WorkflowOrchestratorPanel extends JPanel {
         updateTokensFromCache();
 
         runnerRecipeCombo.addActionListener(e -> updateRunnerInputs());
+    }
+
+    // --- WorkflowProgressListener Implementation ---
+
+    @Override
+    public void onLog(String message) {
+        SwingUtilities.invokeLater(() -> {
+            runnerLog.append(message + "\n");
+            runnerLog.setCaretPosition(runnerLog.getDocument().getLength());
+        });
+    }
+
+    @Override
+    public void onError(String message, Exception ex) {
+        onLog("ERROR: " + message + (ex != null ? " (" + ex.getMessage() + ")" : ""));
+        if (ex != null) ex.printStackTrace();
+    }
+
+    @Override
+    public void onComplete() {
+        SwingUtilities.invokeLater(() -> {
+            runBtn.setEnabled(true);
+            statusLabel.setText("Workflow Execution Complete.");
+        });
     }
 
     private JPanel createDesignerPanel() {
@@ -267,43 +289,28 @@ public class WorkflowOrchestratorPanel extends JPanel {
                     if (val != null) recipe = WorkflowRecipe.fromJson(val);
                 }
                 if (recipe == null) {
-                    log("ERROR: Recipe not found: " + recipeName);
+                    onLog("ERROR: Recipe not found: " + recipeName);
                     return;
                 }
 
-                JSONObject metaSnap = recipe.getMetadataSnapshot();
                 String[] keys = issueKeys.split(",");
-                
-                log("Starting Direct Execution of '" + recipeName + "' on " + keys.length + " issues...");
-
+                List<JSONObject> issues = new ArrayList<>();
                 for (String key : keys) {
                     String cleanKey = JiraUtils.cleanIssueKey(key.trim());
                     if (cleanKey.isEmpty()) continue;
-
-                    try {
-                        log("--- Processing " + cleanKey + " ---");
-                        String searchUrl = mainFrame.getBaseUrl() + "/rest/api/2/issue/" + cleanKey + "?expand=names,renderedFields&fields=*all,attachment,issuelinks";
-                        String resp = mainFrame.getService().executeRequest(searchUrl, "GET", null);
-                        JSONObject issue = new JSONObject(resp);
-                        
-                        executionVars.clear();
-                        jsonContexts.clear();
-                        executionVars.put("issue.key", cleanKey);
-                        executionVars.put("key", cleanKey);
-                        jsonContexts.put("issue", issue);
-
-                        for (WorkflowStep step : recipe.getSteps()) {
-                            log("Step: " + step.getLabel());
-                            executeStep(step, issue, new java.util.HashMap<>(), metaSnap);
-                        }
-                    } catch (Exception ex) {
-                        log("  > Error processing " + cleanKey + ": " + ex.getMessage());
-                    }
+                    
+                    onLog("Fetching data for " + cleanKey + "...");
+                    String searchUrl = mainFrame.getBaseUrl() + "/rest/api/2/issue/" + cleanKey + "?expand=names,renderedFields&fields=*all,attachment,issuelinks";
+                    String resp = mainFrame.getService().executeRequest(searchUrl, "GET", null);
+                    issues.add(new JSONObject(resp));
                 }
-                log("Workflow Execution Complete.");
+
+                WorkflowEngine engine = new WorkflowEngine(mainFrame.getService(), mainFrame.getIssueService(), mainFrame.getBaseUrl(), this);
+                engine.setVerboseLogging(verboseLogCheck.isSelected());
+                engine.execute(recipe, issues, new HashMap<>());
+
             } catch (Exception e) {
-                log("Execution Error: " + e.getMessage());
-                e.printStackTrace();
+                onError("Execution Error", e);
             }
         });
     }
@@ -383,7 +390,7 @@ public class WorkflowOrchestratorPanel extends JPanel {
         }
 
         final String jql = finalJql;
-        log("Searching: " + jql);
+        onLog("Searching: " + jql);
         runnerTableModel.setRowCount(0);
         currentSearchIssues.clear();
 
@@ -406,11 +413,11 @@ public class WorkflowOrchestratorPanel extends JPanel {
                         
                         runnerTableModel.addRow(new Object[]{key, summary, status, assignee});
                     }
-                    log("Found " + issues.length() + " issues.");
+                    onLog("Found " + issues.length() + " issues.");
                     updateRunnerInputs();
                 });
             } catch (Exception e) {
-                log("Search Error: " + e.getMessage());
+                onLog("Search Error: " + e.getMessage());
             }
         });
     }
@@ -426,8 +433,6 @@ public class WorkflowOrchestratorPanel extends JPanel {
         if (recipeName == null) return;
 
         Map<String, String> promptValues = new HashMap<>();
-        Map<String, Map<String, String>> teamDataByPrompt = new HashMap<>();
-
         for (String label : promptFields.keySet()) {
             JComponent comp = promptFields.get(label);
             String val = "";
@@ -436,16 +441,7 @@ public class WorkflowOrchestratorPanel extends JPanel {
             } else if (comp instanceof JComboBox) {
                 Object selected = ((JComboBox<?>) comp).getSelectedItem();
                 if (selected instanceof ConfigOption) {
-                    ConfigOption co = (ConfigOption) selected;
-                    val = co.value;
-                    if (co.teamKey != null) {
-                        Map<String, String> tMap = new HashMap<>();
-                        tMap.put("name", mainFrame.getJiraConfig().getTeamProperty(co.teamKey, "name"));
-                        tMap.put("lead", mainFrame.getJiraConfig().getTeamProperty(co.teamKey, "lead"));
-                        tMap.put("component", mainFrame.getJiraConfig().getTeamProperty(co.teamKey, "component"));
-                        tMap.put("id", mainFrame.getJiraConfig().getTeamProperty(co.teamKey, "id"));
-                        teamDataByPrompt.put(label, tMap);
-                    }
+                    val = ((ConfigOption) selected).value;
                 } else if (selected != null) {
                     val = selected.toString();
                 }
@@ -469,7 +465,9 @@ public class WorkflowOrchestratorPanel extends JPanel {
             issuesToProcess.add(currentSearchIssues.get(modelRow));
         }
 
-        runnerLog.setText("Starting workflow on " + issuesToProcess.size() + " selected issues...\n");
+        runnerLog.setText("");
+        runBtn.setEnabled(false);
+        
         ExecutionService.submit(() -> {
             try {
                 WorkflowRecipe recipe = workflowManager.loadWorkflow(recipeName);
@@ -477,41 +475,19 @@ public class WorkflowOrchestratorPanel extends JPanel {
                     String val = mainFrame.getJiraConfig().getProperty("workflow." + recipeName);
                     if (val != null) recipe = WorkflowRecipe.fromJson(val);
                 }
-                if (recipe == null) return;
-                
-                JSONObject metaSnap = recipe.getMetadataSnapshot();
-                for (JSONObject issue : issuesToProcess) {
-                    String key = issue.getString("key");
-                    log("--- Processing " + key + " ---");
-                    executionVars.clear();
-                    jsonContexts.clear();
-                    executionVars.put("issue.key", key);
-                    executionVars.put("key", key);
-                    jsonContexts.put("issue", issue);
-                    
-                    for(String pLabel : promptValues.keySet()) {
-                        String cleanLabel = pLabel.replaceAll("\\[.*?\\]", "").trim();
-                        executionVars.put(cleanLabel + ".value", promptValues.get(pLabel));
-                        if (teamDataByPrompt.containsKey(pLabel)) {
-                            Map<String, String> tMap = teamDataByPrompt.get(pLabel);
-                            for(String tProp : tMap.keySet()) {
-                                executionVars.put(cleanLabel + "." + tProp, tMap.get(tProp));
-                                if (!executionVars.containsKey("team." + tProp) || cleanLabel.toLowerCase().contains("team")) {
-                                    executionVars.put("team." + tProp, tMap.get(tProp));
-                                }
-                            }
-                        }
-                    }
-                    
-                    for (WorkflowStep step : recipe.getSteps()) {
-                        log("Step: " + step.getLabel());
-                        executeStep(step, issue, promptValues, metaSnap);
-                    }
+                if (recipe == null) {
+                    onLog("ERROR: Recipe not found.");
+                    onComplete();
+                    return;
                 }
-                log("Workflow Execution Complete.");
+                
+                WorkflowEngine engine = new WorkflowEngine(mainFrame.getService(), mainFrame.getIssueService(), mainFrame.getBaseUrl(), this);
+                engine.setVerboseLogging(verboseLogCheck.isSelected());
+                engine.execute(recipe, issuesToProcess, promptValues);
+
             } catch (Exception e) {
-                log("FATAL ERROR: " + e.getMessage());
-                e.printStackTrace();
+                onError("FATAL ERROR", e);
+                onComplete();
             }
         });
     }
@@ -865,9 +841,9 @@ public class WorkflowOrchestratorPanel extends JPanel {
                     helper.clearCache(); // FORCE fresh API calls
                     cachedFullMeta.clear(); 
                     cachedFieldOptions.clear();
-                    log("--- Starting Fresh " + (isFiltered ? "Filtered" : "Global") + " Sync ---");
+                    onLog("--- Starting Fresh " + (isFiltered ? "Filtered" : "Global") + " Sync ---");
                 } else {
-                    log("--- Starting Incremental Sync for: " + targetProjects + " ---");
+                    onLog("--- Starting Incremental Sync for: " + targetProjects + " ---");
                 }
 
                 List<String> projects;
@@ -875,49 +851,45 @@ public class WorkflowOrchestratorPanel extends JPanel {
                     projects = targetProjects;
                 } else {
                     projects = helper.getProjectKeys();
-                    log("Found " + projects.size() + " total projects.");
+                    onLog("Found " + projects.size() + " total projects.");
                 }
 
                 for (String pKey : projects) {
                     if (pKey.isEmpty()) continue;
                     try {
-                        log("Syncing Project: " + pKey);
-                        // FETCH ALL ISSUE TYPES FOR THIS PROJECT
+                        onLog("Syncing Project: " + pKey);
                         List<JSONObject> types = helper.getIssueTypesForProject(pKey);
-                        log("  > Found " + types.size() + " issue types in " + pKey);
+                        onLog("  > Found " + types.size() + " issue types in " + pKey);
                         
                         for (JSONObject type : types) {
                             String typeName = type.getString("name");
-                            log("    > Fetching metadata for type: " + typeName);
+                            onLog("    > Fetching metadata for type: " + typeName);
                             Map<String, JSONObject> typeMeta = helper.getCreateMetadata(pKey, typeName);
                             cachedFullMeta.putAll(typeMeta);
                         }
                     } catch (Exception e) {
-                        log("  ! Project Sync Error (" + pKey + "): " + e.getMessage());
+                        onLog("  ! Project Sync Error (" + pKey + "): " + e.getMessage());
                     }
                 }
 
-                // NEW: Fetch Global Link Types
                 try {
-                    log("Syncing Global Link Types...");
+                    onLog("Syncing Global Link Types...");
                     List<JSONObject> links = helper.getIssueLinkTypes();
                     for (JSONObject lt : links) {
                         cachedFullMeta.put("linktype:" + lt.getString("name"), lt);
                     }
-                } catch (Exception e) { log("  ! Link Type Sync Error: " + e.getMessage()); }
+                } catch (Exception e) { onLog("  ! Link Type Sync Error: " + e.getMessage()); }
 
-                // NEW: Fetch ALL System Fields (This is usually where the bulk of fields come from)
                 try {
-                    log("Syncing Global Field Definitions...");
+                    onLog("Syncing Global Field Definitions...");
                     List<JSONObject> fields = helper.getAllFields();
                     for (JSONObject f : fields) {
                         String fId = f.getString("id");
-                        // Only add if not already present from createmeta (createmeta has better validation data)
                         if (!cachedFullMeta.containsKey(fId)) {
                             cachedFullMeta.put(fId, f);
                         }
                     }
-                } catch (Exception e) { log("  ! Global Field Sync Error: " + e.getMessage()); }
+                } catch (Exception e) { onLog("  ! Global Field Sync Error: " + e.getMessage()); }
 
                 if (isIncremental) {
                     fieldsConfig.updateMetadata(cachedFullMeta);
@@ -934,14 +906,14 @@ public class WorkflowOrchestratorPanel extends JPanel {
                             sep.updateLinkTypes(cachedLinkTypes);
                         }
                     }
-                    log("--- Deep Sync Complete ---");
+                    onLog("--- Deep Sync Complete ---");
                     fetchMetaBtn.setEnabled(true);
                     fetchMetaBtn.setText("Fetch Metadata");
                     syncProgress.setVisible(false);
                     JOptionPane.showMessageDialog(this, "Metadata Sync Complete!\nTotal Fields: " + cachedFullMeta.size());
                 });
             } catch (Exception ex) {
-                log("CRITICAL METADATA ERROR: " + ex.getMessage());
+                onLog("CRITICAL METADATA ERROR: " + ex.getMessage());
                 SwingUtilities.invokeLater(() -> {
                     fetchMetaBtn.setEnabled(true);
                     fetchMetaBtn.setText("Fetch Metadata");
@@ -1243,347 +1215,6 @@ public class WorkflowOrchestratorPanel extends JPanel {
         workflowManager.deleteWorkflow(selected);
         refreshRecipeList(); clearEditor();
     }
-
-    private void executeStep(WorkflowStep step, JSONObject issue, Map<String, String> prompts, JSONObject metaSnap) throws Exception {
-        String baseUrl = mainFrame.getBaseUrl();
-
-        if (step instanceof CreateStep) {
-            CreateStep cs = (CreateStep) step;
-            String proj = resolveStepProperty(cs.getProjectKey(), "Project (" + step.getLabel() + ")", prompts);
-            String type = resolveStepProperty(cs.getIssueType(), "Issue Type (" + step.getLabel() + ")", prompts);
-            
-            JSONObject fields = buildFields(step, issue, prompts, metaSnap);
-            fields.put("project", new JSONObject().put("key", proj));
-            fields.put("issuetype", new JSONObject().put("name", type));
-
-            String payload = new JSONObject().put("fields", fields).toString(4);
-            if (verboseLogCheck.isSelected()) {
-                log("  > Request URL: POST " + baseUrl + "/rest/api/2/issue");
-                log("  > Request Body:\n" + payload);
-            }
-
-            String resp = mainFrame.getService().executeRequest(baseUrl + "/rest/api/2/issue", "POST", payload);
-            JSONObject respJson = new JSONObject(resp);
-            String newKey = respJson.getString("key");
-            
-            executionVars.put("last_key", newKey);
-            executionVars.put("last.key", newKey);
-            executionVars.put("last.id", respJson.getString("id"));
-            jsonContexts.put("last", respJson);
-            
-            log("  > Created " + newKey);
-        } else if (step instanceof UpdateStep) {
-            UpdateStep us = (UpdateStep) step;
-            String targetKey = JiraUtils.cleanIssueKey(resolveTokens(us.getTargetIssueToken(), issue));
-            if (targetKey == null || targetKey.trim().isEmpty()) {
-                log("  > SKIP: Target issue key resolved to empty string for step: " + step.getLabel());
-                return;
-            }
-            
-            JSONObject fields = buildFields(step, issue, prompts, metaSnap);
-            String payload = new JSONObject().put("fields", fields).toString(4);
-            String url = baseUrl + "/rest/api/2/issue/" + targetKey;
-            
-            if (verboseLogCheck.isSelected()) {
-                log("  > Request URL: PUT " + url);
-                log("  > Request Body:\n" + payload);
-            }
-
-            mainFrame.getService().executeRequest(url, "PUT", payload);
-            executionVars.put("last_key", targetKey);
-            executionVars.put("last.key", targetKey);
-            log("  > Updated " + targetKey);
-        } else if (step instanceof TransitionStep) {
-            TransitionStep ts = (TransitionStep) step;
-            String targetKey = JiraUtils.cleanIssueKey(resolveTokens(ts.getTargetIssueToken(), issue));
-            if (targetKey == null || targetKey.trim().isEmpty()) {
-                log("  > SKIP: Target issue key resolved to empty string for step: " + step.getLabel());
-                return;
-            }
-
-            String transUrl = baseUrl + "/rest/api/2/issue/" + targetKey + "/transitions";
-            String transMeta = mainFrame.getService().executeRequest(transUrl, "GET", null);
-            String tid = JiraUtils.findTransitionIdByName(transMeta, ts.getTargetStatus());
-            if (tid != null) {
-                JSONObject body = new JSONObject();
-                body.put("transition", new JSONObject().put("id", tid));
-                JSONObject fields = buildFields(step, issue, prompts, metaSnap);
-                if (fields.length() > 0) body.put("fields", fields);
-                
-                String payload = body.toString(4);
-                if (verboseLogCheck.isSelected()) {
-                    log("  > Request URL: POST " + transUrl);
-                    log("  > Request Body:\n" + payload);
-                }
-
-                mainFrame.getService().executeRequest(transUrl, "POST", payload);
-                executionVars.put("last_key", targetKey);
-                executionVars.put("last.key", targetKey);
-                executionVars.put("last_transition_id", tid);
-                executionVars.put("last.transition_id", tid);
-                log("  > Transitioned " + targetKey + " to " + ts.getTargetStatus() + (fields.length() > 0 ? " (with fields)" : ""));
-            } else log("  > ERROR: Transition '" + ts.getTargetStatus() + "' not found on " + targetKey);
-        } else if (step instanceof LinkStep) {
-            LinkStep ls = (LinkStep) step;
-            for (LinkAction la : ls.getLinkActions()) {
-                String inward = JiraUtils.cleanIssueKey(resolveTokens(la.getInwardIssueToken(), issue));
-                if (inward == null || inward.trim().isEmpty()) continue;
-
-                if (la.isRemote()) {
-                    String resolvedUrl = resolveTokens(la.getUrl(), issue);
-                    String resolvedTitle = resolveTokens(la.getTitle(), issue);
-                    String resolvedSummary = resolveTokens(la.getSummary(), issue);
-                    String resolvedRel = resolveTokens(la.getRelationship(), issue);
-
-                    JSONObject remoteObj = new JSONObject();
-                    remoteObj.put("url", resolvedUrl);
-                    remoteObj.put("title", resolvedTitle);
-                    if (resolvedSummary != null && !resolvedSummary.isEmpty()) remoteObj.put("summary", resolvedSummary);
-
-                    JSONObject body = new JSONObject();
-                    body.put("object", remoteObj);
-                    body.put("relationship", resolvedRel);
-
-                    String payload = body.toString(4);
-                    String url = baseUrl + "/rest/api/2/issue/" + inward + "/remotelink";
-                    if (verboseLogCheck.isSelected()) {
-                        log("  > Request URL: POST " + url);
-                        log("  > Request Body:\n" + payload);
-                    }
-                    mainFrame.getService().executeRequest(url, "POST", payload);
-                    log("  > Remote Linked " + inward + " to " + resolvedUrl);
-                } else {
-                    String outward = JiraUtils.cleanIssueKey(resolveTokens(la.getOutwardIssueToken(), issue));
-                    if (outward == null || outward.trim().isEmpty()) continue;
-
-                    JSONObject body = new JSONObject();
-                    body.put("type", new JSONObject().put("name", la.getLinkType()));
-                    body.put("inwardIssue", new JSONObject().put("key", inward));
-                    body.put("outwardIssue", new JSONObject().put("key", outward));
-
-                    String payload = body.toString(4);
-                    String url = baseUrl + "/rest/api/2/issueLink";
-                    if (verboseLogCheck.isSelected()) {
-                        log("  > Request URL: POST " + url);
-                        log("  > Request Body:\n" + payload);
-                    }
-                    mainFrame.getService().executeRequest(url, "POST", payload);
-                    log("  > Linked " + inward + " to " + outward + " (" + la.getLinkType() + ")");
-                }
-            }
-        } else if (step instanceof AssetStep) {
-            AssetStep as = (AssetStep) step;
-            String srcKey = JiraUtils.cleanIssueKey(resolveTokens(as.getSourceIssueToken(), issue));
-            String targetKey = JiraUtils.cleanIssueKey(resolveTokens(as.getTargetIssueToken(), issue));
-
-            if (srcKey == null || srcKey.trim().isEmpty() || targetKey == null || targetKey.trim().isEmpty()) return;
-
-            JSONObject sourceData = issue;
-            if (!srcKey.equals(issue.getString("key"))) {
-                String url = mainFrame.getBaseUrl() + "/rest/api/2/issue/" + srcKey + "?expand=names,renderedFields&fields=*all,attachment,issuelinks";
-                String srcResp = mainFrame.getService().executeRequest(url, "GET", null);
-                sourceData = new JSONObject(srcResp);
-            }
-
-            boolean doAtt = as.isCopyAttachments(), doLinks = as.isCopyLinks(), doSub = as.isCopySubTasks();
-            if (as.isPromptOptions()) {
-                String p = prompts.get("Asset Options (" + step.getLabel() + ")");
-                if (p != null && p.contains(",")) {
-                    String[] parts = p.split(",");
-                    if (parts.length >= 3) {
-                        doAtt = Boolean.parseBoolean(parts[0]);
-                        doLinks = Boolean.parseBoolean(parts[1]);
-                        doSub = Boolean.parseBoolean(parts[2]);
-                    }
-                }
-            }
-
-            if (doAtt) copyAttachments(sourceData, targetKey);
-            if (doLinks) copyLinks(sourceData, targetKey);
-            if (doSub) copySubTasks(sourceData, targetKey, as);
-        } else if (step instanceof WorklogStep) {
-            WorklogStep ws = (WorklogStep) step;
-            String targetKey = JiraUtils.cleanIssueKey(resolveTokens(ws.getTargetIssueToken(), issue));
-            if (targetKey == null || targetKey.trim().isEmpty()) return;
-
-            String timeSpent = resolveStepProperty(ws.getTimeSpent(), "Time Spent (" + step.getLabel() + ")", prompts);
-            String comment = resolveStepProperty(ws.getComment(), "Comment (" + step.getLabel() + ")", prompts);
-            String started = resolveStepProperty(ws.getStarted(), "Started (" + step.getLabel() + ")", prompts);
-            started = resolveTokens(started, issue);
-            started = JiraUtils.formatJiraDateTime(started);
-
-            JSONObject body = new JSONObject();
-            if (timeSpent != null && !timeSpent.trim().isEmpty()) body.put("timeSpent", timeSpent);
-            if (comment != null && !comment.trim().isEmpty()) body.put("comment", comment);
-            if (started != null && !started.trim().isEmpty()) body.put("started", started);
-
-            String url = baseUrl + "/rest/api/2/issue/" + targetKey + "/worklog";
-            mainFrame.getService().executeRequest(url, "POST", body.toString(4));
-            log("  > Added Worklog to " + targetKey + " (" + timeSpent + ")");
-        }
-    }
-
-    private String resolveStepProperty(String value, String promptLabel, Map<String, String> prompts) {
-        if (value == null) return "";
-        if (value.contains(",") || value.contains("[config:") || value.contains("[choice:")) {
-            if (prompts.containsKey(promptLabel)) return prompts.get(promptLabel);
-        }
-        return value;
-    }
-
-    private void copySubTasks(JSONObject sourceIssue, String targetParentKey, AssetStep as) throws Exception {
-        String sourceKey = sourceIssue.getString("key");
-        String subtaskUrl = mainFrame.getBaseUrl() + "/rest/api/2/issue/" + sourceKey + "/subtask";
-        String subtaskResp = mainFrame.getService().executeRequest(subtaskUrl, "GET", null);
-        JSONArray subtasks;
-        
-        if (subtaskResp.trim().startsWith("[")) subtasks = new JSONArray(subtaskResp);
-        else {
-            JSONObject respObj = new JSONObject(subtaskResp);
-            subtasks = respObj.optJSONArray("subtasks");
-            if (subtasks == null) return;
-        }
-
-        for (int i = 0; i < subtasks.length(); i++) {
-            JSONObject subData = subtasks.getJSONObject(i);
-            String subKey = subData.getString("key");
-            JSONObject subFields = subData.getJSONObject("fields");
-            
-            JSONObject newSubFields = new JSONObject();
-            newSubFields.put("project", new JSONObject().put("key", targetParentKey.split("-")[0]));
-            newSubFields.put("parent", new JSONObject().put("key", targetParentKey));
-            newSubFields.put("issuetype", subFields.getJSONObject("issuetype"));
-            
-            String csv = as.getSubTaskFields();
-            if (csv != null && !csv.trim().isEmpty()) copySubTaskFields(subFields, newSubFields, csv.split(","));
-
-            try {
-                mainFrame.getService().executeRequest(mainFrame.getBaseUrl() + "/rest/api/2/issue", "POST", new JSONObject().put("fields", newSubFields).toString(4));
-                log("    > Created sub-task copy: " + subKey);
-            } catch (Exception e) {
-                log("    > Error copying sub-task " + subKey + ": " + e.getMessage());
-            }
-        }
-    }
-
-    private void copySubTaskFields(JSONObject src, JSONObject dest, String[] fields) {
-        for (String f : fields) {
-            String fieldId = f.trim();
-            if (src.has(fieldId) && !src.isNull(fieldId)) {
-                Object val = src.get(fieldId);
-                if (val instanceof JSONObject) {
-                    JSONObject obj = (JSONObject) val;
-                    if (fieldId.equals("reporter") || fieldId.equals("assignee")) {
-                        if (obj.has("name")) dest.put(fieldId, new JSONObject().put("name", obj.getString("name")));
-                    } else if (obj.has("id")) dest.put(fieldId, new JSONObject().put("id", obj.getString("id")));
-                    else if (obj.has("value")) dest.put(fieldId, new JSONObject().put("value", obj.getString("value")));
-                    else dest.put(fieldId, val);
-                } else dest.put(fieldId, val);
-            }
-        }
-        for (String key : src.keySet()) {
-            if (key.startsWith("customfield_") && !src.isNull(key)) {
-                boolean skip = false;
-                for(String f : fields) if(f.trim().equals(key)) skip = true;
-                if(!skip) dest.put(key, src.get(key));
-            }
-        }
-    }
-
-    private void copyAttachments(JSONObject sourceIssue, String targetKey) throws Exception {
-        if (!sourceIssue.getJSONObject("fields").has("attachment")) return;
-        JSONArray attachments = sourceIssue.getJSONObject("fields").getJSONArray("attachment");
-        for (int i = 0; i < attachments.length(); i++) {
-            JSONObject att = attachments.getJSONObject(i);
-            String filename = att.getString("filename");
-            java.io.File tempFile = mainFrame.getService().downloadAttachmentToTempFile(att.getString("content"), filename);
-            try {
-                mainFrame.getService().uploadAttachment(mainFrame.getBaseUrl() + "/rest/api/2/issue/" + targetKey + "/attachments", tempFile, filename);
-                log("  > Copied attachment: " + filename);
-            } finally { if (tempFile != null) tempFile.delete(); }
-        }
-    }
-
-    private void copyLinks(JSONObject sourceIssue, String targetKey) throws Exception {
-        if (!sourceIssue.getJSONObject("fields").has("issuelinks")) return;
-        JSONArray links = sourceIssue.getJSONObject("fields").getJSONArray("issuelinks");
-        for (int i = 0; i < links.length(); i++) {
-            JSONObject link = links.getJSONObject(i);
-            String typeName = link.getJSONObject("type").getString("name");
-            String otherKey = link.has("inwardIssue") ? link.getJSONObject("inwardIssue").getString("key") : (link.has("outwardIssue") ? link.getJSONObject("outwardIssue").getString("key") : null);
-            if (otherKey == null) continue;
-
-            JSONObject body = new JSONObject().put("type", new JSONObject().put("name", typeName));
-            if (link.has("inwardIssue")) { body.put("inwardIssue", new JSONObject().put("key", targetKey)); body.put("outwardIssue", new JSONObject().put("key", otherKey)); }
-            else { body.put("inwardIssue", new JSONObject().put("key", otherKey)); body.put("outwardIssue", new JSONObject().put("key", targetKey)); }
-            
-            try { mainFrame.getService().executeRequest(mainFrame.getBaseUrl() + "/rest/api/2/issueLink", "POST", body.toString()); log("  > Copied link: " + typeName + " to " + otherKey); }
-            catch (Exception e) { log("  > Warning: Could not copy link to " + otherKey); }
-        }
-    }
-
-    private JSONObject buildFields(WorkflowStep step, JSONObject issue, Map<String, String> prompts, JSONObject metaSnap) {
-        JSONObject fields = new JSONObject();
-        for (FieldAction fa : step.getFieldActions().values()) {
-            if ("teams_selection".equalsIgnoreCase(fa.getFieldId())) continue;
-            String val = resolveValue(fa, issue, prompts);
-            String fieldId = fa.getFieldId();
-            if (val == null || val.equalsIgnoreCase("null")) { fields.put(fieldId, JSONObject.NULL); continue; }
-
-            String trimmed = val.trim();
-            if ((trimmed.startsWith("{") && trimmed.endsWith("}")) || (trimmed.startsWith("[") && trimmed.endsWith("]"))) {
-                try { if (trimmed.startsWith("{")) fields.put(fieldId, new JSONObject(trimmed)); else fields.put(fieldId, new JSONArray(trimmed)); continue; }
-                catch (Exception ignored) {}
-            }
-
-            JSONObject fieldMeta = metaSnap != null ? metaSnap.optJSONObject(fieldId) : null;
-            boolean isArray = (fieldMeta != null && fieldMeta.has("schema") && "array".equals(fieldMeta.getJSONObject("schema").optString("type"))) || (fieldId.equals("labels") || fieldId.equals("components") || fieldId.equals("fixVersions") || fieldId.equals("versions"));
-
-            if (isArray) {
-                JSONArray arr = new JSONArray();
-                for (String p : val.split(",")) arr.put(wrapSingleValue(fieldId, p.trim(), fieldMeta));
-                fields.put(fieldId, arr);
-            } else fields.put(fieldId, wrapSingleValue(fieldId, val, fieldMeta));
-        }
-        return fields;
-    }
-
-    private Object wrapSingleValue(String fieldId, String val, JSONObject fieldMeta) {
-        if (val == null || val.equalsIgnoreCase("null") || val.trim().isEmpty()) return JSONObject.NULL;
-        String type = null;
-        if (fieldMeta != null && fieldMeta.has("schema")) {
-            JSONObject schema = fieldMeta.getJSONObject("schema");
-            type = "array".equals(schema.optString("type")) ? schema.optString("items") : schema.optString("type");
-        }
-        if (type == null) {
-            if (fieldId.equals("assignee") || fieldId.equals("reporter") || fieldId.contains("user") || fieldId.contains("owner")) type = "user";
-            else if (fieldId.equals("priority") || fieldId.equals("resolution") || fieldId.startsWith("customfield_")) type = "option";
-            else if (fieldId.equals("labels")) type = "string";
-        }
-        if ("user".equals(type)) return new JSONObject().put("name", val);
-        if ("parent".equals(fieldId)) return new JSONObject().put("key", JiraUtils.cleanIssueKey(val));
-        if ("option".equals(type) || "component".equals(type) || "version".equals(type)) return new JSONObject().put(("component".equals(type) || "version".equals(type) || fieldId.equals("components") || fieldId.contains("Version")) ? "name" : "value", val);
-        if ("string".equals(type)) return val;
-        if (val.matches("-?\\d+(\\.\\d+)?")) { try { return val.contains(".") ? Double.parseDouble(val) : Long.parseLong(val); } catch (Exception ignored) {} }
-        return val;
-    }
-
-    private String resolveTokens(String input, JSONObject issue) {
-        jsonContexts.put("issue", issue);
-        return TokenEngine.replaceTokens(input, jsonContexts, executionVars);
-    }
-
-    private String resolveValue(FieldAction fa, JSONObject issue, Map<String, String> prompts) {
-        if (fa.getMode() == FieldAction.MappingMode.SET) return resolveTokens(fa.getValue().toString(), issue);
-        if (fa.getMode() == FieldAction.MappingMode.PROMPT) {
-            String label = fa.getPromptLabel(), clean = label.replaceAll("\\[.*?\\]", "").trim();
-            if (prompts.containsKey(clean)) return prompts.get(clean);
-            return JOptionPane.showInputDialog(this, label, "Runtime Prompt", JOptionPane.QUESTION_MESSAGE);
-        }
-        return "";
-    }
-
-    private void log(String msg) { SwingUtilities.invokeLater(() -> { runnerLog.append(msg + "\n"); runnerLog.setCaretPosition(runnerLog.getDocument().getLength()); }); }
 
     private void updateTokensFromCache() {
         cachedFieldOptions.clear(); cachedLinkTypes.clear();

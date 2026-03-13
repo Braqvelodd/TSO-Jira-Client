@@ -33,31 +33,8 @@ public abstract class WorkflowStep {
     public abstract JSONObject toJson();
 
     public static WorkflowStep fromJson(JSONObject json) {
-        String typeStr = json.getString("type");
-        WorkflowStep step = null;
-        
-        if (typeStr.equals("TRANSITION")) {
-            step = TransitionStep.fromJson(json);
-        } else if (typeStr.equals("UPDATE")) {
-            step = UpdateStep.fromJson(json);
-        } else if (typeStr.equals("ASSET") || typeStr.equals("CLONE")) {
-            step = AssetStep.fromJson(json);
-        } else if (typeStr.equals("CREATE")) {
-            step = CreateStep.fromJson(json);
-        } else if (typeStr.equals("LINK")) {
-            step = LinkStep.fromJson(json);
-        } else if (typeStr.equals("REMOTE_LINK")) {
-            LinkStep ls = new LinkStep();
-            LinkAction la = LinkAction.fromJson(json);
-            la.setRemote(true);
-            if (json.has("targetIssueToken")) la.setInwardIssueToken(json.getString("targetIssueToken"));
-            ls.addLinkAction(la);
-            step = ls;
-        } else if (typeStr.equals("WORKLOG")) {
-            step = WorklogStep.fromJson(json);
-        } else {
-            step = new UpdateStep(); 
-        }
+        // Use the registry to create the correct subclass instance
+        WorkflowStep step = WorkflowStepRegistry.createStep(json);
         
         // Populate common fields
         if (json.has("stepId")) step.setStepId(json.getString("stepId"));

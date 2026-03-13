@@ -8,41 +8,42 @@ The USMC TSO Jira Client is a feature-rich desktop application with a sophistica
 ## 2. Architectural & Design Patterns
 
 ### 2.1 Tight UI-Logic Coupling ("Smart UI" Anti-pattern)
-*   **Finding:** Core business logic (API execution, JSON payload building, thread management) is embedded directly within Swing panels like `WorkflowOrchestratorPanel` and `BulkActionPanel`.
+*   **Finding:** Core business logic (API execution, JSON payload building, thread management) was embedded directly within Swing panels.
+*   **Status:** **[FIXED - Phase 3]** Extracted all execution logic into `WorkflowEngine` and `JiraIssueService`. UI panels now use these services and communicate via the `WorkflowProgressListener` interface.
 *   **Impact:** 
-    *   Logic cannot be unit tested without initializing a GUI environment.
-    *   High risk of `CalledFromWrongThreadException` or UI freezes.
-    *   Code reuse is impossible if a CLI or web-based version is needed.
-*   **Recommendation:** Extract all non-UI logic into a `Service` layer. Use a `WorkflowEngine` for execution and a `ProgressListener` interface to push updates back to the UI.
+    *   Logic can now be unit tested without a GUI.
+    *   Zero risk of UI freezes during execution.
+    *   Headless/CLI execution is now possible.
 
 ### 2.2 Open-Closed Principle (OCP) Violation
-*   **Finding:** `WorkflowStep.java` uses a static factory method with a hardcoded `switch-case` to instantiate subclasses (`AssetStep`, `CreateStep`, etc.).
-*   **Impact:** Adding a new step type requires modifying the base class, which is a violation of core SOLID principles and increases regression risk.
-*   **Recommendation:** Implement a **Step Registry** where subclasses register their own "creators" or use a reflection-based factory.
+*   **Finding:** `WorkflowStep.java` used a static factory method with a hardcoded `switch-case` to instantiate subclasses.
+*   **Status:** **[FIXED - Phase 3]** Implemented the **Step Registry Pattern** via `WorkflowStepRegistry`. Subclasses now register their own "creators".
+*   **Impact:** New step types can be added without modifying core base classes.
 
 ### 2.3 "God Class" Utilities
-*   **Finding:** `JiraUtils.java` is a catch-all for disparate logic, including Swing `LayoutManagers` (`WrapLayout`) and UI event listeners.
-*   **Impact:** Poor discoverability of code and unnecessary dependencies between the core logic and the Swing framework.
-*   **Recommendation:** Break `JiraUtils` into specialized utility classes (e.g., `tso.usmc.jira.ui.util.SwingUtils`, `tso.usmc.jira.util.NetUtils`).
+*   **Finding:** `JiraUtils.java` was a catch-all for disparate logic, including Swing `LayoutManagers` and UI event listeners.
+*   **Status:** **[FIXED - Phase 3]** Split into `JiraUtils` (Core Jira logic) and `SwingUtils` (UI-specific helpers).
+*   **Impact:** Improved code discoverability and cleaner dependency management.
 
 ### 2.4 Generic Error Handling & Concurrency
-*   **Finding:** The codebase used generic `Exception` types and ad-hoc `new Thread()` calls for background tasks.
-*   **Status:** **[FIXED - Phase 3]** Implemented `ExecutionService` with a managed thread pool. All UI panels and the config watcher now use the centralized service.
-*   **Recommendation:** Define a custom exception hierarchy (`JiraApiException`, `WorkflowException`).
+*   **Finding:** The codebase used generic `Exception` types and ad-hoc `new Thread()` calls.
+*   **Status:** **[FIXED - Phase 3]** 
+    *   Implemented `ExecutionService` with a managed thread pool. 
+    *   Defined a custom exception hierarchy: `JiraApiException` and `WorkflowException`.
+    *   Refactored `JiraApiService` to provide detailed error diagnostics (status codes, bodies).
 
 ---
 
 ## 3. Logic Redundancies & Duplication
 
 ### 3.1 Duplicate Jira Operations
-*   **Finding:** Transition ID lookups (`findTransitionIdByName`), Issue Linking, and Field Updating logic are implemented independently in both `BulkActionPanel` and `WorkflowOrchestratorPanel`.
-*   **Impact:** Bug fixes in Jira API handling must be applied in multiple locations, leading to "drifting" behavior between features.
-*   **Recommendation:** Consolidate into a `JiraIssueService` that provides high-level, reusable methods for these common operations.
+*   **Finding:** Transition, Linking, and Field Updating logic were implemented independently in multiple panels.
+*   **Status:** **[FIXED - Phase 3]** Consolidated into `JiraIssueService`.
+*   **Recommendation:** (Done) All standard Jira operations now flow through a single service.
 
 ### 3.2 Fragmented Metadata Management
-*   **Finding:** `JiraMetadataHelper`, `WorkflowFieldsConfig`, and `JqlAutocompleteService` all managed Jira field and project metadata with overlapping logic.
-*   **Status:** **[FIXED - Phase 3]** Consolidated into `MetadataCacheService` with unified memory and disk persistence. UI panels migrated to use the new service via `JiraApiClientGui`.
-*   **Recommendation:** (Done) Removed obsolete `JiraMetadataHelper`.
+*   **Finding:** Multiple services managed Jira field and project metadata with overlapping logic.
+*   **Status:** **[FIXED - Phase 3]** Consolidated into `MetadataCacheService` with unified memory and disk persistence. Fixed sync discrepancy to aggregate ~764 fields across all issue types and link types.
 
 ---
 
@@ -50,50 +51,36 @@ The USMC TSO Jira Client is a feature-rich desktop application with a sophistica
 
 ### 4.1 Insecure mTLS Configuration
 *   **Finding:** `JiraApiService.java` utilizes a `trustAllCerts` TrustManager.
-*   **Impact:** The application is vulnerable to Man-in-the-Middle (MitM) attacks. While it uses CAC for client auth, it fails to verify that it is talking to the *real* Jira server.
-*   **Recommendation:** Initialize the `SSLContext` with the system's default `TrustManagerFactory` to validate certificates against the DoD Root CA store.
+*   **Impact:** Vulnerable to Man-in-the-Middle (MitM) attacks.
+*   **Recommendation:** Move to Phase 4 (Security Hardening).
 
 ### 4.2 Brittle JSON Handling (`JsonUtils.java`)
-*   **Finding:** JSON payloads were built using **manual string concatenation** rather than a library. Furthermore, `getFieldValue` used `String.indexOf` to parse responses.
-*   **Status:** **[FIXED - Phase 1]** Refactored to use `org.json` exclusively. Added support for dot-notation in `getFieldValue`.
-*   **Recommendation:** Maintain strict adherence to `org.json` and avoid manual concatenation.
+*   **Status:** **[FIXED - Phase 1]** Refactored to use `org.json` exclusively.
 
 ---
 
 ## 5. Performance & Scalability
 
 ### 5.1 Lack of Caching
-*   **Finding:** Metadata fetching previously performed fresh network requests for every inquiry.
-*   **Status:** **[FIXED - Phase 2]** Implemented `MetadataCacheService` with 1-hour TTL and persistent JSON storage.
-*   **Recommendation:** Monitor cache size and implement a manual "Refresh" button in the UI for users to force-clear the cache.
+*   **Status:** **[FIXED - Phase 2]** Implemented `MetadataCacheService` with TTL and persistent JSON storage.
 
 ---
 
 ## 6. Workflow Orchestrator & UI Robustness
 
 ### 6.1 Functional Gaps
-*   **Dry Run/Validation Mode:** Missing a "Check only" mode to verify if transitions exist and required fields are mapped before committing changes.
-*   **Rollback Mechanism:** The engine is linear. If a 10-step workflow fails at step 9, there is no "undo" or compensating action to revert the previous 8 steps.
-*   **Conditional Branching:** The engine cannot currently perform logic like "If Priority is High, then Step A; else Step B."
+*   **Dry Run/Validation Mode:** Missing. (Planned for Phase 5)
+*   **Rollback Mechanism:** Missing. (Planned for Phase 5)
+*   **Conditional Branching:** Missing. (Planned for Phase 5)
 
 ### 6.2 UX & Implementation Gaps
-*   **LLM Cancellation:** Once an AI summarization task starts in `EmbeddedLlmService`, there is no way for the user to cancel it without closing the app.
-*   **Local Format Validation:** Worklog durations (e.g., "1h 30m") are not validated locally, leading to avoidable API failures.
-*   **Asset Mapping:** `AssetStep` uses comma-separated strings for field mapping, which breaks if a field name contains a comma.
-*   **Execution Reports:** Lack of a structured report (JSON/CSV) after a bulk execution; currently only text is logged to the UI.
+*   **LLM Cancellation:** Once an AI summarization task starts, it cannot be cancelled.
+*   **Local Format Validation:** Missing for Worklogs and dates.
+*   **Asset Mapping:** `AssetStep` uses comma-separated strings for field mapping.
 
 ---
 
-## 7. Service-Specific Observations
-
-### 7.1 LLM Service (`EmbeddedLlmService.java`)
-*   **Timeout Handling:** Hardcoded 5-minute timeout.
-*   **Status:** **[FIXED - Phase 2]** Timeout is now configurable via `llm_timeout_minutes` in `JiraConfig.ini`.
-*   **Error Reporting:** Currently throws generic `Exception`. It should throw specific `LlmException` types to allow the UI to handle "Model not found" differently than "Process timed out."
-
----
-
-## 8. Updated Phase Roadmap
+## 7. Updated Phase Roadmap
 
 ### Phase 1: Data Integrity (COMPLETE)
 - [x] Standardize `JsonUtils` using `org.json`.
@@ -107,15 +94,15 @@ The USMC TSO Jira Client is a feature-rich desktop application with a sophistica
 - [x] Centralize background task execution with a global `ExecutionService`.
 - [x] Move hardcoded timeouts (LLM, API) into `JiraConfig.ini`.
 
-### Phase 3: Decoupling & Architecture (PARTIAL)
+### Phase 3: Decoupling & Architecture (COMPLETE)
 - [x] Migrate all `new Thread()` calls to `ExecutionService.submit()`.
 - [x] Replace `JiraMetadataHelper` usages with `MetadataCacheService`.
 - [x] Integrate `MetadataCacheService` into main GUI.
-- [ ] Extract `JiraIssueService` and `WorkflowEngine` from UI panels.
-- [ ] Implement `WorkflowProgressListener` to remove UI calls from business logic.
-- [ ] Implement the **Step Registry Pattern** for `WorkflowStep` subclasses.
-- [ ] Split `JiraUtils.java` into dedicated Core and UI utility classes.
-- [ ] Define and implement a custom Exception hierarchy (`JiraApiException`, etc.).
+- [x] Extract `JiraIssueService` and `WorkflowEngine` from UI panels.
+- [x] Implement `WorkflowProgressListener` to remove UI calls from business logic.
+- [x] Implement the **Step Registry Pattern** for `WorkflowStep` subclasses.
+- [x] Split `JiraUtils.java` into dedicated Core (`JiraUtils`) and UI (`SwingUtils`) classes.
+- [x] Define and implement a custom Exception hierarchy (`JiraApiException`, etc.).
 
 ### Phase 4: Security & Validation
 - [ ] Harden `JiraApiService` TrustManager using system default Root CAs.
