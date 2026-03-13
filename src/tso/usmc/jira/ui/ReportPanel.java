@@ -3,6 +3,7 @@ package tso.usmc.jira.ui;
 import tso.usmc.jira.app.JiraApiClientGui;
 import tso.usmc.jira.service.JiraApiService;
 import tso.usmc.jira.util.JsonUtils;
+import tso.usmc.jira.util.ExecutionService;
 import javax.swing.*;
 import java.awt.*;
 import java.io.BufferedWriter;
@@ -94,7 +95,7 @@ public class ReportPanel extends JPanel {
         setButtonsEnabled(false);
         final StringBuilder reportContent = new StringBuilder();
 
-        new Thread(() -> {
+        ExecutionService.submit(() -> {
             boolean reportGeneratedSuccessfully = false;
             try {
                 JiraApiService service = mainFrame.getService();
@@ -165,10 +166,9 @@ public class ReportPanel extends JPanel {
                     saveAndOpenFile(reportContent.toString());
                 }
             }
-        }).start();
+        });
     }
     
-    // --- THIS METHOD IS NOW COMPLETE ---
     private Map<String, String> fetchIssueSummaries(JiraApiService service, String baseUrl, String[] keys) throws Exception {
          Map<String, String> summaries = new HashMap<>();
          if (keys.length == 0) return summaries;
@@ -184,7 +184,6 @@ public class ReportPanel extends JPanel {
         return summaries;
     }
     
-    // This method has the pagination fix
     private List<StoryInfo> fetchStoriesInEpics(JiraApiService service, String baseUrl, String[] epicKeys) throws Exception {
         final String EPIC_LINK_FIELD_ID = "customfield_13056";
         List<StoryInfo> stories = new ArrayList<>();
@@ -224,7 +223,6 @@ public class ReportPanel extends JPanel {
         return stories;
     }
 
-    // This method also has the pagination and batching fix
     private Map<String, List<SubtaskInfo>> fetchSubtasksOf(JiraApiService service, String baseUrl, Set<String> parentKeys, boolean filter) throws Exception {
         Map<String, List<SubtaskInfo>> subtasksByParent = new HashMap<>();
         if (parentKeys.isEmpty()) return subtasksByParent;
@@ -274,7 +272,6 @@ public class ReportPanel extends JPanel {
         return subtasksByParent;
     }
     
-    // --- THIS METHOD IS NOW COMPLETE ---
     private void generateFullJsonReport() {
         String[] keys = inputKeysArea.getText().trim().toUpperCase().split("\\s+");
         if (keys.length == 0 || (keys.length == 1 && keys[0].isEmpty())) {
@@ -287,7 +284,7 @@ public class ReportPanel extends JPanel {
         setButtonsEnabled(false);
         final StringBuilder reportContent = new StringBuilder();
 
-        new Thread(() -> {
+        ExecutionService.submit(() -> {
             boolean reportGeneratedSuccessfully = false;
             try {
                 JiraApiService service = mainFrame.getService();
@@ -324,10 +321,9 @@ public class ReportPanel extends JPanel {
                     saveAndOpenFile(reportContent.toString());
                 }
             }
-        }).start();
+        });
     }
 
-    // --- THIS METHOD IS NOW COMPLETE ---
     private void saveAndOpenFile(String content) {
         try {
             File tempFile = File.createTempFile("Jira_Report_", ".txt");

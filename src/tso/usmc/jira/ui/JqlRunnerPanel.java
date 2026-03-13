@@ -3,6 +3,7 @@ package tso.usmc.jira.ui;
 import tso.usmc.jira.app.JiraApiClientGui;
 import tso.usmc.jira.service.JqlAutocompleteService;
 import tso.usmc.jira.util.JsonUtils;
+import tso.usmc.jira.util.ExecutionService;
 
 import javax.swing.*;
 import javax.swing.table.DefaultTableCellRenderer;
@@ -365,7 +366,7 @@ public class JqlRunnerPanel extends JPanel implements tso.usmc.jira.util.ConfigC
         tableModel.setRowCount(0);
         tableModel.setColumnCount(0);
 
-        new Thread(() -> {
+        ExecutionService.submit(() -> {
             try {
                 JSONObject payload = new JSONObject();
                 payload.put("jql", jql);
@@ -414,7 +415,7 @@ public class JqlRunnerPanel extends JPanel implements tso.usmc.jira.util.ConfigC
                 JOptionPane.showMessageDialog(this, "API Error:\n" + ex.getMessage() + "\n\n" + sw.toString(), "Execution Error", JOptionPane.ERROR_MESSAGE);
                 SwingUtilities.invokeLater(() -> statusLabel.setText("Error executing JQL."));
             }
-        }).start();
+        });
     }
 
     private String getFieldValue(JSONObject issue, String fieldName) {

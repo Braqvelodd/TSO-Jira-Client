@@ -10,6 +10,7 @@ import java.util.Enumeration;
 import java.util.List;
 import javax.swing.*;
 import tso.usmc.jira.service.JiraApiService;
+import tso.usmc.jira.service.MetadataCacheService;
 import tso.usmc.jira.ui.BulkActionPanel;
 import tso.usmc.jira.ui.CommentSummarizerPanel;
 import tso.usmc.jira.ui.JqlRunnerPanel;
@@ -28,6 +29,7 @@ public class JiraApiClientGui extends JFrame implements ConfigChangeListener {
     private JComboBox<String> certComboBox = new JComboBox<>();
     private JTextField baseUrlField;
     private JiraApiService apiService;
+    private MetadataCacheService metadataService;
     private final JiraConfig jiraConfig;
     private JTabbedPane tabs;
     private TaskBuilderPanel taskBuilderPanel;
@@ -222,6 +224,13 @@ public class JiraApiClientGui extends JFrame implements ConfigChangeListener {
         apiService.setLoggingEnabled("YES".equalsIgnoreCase(verbose));
         
         return apiService;
+    }
+
+    public MetadataCacheService getMetadataService() throws Exception {
+        if (metadataService == null) {
+            metadataService = new MetadataCacheService(getService(), getBaseUrl());
+        }
+        return metadataService;
     }
 
     public String getBaseUrl() {

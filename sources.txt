@@ -1,7 +1,6 @@
 src\tso\usmc\jira\app\JiraApiClientGui.java
 src\tso\usmc\jira\service\JiraApiService.java
 src\tso\usmc\jira\service\EmbeddedLlmService.java
-src\tso\usmc\jira\service\JiraMetadataHelper.java
 src\tso\usmc\jira\service\MetadataCacheService.java
 src\tso\usmc\jira\ui\AssigneeOption.java
 src\tso\usmc\jira\ui\BulkActionPanel.java

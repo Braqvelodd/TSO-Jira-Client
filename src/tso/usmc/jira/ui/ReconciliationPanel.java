@@ -2,6 +2,7 @@ package tso.usmc.jira.ui;
 
 import tso.usmc.jira.app.JiraApiClientGui;
 import tso.usmc.jira.service.JiraApiService;
+import tso.usmc.jira.util.ExecutionService;
 
 import javax.swing.*;
 import javax.swing.table.DefaultTableModel;
@@ -114,7 +115,6 @@ public class ReconciliationPanel extends JPanel {
         this.ispwTaskMap = new HashMap<>();
         String ispwText = ispwReportArea.getText();
         
-        // Fetch bounds from config or use defaults
         tso.usmc.jira.util.JiraConfig config = mainFrame.getJiraConfig();
         int minLen = config.getIspwMinLineLength(65);
         int[] typeBounds = config.getIspwColumnBounds("ci_type", new int[]{0, 4});
@@ -212,18 +212,18 @@ public class ReconciliationPanel extends JPanel {
         }
         fetchJiraBtn.setEnabled(false);
         statusLabel.setText("Fetching Jira data...");
-        new Thread(() -> {
+        ExecutionService.submit(() -> {
             try {
                 JiraApiService service = mainFrame.getService();
                 String baseUrl = mainFrame.getBaseUrl();
                 SwingUtilities.invokeLater(() -> statusLabel.setText("Step 1/3: Fetching top-level summaries..."));
                 Map<String, String> topLevelSummaries = fetchIssueSummaries(service, baseUrl, topLevelKeys);
-                SwingUtilities.invokeLater(() -> statusLabel.setText(statusLabel.getText() + " | Step 2/3: Fetching stories..."));
+                SwingUtilities.invokeLater(() -> statusLabel.setText("Step 2/3: Fetching stories..."));
                 Map<String, String> storySummaries = fetchStoriesInEpics(service, baseUrl, topLevelKeys);
                 Map<String, String> allParentSummaries = new HashMap<>(topLevelSummaries);
                 allParentSummaries.putAll(storySummaries);
                 Set<String> allPotentialParentKeys = new HashSet<>(allParentSummaries.keySet());
-                SwingUtilities.invokeLater(() -> statusLabel.setText(statusLabel.getText() + " | Step 3/3: Fetching all sub-tasks..."));
+                SwingUtilities.invokeLater(() -> statusLabel.setText("Step 3/3: Fetching all sub-tasks..."));
                 List<JiraReconInfo> fetchedTasks = fetchAllSubtaskInfo(service, baseUrl, allPotentialParentKeys);
                 this.jiraTaskMap = new HashMap<>();
                 for (JiraReconInfo task : fetchedTasks) {
@@ -243,7 +243,7 @@ public class ReconciliationPanel extends JPanel {
                     fetchJiraBtn.setEnabled(true);
                 });
             }
-        }).start();
+        });
     }
     
     private Map<String, String> fetchIssueSummaries(JiraApiService service, String baseUrl, String[] keys) throws Exception {

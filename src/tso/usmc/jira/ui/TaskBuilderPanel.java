@@ -4,6 +4,7 @@ import tso.usmc.jira.app.JiraApiClientGui;
 import tso.usmc.jira.service.JqlAutocompleteService;
 import tso.usmc.jira.util.JiraUtils;
 import tso.usmc.jira.util.JsonUtils;
+import tso.usmc.jira.util.ExecutionService;
 import javax.swing.*;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
@@ -662,7 +663,7 @@ public class TaskBuilderPanel extends JPanel {
         final Map<Integer, JiraTask> taskByIndex = new HashMap<>();
         for (int i = 0; i < selected.size(); i++) taskByIndex.put(i, selected.get(i));
 
-        new Thread(() -> {
+        ExecutionService.submit(() -> {
             try {
                 // 1. Creation Phase (Bulk or Sequential)
                 if (total > 1 && !MOCK_MODE) {

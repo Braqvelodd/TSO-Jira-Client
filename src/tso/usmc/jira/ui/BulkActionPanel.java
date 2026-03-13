@@ -2,6 +2,7 @@ package tso.usmc.jira.ui;
 
 import tso.usmc.jira.app.JiraApiClientGui;
 import tso.usmc.jira.service.JiraApiService;
+import tso.usmc.jira.util.ExecutionService;
 
 import javax.swing.*;
 import javax.swing.table.DefaultTableModel;
@@ -189,7 +190,7 @@ public class BulkActionPanel extends JPanel {
         final String targetKeyLink = targetIssueField.getText().trim().toUpperCase();
         final String linkType = (String) linkTypeCombo.getSelectedItem();
 
-        new Thread(() -> {
+        ExecutionService.submit(() -> {
             JiraApiService service = null;
             try {
                 service = mainFrame.getService();

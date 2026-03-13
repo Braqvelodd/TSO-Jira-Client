@@ -306,7 +306,7 @@ public class JiraConfig {
     }
     // NEW: Method to start the file watcher background thread
     private void startFileWatcher() {
-        Thread watcherThread = new Thread(() -> {
+        ExecutionService.submit(() -> {
             try (WatchService watchService = FileSystems.getDefault().newWatchService()) {
                 Path path = this.configFile.getParentFile().toPath();
                 path.register(watchService, StandardWatchEventKinds.ENTRY_MODIFY);
@@ -324,12 +324,9 @@ public class JiraConfig {
                     key.reset();
                 }
             } catch (IOException | InterruptedException e) {
-                e.printStackTrace();
+                // Background watcher silent failure
             }
         });
-        watcherThread.setDaemon(true); // Ensures the thread doesn't prevent JVM shutdown
-        watcherThread.setName("JiraConfig-Watcher");
-        watcherThread.start();
     }
     // NEW: Public method to manually trigger a reload and notify listeners
     public void reload() {

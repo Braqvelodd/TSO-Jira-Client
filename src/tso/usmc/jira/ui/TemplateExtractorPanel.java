@@ -2,6 +2,7 @@ package tso.usmc.jira.ui;
 
 import tso.usmc.jira.app.JiraApiClientGui;
 import tso.usmc.jira.service.JiraApiService;
+import tso.usmc.jira.util.ExecutionService;
 
 import javax.swing.*;
 import java.awt.*;
@@ -31,7 +32,7 @@ public class TemplateExtractorPanel extends JPanel {
         setLayout(new BorderLayout(10, 10));
         setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
 
-        // --- UI Setup (unchanged) ---
+        // --- UI Setup ---
         JPanel topPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 5));
         topPanel.setBorder(BorderFactory.createTitledBorder("1. Source Parent Issue"));
         topPanel.add(new JLabel("Parent Key:"));
@@ -58,13 +59,14 @@ public class TemplateExtractorPanel extends JPanel {
         generateFromEpicBtn.addActionListener(e -> generateEpicTemplate());
         copyBtn.addActionListener(e -> copyToClipboard());
     }
+
     private void generateTemplate() {
         String parentKey = parentIssueField.getText().trim().toUpperCase();
         if (isInputInvalid(parentKey)) return;
 
         setBusyState(true, "Fetching data for " + parentKey + "...");
 
-        new Thread(() -> {
+        ExecutionService.submit(() -> {
             try {
                 JiraApiService service = mainFrame.getService();
                 String baseUrl = mainFrame.getBaseUrl();
@@ -92,97 +94,88 @@ public class TemplateExtractorPanel extends JPanel {
             } catch (Exception ex) {
                 handleApiError(ex);
             }
-        }).start();
+        });
     }
 
-    // NEW: Method to handle the new "Generate from Epic" button's logic.
     private void generateEpicTemplate() {
         final String issueKey = parentIssueField.getText().trim().toUpperCase();
         if (isInputInvalid(issueKey)) return;
 
         setBusyState(true, "Checking if '" + issueKey + "' is an Epic or part of one...");
 
-        new Thread(new Runnable() {
-            public void run() {
-                try {
-                    JiraApiService service = mainFrame.getService();
-                    String baseUrl = mainFrame.getBaseUrl();
+        ExecutionService.submit(() -> {
+            try {
+                JiraApiService service = mainFrame.getService();
+                String baseUrl = mainFrame.getBaseUrl();
 
-                    String fieldsToFetch = EPIC_LINK_FIELD_ID + ",components,issuetype";
-                    String issueDetailsResponse = service.executeRequest(baseUrl + "/rest/api/2/issue/" + issueKey + "?fields=" + fieldsToFetch, "GET", null);
-                    JSONObject issueJson = new JSONObject(issueDetailsResponse);
-                    JSONObject fields = issueJson.getJSONObject("fields");
-                    final String defaultComponent = getDefaultComponent(issueJson);
+                String fieldsToFetch = EPIC_LINK_FIELD_ID + ",components,issuetype";
+                String issueDetailsResponse = service.executeRequest(baseUrl + "/rest/api/2/issue/" + issueKey + "?fields=" + fieldsToFetch, "GET", null);
+                JSONObject issueJson = new JSONObject(issueDetailsResponse);
+                JSONObject fields = issueJson.getJSONObject("fields");
+                final String defaultComponent = getDefaultComponent(issueJson);
 
-                    String epicKey;
-                    String issueType = fields.getJSONObject("issuetype").getString("name");
+                String epicKey;
+                String issueType = fields.getJSONObject("issuetype").getString("name");
 
-                    if ("Epic".equalsIgnoreCase(issueType)) {
-                        epicKey = issueKey;
-                        updateStatus("'" + issueKey + "' is an Epic. Fetching all child issues...");
-                    } else {
-                        epicKey = fields.optString(EPIC_LINK_FIELD_ID, null);
-                        if (epicKey == null || epicKey.isEmpty()) {
-                            throw new Exception("Issue '" + issueKey + "' is not an Epic and does not belong to one. Verify the '" + EPIC_LINK_FIELD_ID + "' custom field ID.");
-                        }
-                        updateStatus("Found Epic " + epicKey + ". Fetching all child issues...");
+                if ("Epic".equalsIgnoreCase(issueType)) {
+                    epicKey = issueKey;
+                    updateStatus("'" + issueKey + "' is an Epic. Fetching all child issues...");
+                } else {
+                    epicKey = fields.optString(EPIC_LINK_FIELD_ID, null);
+                    if (epicKey == null || epicKey.isEmpty()) {
+                        throw new Exception("Issue '" + issueKey + "' is not an Epic and does not belong to one. Verify the '" + EPIC_LINK_FIELD_ID + "' custom field ID.");
                     }
-
-                    // Step 1: Find all issues within that Epic using the custom field.
-                    String issuesInEpicJql = String.format("'%s' = '%s'", EPIC_LINK_FIELD_ID, epicKey);
-                    JSONObject epicSearchPayload = new JSONObject().put("jql", issuesInEpicJql).put("fields", new JSONArray().put("key")).put("maxResults", 500);
-                    String issuesInEpicResponse = service.executeRequest(baseUrl + "/rest/api/2/search", "POST", epicSearchPayload.toString());
-                    JSONArray issuesInEpic = new JSONObject(issuesInEpicResponse).getJSONArray("issues");
-
-                    // Use non-generic List for compatibility with older Java versions.
-                    ArrayList issueKeys = new ArrayList();
-                    for (int i = 0; i < issuesInEpic.length(); i++) {
-                        issueKeys.add(issuesInEpic.getJSONObject(i).getString("key"));
-                    }
-                    updateStatus("Found " + issueKeys.size() + " issues in Epic. Fetching all their sub-tasks...");
-
-                    // Step 2: Build the final JQL to get all sub-tasks.
-                    StringBuffer subtaskJql = new StringBuffer();
-                    // Include sub-tasks parented directly to the Epic
-                    subtaskJql.append("parent = '").append(epicKey).append("'"); 
-                    // Also include sub-tasks of all issues found in the Epic
-                    if (!issueKeys.isEmpty()) {
-                        subtaskJql.append(" OR parent in (");
-                        for (int i = 0; i < issueKeys.size(); i++) {
-                            subtaskJql.append("'").append(issueKeys.get(i)).append("'");
-                            if (i < issueKeys.size() - 1) {
-                                subtaskJql.append(",");
-                            }
-                        }
-                        subtaskJql.append(")");
-                    }
-                    
-                    JSONObject subtaskSearchPayload = new JSONObject()
-                            .put("jql", subtaskJql.toString())
-                            .put("fields", new JSONArray().put("summary").put("description").put("issuetype"))
-                            .put("maxResults", 1000);
-
-                    String allSubtasksResponse = service.executeRequest(baseUrl + "/rest/api/2/search", "POST", subtaskSearchPayload.toString());
-                    final JSONArray allSubtasks = new JSONObject(allSubtasksResponse).getJSONArray("issues");
-                    
-                    final String templateContent = buildTemplateFromSubtasks(allSubtasks, defaultComponent);
-                    final String finalEpicKey = epicKey; // Final variable for use in inner class
-
-                    SwingUtilities.invokeLater(new Runnable() {
-                        public void run() {
-                            updateTemplateArea(templateContent, "Success! Generated template from " + allSubtasks.length() + " sub-tasks in Epic " + finalEpicKey + ".");
-                            setBusyState(false, null);
-                        }
-                    });
-
-                } catch (Exception ex) {
-                    handleApiError(ex);
+                    updateStatus("Found Epic " + epicKey + ". Fetching all child issues...");
                 }
+
+                // Step 1: Find all issues within that Epic using the custom field.
+                String issuesInEpicJql = String.format("'%s' = '%s'", EPIC_LINK_FIELD_ID, epicKey);
+                JSONObject epicSearchPayload = new JSONObject().put("jql", issuesInEpicJql).put("fields", new JSONArray().put("key")).put("maxResults", 500);
+                String issuesInEpicResponse = service.executeRequest(baseUrl + "/rest/api/2/search", "POST", epicSearchPayload.toString());
+                JSONArray issuesInEpic = new JSONObject(issuesInEpicResponse).getJSONArray("issues");
+
+                ArrayList<String> issueKeys = new ArrayList<>();
+                for (int i = 0; i < issuesInEpic.length(); i++) {
+                    issueKeys.add(issuesInEpic.getJSONObject(i).getString("key"));
+                }
+                updateStatus("Found " + issueKeys.size() + " issues in Epic. Fetching all their sub-tasks...");
+
+                // Step 2: Build the final JQL to get all sub-tasks.
+                StringBuilder subtaskJql = new StringBuilder();
+                subtaskJql.append("parent = '").append(epicKey).append("'"); 
+                if (!issueKeys.isEmpty()) {
+                    subtaskJql.append(" OR parent in (");
+                    for (int i = 0; i < issueKeys.size(); i++) {
+                        subtaskJql.append("'").append(issueKeys.get(i)).append("'");
+                        if (i < issueKeys.size() - 1) {
+                            subtaskJql.append(",");
+                        }
+                    }
+                    subtaskJql.append(")");
+                }
+                
+                JSONObject subtaskSearchPayload = new JSONObject()
+                        .put("jql", subtaskJql.toString())
+                        .put("fields", new JSONArray().put("summary").put("description").put("issuetype"))
+                        .put("maxResults", 1000);
+
+                String allSubtasksResponse = service.executeRequest(baseUrl + "/rest/api/2/search", "POST", subtaskSearchPayload.toString());
+                final JSONArray allSubtasks = new JSONObject(allSubtasksResponse).getJSONArray("issues");
+                
+                final String templateContent = buildTemplateFromSubtasks(allSubtasks, defaultComponent);
+                final String finalEpicKey = epicKey;
+
+                SwingUtilities.invokeLater(() -> {
+                    updateTemplateArea(templateContent, "Success! Generated template from " + allSubtasks.length() + " sub-tasks in Epic " + finalEpicKey + ".");
+                    setBusyState(false, null);
+                });
+
+            } catch (Exception ex) {
+                handleApiError(ex);
             }
-        }).start();
+        });
     }
 
-    // NEW: Refactored logic to build the template string into its own method.
     private String buildTemplateFromSubtasks(JSONArray subtasks, String defaultComponent) {
         StringBuilder sb = new StringBuilder();
         sb.append("PARENT_TICKET:\n");
@@ -218,13 +211,14 @@ public class TemplateExtractorPanel extends JPanel {
             statusLabel.setText("Template content copied to clipboard!");
         }
     }
+
     private boolean isInputInvalid(String input) {
-            if (input.isEmpty()) {
-                JOptionPane.showMessageDialog(this, "Please enter an issue key.", "Input Error", JOptionPane.ERROR_MESSAGE);
-                return true;
-            }
-            return false;
+        if (input.isEmpty()) {
+            JOptionPane.showMessageDialog(this, "Please enter an issue key.", "Input Error", JOptionPane.ERROR_MESSAGE);
+            return true;
         }
+        return false;
+    }
 
     private void setBusyState(boolean isBusy, String statusText) {
         generateBtn.setEnabled(!isBusy);

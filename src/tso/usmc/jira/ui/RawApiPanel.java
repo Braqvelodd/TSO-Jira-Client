@@ -2,6 +2,7 @@ package tso.usmc.jira.ui;
 
 import tso.usmc.jira.app.JiraApiClientGui;
 import tso.usmc.jira.util.JsonUtils;
+import tso.usmc.jira.util.ExecutionService;
 import javax.swing.*;
 import java.awt.*;
 import java.util.HashMap;
@@ -148,7 +149,7 @@ public class RawApiPanel extends JPanel {
         responseArea.setForeground(Color.BLACK);
         responseArea.setText("Sending " + method + " request to: " + fullUrl + "...");
         
-        new Thread(() -> {
+        ExecutionService.submit(() -> {
             try {
                 String rawResponse = mainFrame.getService().executeRequest(fullUrl, method, body);
                 final String formatted = (rawResponse == null || rawResponse.trim().isEmpty())
@@ -162,7 +163,7 @@ public class RawApiPanel extends JPanel {
                     responseArea.setText("ERROR: " + ex.getMessage() + "\n\nStack Trace:\n" + getStackTrace(ex));
                 });
             }
-        }).start();
+        });
     }
 
     private String getStackTrace(Exception e) {
