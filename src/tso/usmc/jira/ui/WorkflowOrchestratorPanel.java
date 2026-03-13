@@ -1307,7 +1307,26 @@ public class WorkflowOrchestratorPanel extends JPanel {
                 if (la.isRemote()) {
                     String resolvedUrl = resolveTokens(la.getUrl(), issue);
                     String resolvedTitle = resolveTokens(la.getTitle(), issue);
-                    String resolved=" + resolvedUrl);
+                    String resolvedSummary = resolveTokens(la.getSummary(), issue);
+                    String resolvedRel = resolveTokens(la.getRelationship(), issue);
+
+                    JSONObject remoteObj = new JSONObject();
+                    remoteObj.put("url", resolvedUrl);
+                    remoteObj.put("title", resolvedTitle);
+                    if (resolvedSummary != null && !resolvedSummary.isEmpty()) remoteObj.put("summary", resolvedSummary);
+
+                    JSONObject body = new JSONObject();
+                    body.put("object", remoteObj);
+                    body.put("relationship", resolvedRel);
+
+                    String payload = body.toString(4);
+                    String url = baseUrl + "/rest/api/2/issue/" + inward + "/remotelink";
+                    if (verboseLogCheck.isSelected()) {
+                        log("  > Request URL: POST " + url);
+                        log("  > Request Body:\n" + payload);
+                    }
+                    mainFrame.getService().executeRequest(url, "POST", payload);
+                    log("  > Remote Linked " + inward + " to " + resolvedUrl);
                 } else {
                     String outward = JiraUtils.cleanIssueKey(resolveTokens(la.getOutwardIssueToken(), issue));
                     if (outward == null || outward.trim().isEmpty()) continue;
