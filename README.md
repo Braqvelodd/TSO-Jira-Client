@@ -72,6 +72,14 @@ Or by double click
     *   **Designer Tab:** A visual builder to stack automated steps.
         *   **Dynamic Metadata:** Fetch live Jira field definitions to populate step editors with real field names.
         *   **Mapping Modes:** Every field supports **Static** values, **Variable** tokens, or **Runtime Prompts**.
+        *   **Conditional Branching (NEW):** Add `IF` logic to any step to control execution based on issue data.
+            *   **Operators:** `EQUALS`, `NOT_EQUALS`, `CONTAINS`, `NOT_CONTAINS`, `EMPTY`, `NOT_EMPTY`.
+            *   **Token-Based:** Evaluate conditions against any issue field using tokens like `{{issue.fields.status.name}}`.
+    *   **Runner Tab (NEW UI):**
+        *   **Standardized Layout:** Refactored to a `GridBagLayout` ensuring all prompt fields and labels have a consistent, standard height matching the designer.
+        *   **Dry Run Mode:** Validate your entire workflow without making actual API changes. Perfect for testing complex logic.
+        *   **Execution Reports:** Track the success/failure of every step across multiple issues.
+        *   **CSV Export:** Save detailed execution logs and results to a CSV file for auditing.
     *   **Enhanced LINK Step:**
         *   **Multi-Action Support:** A single Link step can now perform multiple link operations simultaneously.
         *   **Unified Link Types:** Seamlessly mix standard Jira issue links and Remote URL links in one step.
