@@ -344,8 +344,9 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
         gbc.gridx = 1; gbc.weightx = 1.0; top.add(runnerJqlField, gbc);
         gbc.gridx = 2; gbc.weightx = 0; top.add(searchBtn, gbc);
 
-        runnerInputsPanel.setLayout(new GridLayout(0, 2, 5, 5));
+        runnerInputsPanel.setLayout(new GridBagLayout());
         gbc.gridx = 0; gbc.gridy = 2; gbc.gridwidth = 3;
+        gbc.fill = GridBagConstraints.HORIZONTAL;
         top.add(runnerInputsPanel, gbc);
 
         runnerTable.setFillsViewportHeight(true);
@@ -581,13 +582,9 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
                         AssetStep as = (AssetStep) step;
                         if (as.isPromptOptions()) {
                             String label = "Asset Options (" + step.getLabel() + ")";
-                            if (!labels.contains(label)) {
-                                labels.add(label);
-                                runnerInputsPanel.add(new JLabel(label + ":"));
-                                AssetOptionsPromptPanel panel = new AssetOptionsPromptPanel(as.isCopyAttachments(), as.isCopyLinks(), as.isCopySubTasks());
-                                runnerInputsPanel.add(panel);
-                                promptFields.put(label, panel);
-                            }
+                            AssetOptionsPromptPanel panel = new AssetOptionsPromptPanel(as.isCopyAttachments(), as.isCopyLinks(), as.isCopySubTasks());
+                            addInputRow(label, panel, labels);
+                            promptFields.put(label.replaceAll("\\[.*?\\]", "").trim(), panel);
                         }
                     }
                     
@@ -606,9 +603,31 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
         runnerInputsPanel.repaint();
     }
 
+    private void addInputRow(String label, JComponent input, Set<String> labels) {
+        String cleanLabel = label.replaceAll("\\[.*?\\]", "").trim();
+        if (labels.contains(cleanLabel)) return;
+        labels.add(cleanLabel);
+
+        GridBagConstraints gbc = new GridBagConstraints();
+        int rowCount = runnerInputsPanel.getComponentCount() / 2;
+        
+        gbc.gridy = rowCount;
+        gbc.insets = new Insets(2, 5, 2, 5);
+        gbc.anchor = GridBagConstraints.EAST;
+        runnerInputsPanel.add(new JLabel(cleanLabel + ":"), gbc);
+
+        gbc.gridx = 1;
+        gbc.weightx = 1.0;
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        gbc.anchor = GridBagConstraints.WEST;
+        runnerInputsPanel.add(input, gbc);
+    }
+
     private void addDynamicPrompt(Set<String> labels, String label, String value, JSONObject contextIssue) {
         if (label == null || label.trim().isEmpty()) return;
         String cleanLabel = label.replaceAll("\\[.*?\\]", "").trim();
+        if (labels.contains(cleanLabel)) return;
+
         String resolvedValue = value;
         if (contextIssue != null && value != null && value.contains("{{")) {
             resolvedValue = TokenEngine.replaceTokens(value, contextIssue);
@@ -616,25 +635,16 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
 
         boolean isDynamic = (value != null && (value.contains(",") || value.contains("[config:") || value.contains("[choice:"))) || label.contains("[config:") || label.contains("[choice:");
         
+        JComponent input;
         if (isDynamic) {
-            if (!labels.contains(cleanLabel)) {
-                labels.add(cleanLabel);
-                runnerInputsPanel.add(new JLabel(cleanLabel + ":"));
-                JComponent input = createPromptInput(label, value, contextIssue);
-                runnerInputsPanel.add(input);
-                promptFields.put(cleanLabel, input);
-            }
+            input = createPromptInput(label, value, contextIssue);
         } else {
             if (label.startsWith("Project (") || label.startsWith("Issue Type (") || label.startsWith("Time Spent (") || label.startsWith("Comment (") || label.startsWith("Started (")) return;
-            
-            if (!labels.contains(cleanLabel)) {
-                labels.add(cleanLabel);
-                runnerInputsPanel.add(new JLabel(cleanLabel + ":"));
-                JComponent input = new JTextField(resolvedValue != null ? resolvedValue : "");
-                runnerInputsPanel.add(input);
-                promptFields.put(cleanLabel, input);
-            }
+            input = new JTextField(resolvedValue != null ? resolvedValue : "");
         }
+        
+        addInputRow(label, input, labels);
+        promptFields.put(cleanLabel, input);
     }
 
     private JComponent createPromptInput(String label, String staticOptions, JSONObject contextIssue) {
@@ -825,7 +835,7 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
     private static class AssetOptionsPromptPanel extends JPanel {
         private final JCheckBox att, links, sub;
         AssetOptionsPromptPanel(boolean a, boolean l, boolean s) {
-            setLayout(new FlowLayout(FlowLayout.LEFT));
+            setLayout(new FlowLayout(FlowLayout.LEFT, 5, 0));
             att = new JCheckBox("Attachments", a);
             links = new JCheckBox("Links", l);
             sub = new JCheckBox("Sub-tasks", s);
