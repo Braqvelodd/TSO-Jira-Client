@@ -298,7 +298,7 @@ public class BulkActionPanel extends JPanel {
                 statusLabel.setText("Bulk execution complete. Processed " + total + " issues in parallel.");
                 setButtonsEnabled(true);
             });
-        }).start();
+        });
     }
 
     private String findTransitionIdByName(String jsonResponse, String transitionName) {

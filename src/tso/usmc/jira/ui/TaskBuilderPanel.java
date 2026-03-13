@@ -773,7 +773,7 @@ public class TaskBuilderPanel extends JPanel {
                 updateStatus("Execution Failed: " + e.getMessage());
                 addRow("SYSTEM ERROR", e.getMessage(), "N/A");
             }
-        }).start();
+        });
     }
 
     private void addRow(String s, String st, String l) { SwingUtilities.invokeLater(() -> resultsTableModel.addRow(new Object[]{s, st, l})); }
