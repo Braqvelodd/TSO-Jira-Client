@@ -11,6 +11,8 @@ import org.json.JSONObject;
 import org.json.JSONArray;
 
 import javax.swing.*;
+import javax.swing.event.DocumentEvent;
+import javax.swing.event.DocumentListener;
 import javax.swing.table.DefaultTableModel;
 import java.awt.*;
 import java.io.IOException;
