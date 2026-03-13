@@ -212,8 +212,8 @@ public class WorkflowOrchestratorPanel extends JPanel {
         addAssetBtn.addActionListener(e -> addStep(new AssetStep()));
         addWorklogBtn.addActionListener(e -> addStep(new WorklogStep()));
 
-        tokenSearchField.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
-            public void insertUpdate(javax.swing.event.DocumentEvent e) { filterTokens(); }
+        tokenSearchField.getDocument().addDocumentListener(new DocumentListener() {
+            public void insertUpdate(DocumentEvent e) { filterTokens(); }
             public void removeUpdate(DocumentEvent e) { filterTokens(); }
             public void changedUpdate(DocumentEvent e) { filterTokens(); }
         });
