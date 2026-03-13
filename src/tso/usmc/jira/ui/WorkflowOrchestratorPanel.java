@@ -862,6 +862,7 @@ public class WorkflowOrchestratorPanel extends JPanel {
                 MetadataCacheService helper = mainFrame.getMetadataService();
                 
                 if (!isIncremental) {
+                    helper.clearCache(); // FORCE fresh API calls
                     cachedFullMeta.clear(); 
                     cachedFieldOptions.clear();
                     log("--- Starting Fresh " + (isFiltered ? "Filtered" : "Global") + " Sync ---");
@@ -895,6 +896,28 @@ public class WorkflowOrchestratorPanel extends JPanel {
                         log("  ! Project Sync Error (" + pKey + "): " + e.getMessage());
                     }
                 }
+
+                // NEW: Fetch Global Link Types
+                try {
+                    log("Syncing Global Link Types...");
+                    List<JSONObject> links = helper.getIssueLinkTypes();
+                    for (JSONObject lt : links) {
+                        cachedFullMeta.put("linktype:" + lt.getString("name"), lt);
+                    }
+                } catch (Exception e) { log("  ! Link Type Sync Error: " + e.getMessage()); }
+
+                // NEW: Fetch ALL System Fields (This is usually where the bulk of fields come from)
+                try {
+                    log("Syncing Global Field Definitions...");
+                    List<JSONObject> fields = helper.getAllFields();
+                    for (JSONObject f : fields) {
+                        String fId = f.getString("id");
+                        // Only add if not already present from createmeta (createmeta has better validation data)
+                        if (!cachedFullMeta.containsKey(fId)) {
+                            cachedFullMeta.put(fId, f);
+                        }
+                    }
+                } catch (Exception e) { log("  ! Global Field Sync Error: " + e.getMessage()); }
 
                 if (isIncremental) {
                     fieldsConfig.updateMetadata(cachedFullMeta);
