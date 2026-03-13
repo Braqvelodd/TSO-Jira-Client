@@ -27,6 +27,11 @@ public class UpdateStep extends WorkflowStep {
         json.put("stepId", stepId);
         json.put("label", label);
         json.put("targetIssueToken", targetIssueToken);
+
+        // Condition fields
+        if (conditionToken != null) json.put("conditionToken", conditionToken);
+        if (conditionOperator != null) json.put("conditionOperator", conditionOperator);
+        if (conditionValue != null) json.put("conditionValue", conditionValue);
         
         JSONArray fields = new JSONArray();
         for (FieldAction action : fieldActions.values()) {

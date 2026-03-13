@@ -12,6 +12,22 @@ import java.util.*;
  * Decoupled from Swing components.
  */
 public class WorkflowEngine {
+    
+    /**
+     * Data class representing the result of a workflow run on a single issue.
+     */
+    public static class ExecutionResult {
+        public final String issueKey;
+        public final String status; // SUCCESS, FAILED, SKIPPED (Dry Run)
+        public final List<String> logEntries = new ArrayList<>();
+        public final List<String> errors = new ArrayList<>();
+        public final long durationMs;
+
+        public ExecutionResult(String key, String status, long duration) {
+            this.issueKey = key; this.status = status; this.durationMs = duration;
+        }
+    }
+
     private final JiraApiService apiService;
     private final JiraIssueService issueService;
     private final String baseUrl;
@@ -20,6 +36,7 @@ public class WorkflowEngine {
     private final Map<String, String> executionVars = new HashMap<>();
     private final Map<String, JSONObject> jsonContexts = new HashMap<>();
     private boolean verboseLogging = false;
+    private boolean dryRun = false;
 
     public WorkflowEngine(JiraApiService apiService, JiraIssueService issueService, String baseUrl, WorkflowProgressListener listener) {
         this.apiService = apiService;
@@ -32,15 +49,25 @@ public class WorkflowEngine {
         this.verboseLogging = enabled;
     }
 
-    public void execute(WorkflowRecipe recipe, List<JSONObject> issues, Map<String, String> promptValues) {
+    public void setDryRun(boolean enabled) {
+        this.dryRun = enabled;
+    }
+
+    public List<ExecutionResult> execute(WorkflowRecipe recipe, List<JSONObject> issues, Map<String, String> promptValues) {
+        List<ExecutionResult> results = new ArrayList<>();
         try {
             JSONObject metaSnap = recipe.getMetadataSnapshot();
-            listener.onLog("Starting workflow: " + recipe.getRecipeName() + " on " + issues.size() + " issues.");
+            String mode = dryRun ? "[DRY RUN - VALIDATE ONLY]" : "[LIVE EXECUTION]";
+            listener.onLog(mode + " Starting workflow: " + recipe.getRecipeName() + " on " + issues.size() + " issues.");
 
             for (JSONObject issue : issues) {
+                long start = System.currentTimeMillis();
                 String key = issue.getString("key");
                 listener.onLog("--- Processing " + key + " ---");
                 
+                ExecutionResult result = new ExecutionResult(key, dryRun ? "SKIPPED" : "SUCCESS", 0);
+                boolean issueFailed = false;
+
                 executionVars.clear();
                 jsonContexts.clear();
                 executionVars.put("issue.key", key);
@@ -56,18 +83,64 @@ public class WorkflowEngine {
                 for (WorkflowStep step : recipe.getSteps()) {
                     listener.onLog("Step: " + step.getLabel());
                     try {
-                        step.validate(); // NEW: Client-side validation
+                        // Evaluate Condition
+                        if (!evaluateCondition(step, issue)) {
+                            String msg = "Condition not met (" + step.getConditionToken() + " " + step.getConditionOperator() + " " + step.getConditionValue() + "). Skipping step.";
+                            listener.onLog("  > " + msg);
+                            result.logEntries.add("SKIPPED: " + step.getLabel() + " (" + msg + ")");
+                            continue;
+                        }
+
+                        step.validate(); // Client-side structure validation
                         executeStep(step, issue, promptValues, metaSnap);
+                        result.logEntries.add("COMPLETED: " + step.getLabel());
                     } catch (Exception ex) {
-                        listener.onLog("  > Error in step '" + step.getLabel() + "': " + ex.getMessage());
+                        String errorMsg = "Error in step '" + step.getLabel() + "': " + ex.getMessage();
+                        listener.onLog("  > " + errorMsg);
+                        result.errors.add(errorMsg);
                         if (verboseLogging) ex.printStackTrace();
+                        
+                        if (!dryRun) {
+                            issueFailed = true;
+                            break;
+                        }
                     }
                 }
+                
+                ExecutionResult finalRes = new ExecutionResult(key, issueFailed ? "FAILED" : (dryRun ? "SKIPPED" : "SUCCESS"), System.currentTimeMillis() - start);
+                finalRes.logEntries.addAll(result.logEntries);
+                finalRes.errors.addAll(result.errors);
+                results.add(finalRes);
             }
-            listener.onLog("Workflow Execution Complete.");
+            listener.onLog(mode + " Workflow Execution Complete.");
             listener.onComplete();
         } catch (Exception e) {
             listener.onError("Fatal error during workflow execution", e);
+        }
+        return results;
+    }
+
+    private boolean evaluateCondition(WorkflowStep step, JSONObject issue) {
+        String token = step.getConditionToken();
+        String op = step.getConditionOperator();
+        String expected = step.getConditionValue();
+
+        if (token == null || token.trim().isEmpty() || op == null || op.equals("ALWAYS")) {
+            return true;
+        }
+
+        String actual = resolveTokens(token, issue);
+        if (actual == null) actual = "";
+        if (expected == null) expected = "";
+
+        switch (op.toUpperCase()) {
+            case "EQUALS": return actual.equalsIgnoreCase(expected);
+            case "NOT_EQUALS": return !actual.equalsIgnoreCase(expected);
+            case "CONTAINS": return actual.toLowerCase().contains(expected.toLowerCase());
+            case "NOT_CONTAINS": return !actual.toLowerCase().contains(expected.toLowerCase());
+            case "EMPTY": return actual.trim().isEmpty();
+            case "NOT_EMPTY": return !actual.trim().isEmpty();
+            default: return true;
         }
     }
 
@@ -81,40 +154,67 @@ public class WorkflowEngine {
             fields.put("project", new JSONObject().put("key", proj));
             fields.put("issuetype", new JSONObject().put("name", type));
 
-            if (verboseLogging) listener.onLog("  > Creating issue in " + proj + " (" + type + ")...");
-            JSONObject respJson = issueService.createIssue(fields);
-            String newKey = respJson.getString("key");
-            
-            executionVars.put("last_key", newKey);
-            executionVars.put("last.key", newKey);
-            executionVars.put("last.id", respJson.getString("id"));
-            jsonContexts.put("last", respJson);
-            
-            listener.onLog("  > Created " + newKey);
+            if (dryRun) {
+                listener.onLog("  > [DRY RUN] Would create issue in " + proj + " (" + type + ")");
+                listener.onLog("  > [DRY RUN] Fields: " + fields.keySet());
+                // Mock last_key for subsequent steps in dry run
+                String mockKey = proj + "-MOCK";
+                executionVars.put("last_key", mockKey);
+                executionVars.put("last.key", mockKey);
+                executionVars.put("last.id", "10000");
+            } else {
+                if (verboseLogging) listener.onLog("  > Creating issue in " + proj + " (" + type + ")...");
+                JSONObject respJson = issueService.createIssue(fields);
+                String newKey = respJson.getString("key");
+                executionVars.put("last_key", newKey);
+                executionVars.put("last.key", newKey);
+                executionVars.put("last.id", respJson.getString("id"));
+                jsonContexts.put("last", respJson);
+                listener.onLog("  > Created " + newKey);
+            }
         } else if (step instanceof UpdateStep) {
             UpdateStep us = (UpdateStep) step;
             String targetKey = JiraUtils.cleanIssueKey(resolveTokens(us.getTargetIssueToken(), issue));
             if (targetKey == null || targetKey.trim().isEmpty()) return;
             
             JSONObject fields = buildFields(step, issue, prompts, metaSnap);
-            if (verboseLogging) listener.onLog("  > Updating " + targetKey + "...");
-            issueService.updateIssue(targetKey, fields);
             
-            executionVars.put("last_key", targetKey);
-            executionVars.put("last.key", targetKey);
-            listener.onLog("  > Updated " + targetKey);
+            if (dryRun) {
+                listener.onLog("  > [DRY RUN] Would update " + targetKey);
+                listener.onLog("  > [DRY RUN] Fields to update: " + fields.keySet());
+                executionVars.put("last_key", targetKey);
+                executionVars.put("last.key", targetKey);
+            } else {
+                if (verboseLogging) listener.onLog("  > Updating " + targetKey + "...");
+                issueService.updateIssue(targetKey, fields);
+                executionVars.put("last_key", targetKey);
+                executionVars.put("last.key", targetKey);
+                listener.onLog("  > Updated " + targetKey);
+            }
         } else if (step instanceof TransitionStep) {
             TransitionStep ts = (TransitionStep) step;
             String targetKey = JiraUtils.cleanIssueKey(resolveTokens(ts.getTargetIssueToken(), issue));
             if (targetKey == null || targetKey.trim().isEmpty()) return;
 
-            JSONObject fields = buildFields(step, issue, prompts, metaSnap);
-            if (verboseLogging) listener.onLog("  > Transitioning " + targetKey + " to " + ts.getTargetStatus() + "...");
-            issueService.transitionIssue(targetKey, ts.getTargetStatus(), fields);
+            String transUrl = baseUrl + "/rest/api/2/issue/" + targetKey + "/transitions";
+            String transMeta = apiService.executeRequest(transUrl, "GET", null);
+            String tid = JiraUtils.findTransitionIdByName(transMeta, ts.getTargetStatus());
             
-            executionVars.put("last_key", targetKey);
-            executionVars.put("last.key", targetKey);
-            listener.onLog("  > Transitioned " + targetKey + " to " + ts.getTargetStatus());
+            if (tid != null) {
+                JSONObject fields = buildFields(step, issue, prompts, metaSnap);
+                if (dryRun) {
+                    listener.onLog("  > [DRY RUN] Transition '" + ts.getTargetStatus() + "' (ID: " + tid + ") IS AVAILABLE for " + targetKey);
+                    if (fields.length() > 0) listener.onLog("  > [DRY RUN] Would set fields: " + fields.keySet());
+                } else {
+                    if (verboseLogging) listener.onLog("  > Transitioning " + targetKey + " to " + ts.getTargetStatus() + "...");
+                    issueService.transitionIssue(targetKey, ts.getTargetStatus(), fields);
+                    listener.onLog("  > Transitioned " + targetKey + " to " + ts.getTargetStatus());
+                }
+                executionVars.put("last_key", targetKey);
+                executionVars.put("last.key", targetKey);
+            } else {
+                throw new Exception("Transition '" + ts.getTargetStatus() + "' not found on " + targetKey);
+            }
         } else if (step instanceof LinkStep) {
             LinkStep ls = (LinkStep) step;
             for (LinkAction la : ls.getLinkActions()) {
@@ -123,26 +223,35 @@ public class WorkflowEngine {
 
                 if (la.isRemote()) {
                     String resolvedUrl = resolveTokens(la.getUrl(), issue);
-                    String resolvedTitle = resolveTokens(la.getTitle(), issue);
-                    String resolvedSummary = resolveTokens(la.getSummary(), issue);
-                    String resolvedRel = resolveTokens(la.getRelationship(), issue);
+                    if (dryRun) {
+                        listener.onLog("  > [DRY RUN] Would remote link " + inward + " to " + resolvedUrl);
+                    } else {
+                        String resolvedTitle = resolveTokens(la.getTitle(), issue);
+                        String resolvedSummary = resolveTokens(la.getSummary(), issue);
+                        String resolvedRel = resolveTokens(la.getRelationship(), issue);
 
-                    JSONObject remoteObj = new JSONObject();
-                    remoteObj.put("url", resolvedUrl);
-                    remoteObj.put("title", resolvedTitle);
-                    if (resolvedSummary != null && !resolvedSummary.isEmpty()) remoteObj.put("summary", resolvedSummary);
+                        JSONObject remoteObj = new JSONObject();
+                        remoteObj.put("url", resolvedUrl);
+                        remoteObj.put("title", resolvedTitle);
+                        if (resolvedSummary != null && !resolvedSummary.isEmpty()) remoteObj.put("summary", resolvedSummary);
 
-                    JSONObject body = new JSONObject();
-                    body.put("object", remoteObj);
-                    body.put("relationship", resolvedRel);
+                        JSONObject body = new JSONObject();
+                        body.put("object", remoteObj);
+                        body.put("relationship", resolvedRel);
 
-                    apiService.executeRequest(baseUrl + "/rest/api/2/issue/" + inward + "/remotelink", "POST", body.toString(4));
-                    listener.onLog("  > Remote Linked " + inward + " to " + resolvedUrl);
+                        apiService.executeRequest(baseUrl + "/rest/api/2/issue/" + inward + "/remotelink", "POST", body.toString(4));
+                        listener.onLog("  > Remote Linked " + inward + " to " + resolvedUrl);
+                    }
                 } else {
                     String outward = JiraUtils.cleanIssueKey(resolveTokens(la.getOutwardIssueToken(), issue));
                     if (outward == null || outward.trim().isEmpty()) continue;
-                    issueService.linkIssues(inward, outward, la.getLinkType());
-                    listener.onLog("  > Linked " + inward + " to " + outward + " (" + la.getLinkType() + ")");
+                    
+                    if (dryRun) {
+                        listener.onLog("  > [DRY RUN] Would link " + inward + " to " + outward + " (" + la.getLinkType() + ")");
+                    } else {
+                        issueService.linkIssues(inward, outward, la.getLinkType());
+                        listener.onLog("  > Linked " + inward + " to " + outward + " (" + la.getLinkType() + ")");
+                    }
                 }
             }
         } else if (step instanceof AssetStep) {
@@ -151,6 +260,11 @@ public class WorkflowEngine {
             String targetKey = JiraUtils.cleanIssueKey(resolveTokens(as.getTargetIssueToken(), issue));
 
             if (srcKey == null || srcKey.trim().isEmpty() || targetKey == null || targetKey.trim().isEmpty()) return;
+
+            if (dryRun) {
+                listener.onLog("  > [DRY RUN] Would copy assets from " + srcKey + " to " + targetKey);
+                return;
+            }
 
             JSONObject sourceData = issue;
             if (!srcKey.equals(issue.getString("key"))) {
@@ -181,18 +295,23 @@ public class WorkflowEngine {
             if (targetKey == null || targetKey.trim().isEmpty()) return;
 
             String timeSpent = resolveStepProperty(ws.getTimeSpent(), "Time Spent (" + step.getLabel() + ")", prompts, issue);
-            String comment = resolveStepProperty(ws.getComment(), "Comment (" + step.getLabel() + ")", prompts, issue);
-            String started = resolveStepProperty(ws.getStarted(), "Started (" + step.getLabel() + ")", prompts, issue);
-            started = resolveTokens(started, issue);
-            started = JiraUtils.formatJiraDateTime(started);
+            
+            if (dryRun) {
+                listener.onLog("  > [DRY RUN] Would add " + timeSpent + " worklog to " + targetKey);
+            } else {
+                String comment = resolveStepProperty(ws.getComment(), "Comment (" + step.getLabel() + ")", prompts, issue);
+                String started = resolveStepProperty(ws.getStarted(), "Started (" + step.getLabel() + ")", prompts, issue);
+                started = resolveTokens(started, issue);
+                started = JiraUtils.formatJiraDateTime(started);
 
-            JSONObject body = new JSONObject();
-            if (timeSpent != null && !timeSpent.trim().isEmpty()) body.put("timeSpent", timeSpent);
-            if (comment != null && !comment.trim().isEmpty()) body.put("comment", comment);
-            if (started != null && !started.trim().isEmpty()) body.put("started", started);
+                JSONObject body = new JSONObject();
+                if (timeSpent != null && !timeSpent.trim().isEmpty()) body.put("timeSpent", timeSpent);
+                if (comment != null && !comment.trim().isEmpty()) body.put("comment", comment);
+                if (started != null && !started.trim().isEmpty()) body.put("started", started);
 
-            apiService.executeRequest(baseUrl + "/rest/api/2/issue/" + targetKey + "/worklog", "POST", body.toString(4));
-            listener.onLog("  > Added Worklog to " + targetKey + " (" + timeSpent + ")");
+                apiService.executeRequest(baseUrl + "/rest/api/2/issue/" + targetKey + "/worklog", "POST", body.toString(4));
+                listener.onLog("  > Added Worklog to " + targetKey + " (" + timeSpent + ")");
+            }
         }
     }
 
@@ -351,8 +470,6 @@ public class WorkflowEngine {
         if (fa.getMode() == FieldAction.MappingMode.PROMPT) {
             String label = fa.getPromptLabel(), clean = label.replaceAll("\\[.*?\\]", "").trim();
             if (prompts.containsKey(clean)) return prompts.get(clean);
-            // In a decoupled engine, we should probably throw an error if a prompt isn't provided
-            // or have a callback for prompts. For now, assume provided in promptValues map.
         }
         return "";
     }

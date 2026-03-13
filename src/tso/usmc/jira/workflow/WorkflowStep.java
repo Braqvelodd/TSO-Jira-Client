@@ -13,6 +13,11 @@ public abstract class WorkflowStep {
     protected StepType type;
     protected Map<String, FieldAction> fieldActions = new LinkedHashMap<>();
 
+    // NEW: Conditional Branching Fields
+    protected String conditionToken;    // e.g., "{{issue.fields.status.name}}"
+    protected String conditionOperator; // EQUALS, CONTAINS, etc.
+    protected String conditionValue;    // The value to compare against
+
     public WorkflowStep(StepType type) {
         this.type = type;
         this.stepId = java.util.UUID.randomUUID().toString();
@@ -30,6 +35,15 @@ public abstract class WorkflowStep {
     public void setFieldActions(Map<String, FieldAction> actions) { this.fieldActions = actions; }
     public void addFieldAction(FieldAction action) { this.fieldActions.put(action.getFieldId(), action); }
 
+    public String getConditionToken() { return conditionToken; }
+    public void setConditionToken(String conditionToken) { this.conditionToken = conditionToken; }
+
+    public String getConditionOperator() { return conditionOperator; }
+    public void setConditionOperator(String conditionOperator) { this.conditionOperator = conditionOperator; }
+
+    public String getConditionValue() { return conditionValue; }
+    public void setConditionValue(String conditionValue) { this.conditionValue = conditionValue; }
+
     public abstract JSONObject toJson();
 
     /**
@@ -45,6 +59,11 @@ public abstract class WorkflowStep {
         // Populate common fields
         if (json.has("stepId")) step.setStepId(json.getString("stepId"));
         if (json.has("label")) step.setLabel(json.getString("label"));
+        
+        // Populate condition fields
+        if (json.has("conditionToken")) step.setConditionToken(json.getString("conditionToken"));
+        if (json.has("conditionOperator")) step.setConditionOperator(json.getString("conditionOperator"));
+        if (json.has("conditionValue")) step.setConditionValue(json.getString("conditionValue"));
         
         if (json.has("fields")) {
             Object fieldsObj = json.get("fields");

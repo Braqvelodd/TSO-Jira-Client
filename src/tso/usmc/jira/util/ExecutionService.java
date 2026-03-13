@@ -2,6 +2,7 @@ package tso.usmc.jira.util;
 
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -14,8 +15,8 @@ public class ExecutionService {
     /**
      * Executes a task in the background thread pool.
      */
-    public static void submit(Runnable task) {
-        pool.submit(task);
+    public static Future<?> submit(Runnable task) {
+        return pool.submit(task);
     }
 
     /**

@@ -81,6 +81,12 @@ public class AssetStep extends WorkflowStep {
         json.put("subTaskFields", new JSONArray(subTaskFields));
         json.put("sourceIssueToken", sourceIssueToken);
         json.put("targetIssueToken", targetIssueToken);
+        
+        // Condition fields
+        if (conditionToken != null) json.put("conditionToken", conditionToken);
+        if (conditionOperator != null) json.put("conditionOperator", conditionOperator);
+        if (conditionValue != null) json.put("conditionValue", conditionValue);
+        
         return json;
     }
 

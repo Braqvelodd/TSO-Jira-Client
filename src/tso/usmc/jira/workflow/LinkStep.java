@@ -34,7 +34,12 @@ public class LinkStep extends WorkflowStep {
         json.put("type", getType().toString());
         json.put("stepId", stepId);
         json.put("label", label);
-        
+
+        // Condition fields
+        if (conditionToken != null) json.put("conditionToken", conditionToken);
+        if (conditionOperator != null) json.put("conditionOperator", conditionOperator);
+        if (conditionValue != null) json.put("conditionValue", conditionValue);
+
         JSONArray actionsArr = new JSONArray();
         for (LinkAction la : linkActions) {
             actionsArr.put(la.toJson());

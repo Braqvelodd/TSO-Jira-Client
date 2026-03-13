@@ -18,6 +18,9 @@ import javax.swing.event.DocumentListener;
 import javax.swing.table.DefaultTableModel;
 import java.awt.*;
 import java.io.IOException;
+import java.io.File;
+import java.io.FileWriter;
+import java.io.PrintWriter;
 import java.util.*;
 import java.util.List;
 
@@ -52,11 +55,14 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
     private final Map<String, JComponent> promptFields = new HashMap<>();
     private final JTextArea runnerLog = new JTextArea();
     private final JButton runBtn = new JButton("Run Workflow on Selected");
+    private final JButton exportReportBtn = new JButton("Export Report (CSV)");
     private final JCheckBox verboseLogCheck = new JCheckBox("Verbose API Logs");
+    private final JCheckBox dryRunCheck = new JCheckBox("Dry Run (Validate only)");
     private final JLabel statusLabel = new JLabel("Ready.");
 
     // Results data
     private final List<JSONObject> currentSearchIssues = new ArrayList<>();
+    private List<WorkflowEngine.ExecutionResult> lastResults = new ArrayList<>();
 
     private final Map<String, JSONObject> cachedFullMeta = new HashMap<>();
     private final List<String> allTokens = new ArrayList<>();
@@ -106,6 +112,7 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
     public void onComplete() {
         SwingUtilities.invokeLater(() -> {
             runBtn.setEnabled(true);
+            exportReportBtn.setEnabled(true);
             statusLabel.setText("Workflow Execution Complete.");
         });
     }
@@ -308,7 +315,7 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
 
                 WorkflowEngine engine = new WorkflowEngine(mainFrame.getService(), mainFrame.getIssueService(), mainFrame.getBaseUrl(), this);
                 engine.setVerboseLogging(verboseLogCheck.isSelected());
-                engine.execute(recipe, issues, new HashMap<>());
+                lastResults = engine.execute(recipe, issues, new HashMap<>());
 
             } catch (Exception e) {
                 onError("Execution Error", e);
@@ -327,7 +334,11 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
 
         gbc.gridx = 0; gbc.gridy = 0; top.add(new JLabel("Select Recipe:"), gbc);
         gbc.gridx = 1; gbc.weightx = 1.0; top.add(runnerRecipeCombo, gbc);
-        gbc.gridx = 2; gbc.weightx = 0; top.add(verboseLogCheck, gbc);
+        
+        JPanel checkPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 5, 0));
+        checkPanel.add(verboseLogCheck);
+        checkPanel.add(dryRunCheck);
+        gbc.gridx = 2; gbc.weightx = 0; top.add(checkPanel, gbc);
 
         gbc.gridx = 0; gbc.gridy = 1; gbc.weightx = 0; top.add(new JLabel("JQL Query / Issue Key:"), gbc);
         gbc.gridx = 1; gbc.weightx = 1.0; top.add(runnerJqlField, gbc);
@@ -366,13 +377,16 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
 
         JPanel bottom = new JPanel(new FlowLayout());
         runBtn.setBackground(new Color(200, 255, 200));
+        exportReportBtn.setEnabled(false); // Enable after run
         JButton clearLogBtn = new JButton("Clear Log");
         bottom.add(clearLogBtn);
+        bottom.add(exportReportBtn);
         bottom.add(runBtn);
         panel.add(bottom, BorderLayout.SOUTH);
 
         searchBtn.addActionListener(e -> executeRunnerSearch());
         runBtn.addActionListener(e -> runWorkflowOnSelected());
+        exportReportBtn.addActionListener(e -> exportToCsv());
         clearLogBtn.addActionListener(e -> runnerLog.setText(""));
 
         return panel;
@@ -468,6 +482,7 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
 
         runnerLog.setText("");
         runBtn.setEnabled(false);
+        exportReportBtn.setEnabled(false);
         
         ExecutionService.submit(() -> {
             try {
@@ -484,13 +499,42 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
                 
                 WorkflowEngine engine = new WorkflowEngine(mainFrame.getService(), mainFrame.getIssueService(), mainFrame.getBaseUrl(), this);
                 engine.setVerboseLogging(verboseLogCheck.isSelected());
-                engine.execute(recipe, issuesToProcess, promptValues);
+                engine.setDryRun(dryRunCheck.isSelected());
+                lastResults = engine.execute(recipe, issuesToProcess, promptValues);
 
             } catch (Exception e) {
                 onError("FATAL ERROR", e);
                 onComplete();
             }
         });
+    }
+
+    private void exportToCsv() {
+        if (lastResults == null || lastResults.isEmpty()) {
+            JOptionPane.showMessageDialog(this, "No results to export.");
+            return;
+        }
+
+        JFileChooser fileChooser = new JFileChooser();
+        fileChooser.setSelectedFile(new File("workflow_report_" + System.currentTimeMillis() + ".csv"));
+        if (fileChooser.showSaveDialog(this) == JFileChooser.APPROVE_OPTION) {
+            File file = fileChooser.getSelectedFile();
+            try (PrintWriter pw = new PrintWriter(new FileWriter(file))) {
+                pw.println("Issue Key,Status,Duration (ms),Log,Errors");
+                for (WorkflowEngine.ExecutionResult res : lastResults) {
+                    StringBuilder sb = new StringBuilder();
+                    sb.append(res.issueKey).append(",");
+                    sb.append(res.status).append(",");
+                    sb.append(res.durationMs).append(",");
+                    sb.append("\"").append(String.join("; ", res.logEntries).replace("\"", "'")).append("\",");
+                    sb.append("\"").append(String.join("; ", res.errors).replace("\"", "'")).append("\"");
+                    pw.println(sb.toString());
+                }
+                JOptionPane.showMessageDialog(this, "Report exported to " + file.getAbsolutePath());
+            } catch (IOException e) {
+                JOptionPane.showMessageDialog(this, "Export Error: " + e.getMessage());
+            }
+        }
     }
 
     private void updateRunnerInputs() {

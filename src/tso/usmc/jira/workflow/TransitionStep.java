@@ -36,6 +36,11 @@ public class TransitionStep extends WorkflowStep {
         json.put("label", label);
         json.put("targetStatus", targetStatus);
         json.put("targetIssueToken", targetIssueToken);
+
+        // Condition fields
+        if (conditionToken != null) json.put("conditionToken", conditionToken);
+        if (conditionOperator != null) json.put("conditionOperator", conditionOperator);
+        if (conditionValue != null) json.put("conditionValue", conditionValue);
         
         JSONArray fields = new JSONArray();
         for (FieldAction action : fieldActions.values()) {

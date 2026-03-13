@@ -8,51 +8,36 @@ The USMC TSO Jira Client is a feature-rich desktop application with a sophistica
 ## 2. Architectural & Design Patterns
 
 ### 2.1 Tight UI-Logic Coupling ("Smart UI" Anti-pattern)
-*   **Finding:** Core business logic (API execution, JSON payload building, thread management) was embedded directly within Swing panels.
 *   **Status:** **[FIXED - Phase 3]** Extracted all execution logic into `WorkflowEngine` and `JiraIssueService`. UI panels now use these services and communicate via the `WorkflowProgressListener` interface.
-*   **Impact:** 
-    *   Logic can now be unit tested without a GUI.
-    *   Zero risk of UI freezes during execution.
-    *   Headless/CLI execution is now possible.
 
 ### 2.2 Open-Closed Principle (OCP) Violation
-*   **Finding:** `WorkflowStep.java` used a static factory method with a hardcoded `switch-case` to instantiate subclasses.
 *   **Status:** **[FIXED - Phase 3]** Implemented the **Step Registry Pattern** via `WorkflowStepRegistry`. Subclasses now register their own "creators".
-*   **Impact:** New step types can be added without modifying core base classes.
 
 ### 2.3 "God Class" Utilities
-*   **Finding:** `JiraUtils.java` was a catch-all for disparate logic, including Swing `LayoutManagers` and UI event listeners.
 *   **Status:** **[FIXED - Phase 3]** Split into `JiraUtils` (Core Jira logic) and `SwingUtils` (UI-specific helpers).
-*   **Impact:** Improved code discoverability and cleaner dependency management.
 
 ### 2.4 Generic Error Handling & Concurrency
-*   **Finding:** The codebase used generic `Exception` types and ad-hoc `new Thread()` calls.
 *   **Status:** **[FIXED - Phase 3]** 
     *   Implemented `ExecutionService` with a managed thread pool. 
     *   Defined a custom exception hierarchy: `JiraApiException` and `WorkflowException`.
-    *   Refactored `JiraApiService` to provide detailed error diagnostics (status codes, bodies).
+    *   Refactored `JiraApiService` to provide detailed error diagnostics.
 
 ---
 
 ## 3. Logic Redundancies & Duplication
 
 ### 3.1 Duplicate Jira Operations
-*   **Finding:** Transition, Linking, and Field Updating logic were implemented independently in multiple panels.
 *   **Status:** **[FIXED - Phase 3]** Consolidated into `JiraIssueService`.
-*   **Recommendation:** (Done) All standard Jira operations now flow through a single service.
 
 ### 3.2 Fragmented Metadata Management
-*   **Finding:** Multiple services managed Jira field and project metadata with overlapping logic.
-*   **Status:** **[FIXED - Phase 3]** Consolidated into `MetadataCacheService` with unified memory and disk persistence. Fixed sync discrepancy to aggregate ~764 fields across all issue types and link types.
+*   **Status:** **[FIXED - Phase 3]** Consolidated into `MetadataCacheService` with unified memory and disk persistence. Fixed sync discrepancy to aggregate ~764 fields.
 
 ---
 
 ## 4. Security & Data Integrity
 
-### 4.1 Insecure mTLS Configuration
-*   **Finding:** `JiraApiService.java` utilizes a `trustAllCerts` TrustManager.
-*   **Impact:** Vulnerable to Man-in-the-Middle (MitM) attacks.
-*   **Recommendation:** Move to Phase 4 (Security Hardening).
+### 4.1 mTLS Configuration
+*   **Status:** **[DECISION]** Per user preference, the "Trust All" SSL configuration will be maintained to facilitate ease of use in the target environment.
 
 ### 4.2 Brittle JSON Handling (`JsonUtils.java`)
 *   **Status:** **[FIXED - Phase 1]** Refactored to use `org.json` exclusively.
@@ -74,9 +59,12 @@ The USMC TSO Jira Client is a feature-rich desktop application with a sophistica
 *   **Conditional Branching:** Missing. (Planned for Phase 5)
 
 ### 6.2 UX & Implementation Gaps
-*   **LLM Cancellation:** Once an AI summarization task starts, it cannot be cancelled.
-*   **Local Format Validation:** Missing for Worklogs and dates.
-*   **Asset Mapping:** `AssetStep` uses comma-separated strings for field mapping.
+*   **Status:** **[FIXED - Phase 4]** 
+    *   Implemented client-side format validation for Worklogs.
+    *   Refactored `AssetStep` to use structured list for field mapping (handles commas correctly).
+    *   Added `validate()` phase to `WorkflowEngine`.
+*   **LLM Cancellation:** Once an AI summarization task starts, it cannot be cancelled. (Planned for Phase 5)
+*   **Execution Reports:** Missing. (Planned for Phase 5)
 
 ---
 
@@ -104,10 +92,11 @@ The USMC TSO Jira Client is a feature-rich desktop application with a sophistica
 - [x] Split `JiraUtils.java` into dedicated Core (`JiraUtils`) and UI (`SwingUtils`) classes.
 - [x] Define and implement a custom Exception hierarchy (`JiraApiException`, etc.).
 
-### Phase 4: Security & Validation
-- [ ] Harden `JiraApiService` TrustManager using system default Root CAs.
-- [ ] Add client-side format validation for durations (Worklogs) and dates.
-- [ ] Refactor `AssetStep` mapping to use structured `List<String>`.
+### Phase 4: Validation & Step Robustness (COMPLETE)
+- [x] Implement `WorkflowStep.validate()` for all step subclasses.
+- [x] Add client-side format validation for durations (Worklogs).
+- [x] Refactor `AssetStep` mapping to use structured `List<String>`.
+- [ ] (Skipped) Harden `JiraApiService` TrustManager.
 
 ### Phase 5: Advanced Automation Features
 - [ ] Implement "Dry Run" mode for Workflow Orchestrator.

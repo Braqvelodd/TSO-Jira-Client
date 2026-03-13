@@ -35,6 +35,11 @@ public class CreateStep extends WorkflowStep {
         json.put("label", label);
         json.put("projectKey", projectKey);
         json.put("issueType", issueType);
+
+        // Condition fields
+        if (conditionToken != null) json.put("conditionToken", conditionToken);
+        if (conditionOperator != null) json.put("conditionOperator", conditionOperator);
+        if (conditionValue != null) json.put("conditionValue", conditionValue);
         
         JSONArray fields = new JSONArray();
         for (FieldAction action : fieldActions.values()) {

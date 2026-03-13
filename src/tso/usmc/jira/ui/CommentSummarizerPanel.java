@@ -5,12 +5,14 @@ import javax.swing.border.EmptyBorder;
 import java.awt.*;
 import java.io.PrintWriter;
 import java.io.StringWriter;
+import java.util.concurrent.Future;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
 import tso.usmc.jira.app.JiraApiClientGui;
 import tso.usmc.jira.service.EmbeddedLlmService;
 import tso.usmc.jira.service.JiraApiService;
+import tso.usmc.jira.util.ExecutionService;
 
 /**
  * A panel for fetching comments from a Jira issue and summarizing them
@@ -20,17 +22,16 @@ public class CommentSummarizerPanel extends JPanel {
 
     private final JiraApiClientGui mainFrame;
     private EmbeddedLlmService llmService;
+    private Future<?> activeTask;
 
     // UI Components
     private final JTextField issueKeyField = new JTextField(15);
     private final JButton summarizeButton = new JButton("Fetch & Summarize");
+    private final JButton cancelButton = new JButton("Cancel");
     private final JButton resetButton = new JButton("Reset");
     private final JEditorPane summaryPane = new JEditorPane();
     private final JTextArea rawCommentsArea = new JTextArea();
     private final JLabel statusLabel = new JLabel(" Ready");
-
-    // Tracking for active worker to allow cancellation
-    private SwingWorker<String, Object[]> summarizeWorker;
 
     // Progress components for extraction
     private final JPanel progressPanel = new JPanel(new BorderLayout(5, 5));
@@ -50,8 +51,12 @@ public class CommentSummarizerPanel extends JPanel {
         inputPanel.add(new JLabel("Jira Issue Key:"));
         inputPanel.add(issueKeyField);
         inputPanel.add(summarizeButton);
+        inputPanel.add(cancelButton);
         inputPanel.add(resetButton);
         
+        cancelButton.setEnabled(false);
+        cancelButton.setForeground(Color.RED);
+
         // Progress Panel (Hidden by default, shown during extraction)
         progressPanel.setBorder(BorderFactory.createTitledBorder("One-time AI Setup"));
         progressPanel.add(progressLabel, BorderLayout.NORTH);
@@ -83,6 +88,7 @@ public class CommentSummarizerPanel extends JPanel {
 
         // --- Action Listeners ---
         summarizeButton.addActionListener(e -> startSummarization());
+        cancelButton.addActionListener(e -> cancelTask());
         resetButton.addActionListener(e -> resetPanel());
 
         // Initialize LLM in background
@@ -90,62 +96,58 @@ public class CommentSummarizerPanel extends JPanel {
     }
 
     private void resetPanel() {
-        if (summarizeWorker != null && !summarizeWorker.isDone()) {
-            summarizeWorker.cancel(true);
-            if (llmService != null) {
-                llmService.close(); // Ensure process is killed
-            }
-        }
+        cancelTask();
         issueKeyField.setText("");
         summaryPane.setText("");
         rawCommentsArea.setText("");
         statusLabel.setText(" Ready");
         summarizeButton.setEnabled(true);
-        resetButton.setEnabled(true);
+        cancelButton.setEnabled(false);
+    }
+
+    private void cancelTask() {
+        if (activeTask != null && !activeTask.isDone()) {
+            activeTask.cancel(true);
+            if (llmService != null) {
+                llmService.terminate(); // KILL the active llama process
+            }
+            statusLabel.setText(" Process Cancelled.");
+            summarizeButton.setEnabled(true);
+            cancelButton.setEnabled(false);
+        }
     }
 
     private void initializeLlm() {
         statusLabel.setText(" Initializing Offline LLM Engine...");
         summarizeButton.setEnabled(false);
-        resetButton.setEnabled(false);
         
-        new SwingWorker<EmbeddedLlmService, Object[]>() {
-            @Override
-            protected EmbeddedLlmService doInBackground() throws Exception {
-                return new EmbeddedLlmService(mainFrame.getJiraConfig(), (task, percent) -> {
-                    publish(new Object[]{task, percent});
+        ExecutionService.submit(() -> {
+            try {
+                llmService = new EmbeddedLlmService(mainFrame.getJiraConfig(), (task, percent) -> {
+                    SwingUtilities.invokeLater(() -> {
+                        if (!progressPanel.isVisible()) {
+                            progressPanel.setVisible(true);
+                            revalidate();
+                        }
+                        progressLabel.setText(task);
+                        progressBar.setValue(percent);
+                    });
                 });
-            }
-
-            @Override
-            protected void process(java.util.List<Object[]> chunks) {
-                if (!progressPanel.isVisible()) {
-                    progressPanel.setVisible(true);
-                    revalidate();
-                }
-                Object[] latest = chunks.get(chunks.size() - 1);
-                progressLabel.setText((String) latest[0]);
-                progressBar.setValue((Integer) latest[1]);
-            }
-
-            @Override
-            protected void done() {
-                try {
-                    llmService = get();
+                SwingUtilities.invokeLater(() -> {
                     statusLabel.setText(" Offline LLM Ready.");
                     summarizeButton.setEnabled(true);
-                    resetButton.setEnabled(true);
                     progressPanel.setVisible(false);
                     revalidate();
-                } catch (Exception e) {
+                });
+            } catch (Exception e) {
+                SwingUtilities.invokeLater(() -> {
                     statusLabel.setText(" LLM Error: " + e.getMessage());
                     progressPanel.setVisible(false);
                     summaryPane.setText("<html><body style='color:red;'><h3>LLM Initialization Failed</h3>" +
-                            "<p>Check your <b>JiraConfig.ini</b> paths or ensure <code>llama-cli.exe</code> and the model are in the <code>embedding</code> folder.</p>" +
                             "<p>Error: " + e.getMessage() + "</p></body></html>");
-                }
+                });
             }
-        }.execute();
+        });
     }
 
     private void startSummarization() {
@@ -156,20 +158,15 @@ public class CommentSummarizerPanel extends JPanel {
         }
 
         summarizeButton.setEnabled(false);
-        resetButton.setEnabled(true); // Ensure reset is functional during process
-        summaryPane.setText("<html><body><h3>Processing " + issueKey + "...</h3><p>Fetching data and running local AI model. This may take a minute.</p></body></html>");
+        cancelButton.setEnabled(true);
+        summaryPane.setText("<html><body><h3>Processing " + issueKey + "...</h3><p>Fetching data and running local AI model.</p></body></html>");
         rawCommentsArea.setText("");
         statusLabel.setText(" Fetching comments from Jira...");
 
-        summarizeWorker = new SwingWorker<String, Object[]>() {
-            private String rawTextForAI;
-            private String formattedRawComments;
-            private final StringBuilder accumulatedSummary = new StringBuilder();
-
-            @Override
-            protected String doInBackground() throws Exception {
+        activeTask = ExecutionService.submit(() -> {
+            try {
                 // 1. Fetch Comments
-                publish(new Object[]{"STATUS", "Fetching data from Jira..."});
+                updateStatus("Fetching data from Jira...");
                 JiraApiService api = mainFrame.getService();
                 String url = mainFrame.getBaseUrl() + "/rest/api/2/issue/" + issueKey + "/comment";
                 String response = api.executeRequest(url, "GET", null);
@@ -178,7 +175,9 @@ public class CommentSummarizerPanel extends JPanel {
                 JSONArray comments = root.getJSONArray("comments");
                 
                 if (comments.length() == 0) {
-                    return "No comments found for this issue.";
+                    updateSummary("No comments found for this issue.", false);
+                    updateStatus(" Done.");
+                    return;
                 }
 
                 StringBuilder aiInput = new StringBuilder();
@@ -190,73 +189,56 @@ public class CommentSummarizerPanel extends JPanel {
                     String created = c.getString("created");
                     String body = c.getString("body");
 
-                    String header = "Author: " + author + " | Date: " + created + "\n";
-                    displayRaw.append(header).append(body).append("\n\n------------------\n\n");
+                    displayRaw.append("Author: ").append(author).append(" | Date: ").append(created).append("\n").append(body).append("\n\n------------------\n\n");
                     aiInput.append("Comment by ").append(author).append(": ").append(body).append("\n");
                 }
 
-                this.formattedRawComments = displayRaw.toString();
-                this.rawTextForAI = aiInput.toString();
+                String formattedRaw = displayRaw.toString();
+                String rawTextForAI = aiInput.toString();
                 
-                publish(new Object[]{"RAW_DATA", this.formattedRawComments});
+                SwingUtilities.invokeLater(() -> rawCommentsArea.setText(formattedRaw));
 
-                // 2. Run LLM with progress updates
-                publish(new Object[]{"STATUS", "Local AI Engine: Starting analysis of " + comments.length() + " comments..."});
-                return llmService.summarizeActions(rawTextForAI, new EmbeddedLlmService.ProgressListener() {
+                // 2. Run LLM
+                updateStatus("Local AI Engine: Analyzing " + comments.length() + " comments...");
+                final StringBuilder accumulated = new StringBuilder();
+                
+                String finalSummary = llmService.summarizeActions(rawTextForAI, new EmbeddedLlmService.ProgressListener() {
                     @Override
                     public void onProgress(String task, int percent) {
-                        publish(new Object[]{"STATUS", task});
+                        updateStatus(task);
                     }
                     @Override
                     public void onPartialOutput(String text) {
-                        if (isCancelled()) return;
-                        publish(new Object[]{"OUTPUT", text});
+                        accumulated.append(text);
+                        updateSummary(accumulated.toString(), true);
                     }
                 });
-            }
 
-            @Override
-            protected void process(java.util.List<Object[]> chunks) {
-                if (isCancelled()) return;
-                for (Object[] chunk : chunks) {
-                    String type = (String) chunk[0];
-                    String value = (String) chunk[1];
-                    if ("RAW_DATA".equals(type)) {
-                        rawCommentsArea.setText(value);
-                    } else if ("STATUS".equals(type)) {
-                        statusLabel.setText(" " + value);
-                    } else if ("OUTPUT".equals(type)) {
-                        accumulatedSummary.append(value);
-                        summaryPane.setText("<html><body><h3>AI Summary (Generating...)</h3>" +
-                                "<p>" + accumulatedSummary.toString().replace("\n", "<br>") + "</p></body></html>");
-                    }
-                }
-            }
+                updateSummary(finalSummary, false);
+                updateStatus(" Summarization complete.");
 
-            @Override
-            protected void done() {
-                if (isCancelled()) {
-                    statusLabel.setText(" Summarization cancelled.");
-                    return;
+            } catch (Exception ex) {
+                if (!Thread.currentThread().isInterrupted()) {
+                    updateStatus(" Error: " + ex.getMessage());
+                    updateSummary("<span style='color:red;'><b>Error:</b> " + ex.getMessage() + "</span>", false);
                 }
-                try {
-                    String finalSummary = get();
-                    // Final UI Update: Use the full string returned by the service
-                    summaryPane.setText("<html><body><h3>AI Summary for " + issueKey + "</h3>" +
-                            "<p>" + finalSummary.replace("\n", "<br>") + "</p></body></html>");
-                    statusLabel.setText(" Summarization complete.");
-                } catch (Exception ex) {
-                    StringWriter sw = new StringWriter();
-                    ex.printStackTrace(new PrintWriter(sw));
-                    summaryPane.setText("<html><body style='color:red;'><h3>Summarization Failed</h3>" +
-                            "<pre>" + ex.getMessage() + "</pre></body></html>");
-                    statusLabel.setText(" Error during summarization.");
-                } finally {
+            } finally {
+                SwingUtilities.invokeLater(() -> {
                     summarizeButton.setEnabled(true);
-                    resetButton.setEnabled(true);
-                }
+                    cancelButton.setEnabled(false);
+                });
             }
-        };
-        summarizeWorker.execute();
+        });
+    }
+
+    private void updateStatus(String msg) {
+        SwingUtilities.invokeLater(() -> statusLabel.setText(" " + msg));
+    }
+
+    private void updateSummary(String text, boolean partial) {
+        SwingUtilities.invokeLater(() -> {
+            String title = partial ? "AI Summary (Generating...)" : "AI Summary";
+            summaryPane.setText("<html><body><h3>" + title + "</h3><p>" + text.replace("\n", "<br>") + "</p></body></html>");
+        });
     }
 }

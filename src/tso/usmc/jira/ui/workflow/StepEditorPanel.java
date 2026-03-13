@@ -19,6 +19,7 @@ import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.Insets;
+import java.awt.Font;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -55,6 +56,12 @@ public class StepEditorPanel extends JPanel {
     private JTextField startedField;
     private JTextField subTaskFieldsComp;
     private List<String> cachedLinkTypes = new ArrayList<>();
+
+    // Condition UI
+    private final JTextField condTokenField;
+    private final JComboBox<String> condOpCombo;
+    private final JTextField condValueField;
+    private final JPanel conditionInnerPanel;
 
     public StepEditorPanel(WorkflowStep step, Map<String, String> fieldOptions, Map<String, JSONObject> fullMetadata, Runnable onRemove, StepActionListener stepListener, StepMetadataListener metadataListener) {
         this.step = step;
@@ -102,10 +109,6 @@ public class StepEditorPanel extends JPanel {
             typeField = new JTextField(cs.getIssueType(), 10);
             SwingUtils.setupExpandedView(typeField);
             header.add(createPair("Type:", typeField));
-        }
-
-        if (step instanceof LinkStep) {
-            // No header fields needed anymore as they are per-action
         }
 
         if (step instanceof AssetStep) {
@@ -180,9 +183,28 @@ public class StepEditorPanel extends JPanel {
         
         add(header, BorderLayout.NORTH);
 
-        // Content Wrapper (to keep fields and footer packed at the top)
+        // Content Wrapper
         JPanel contentPanel = new JPanel();
         contentPanel.setLayout(new BoxLayout(contentPanel, BoxLayout.Y_AXIS));
+
+        // --- CONDITION SECTION ---
+        JPanel conditionOuterPanel = new JPanel(new BorderLayout());
+        conditionOuterPanel.setBorder(BorderFactory.createTitledBorder("Step Execution Condition (Optional)"));
+        
+        conditionInnerPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 2));
+        condTokenField = new JTextField(step.getConditionToken() != null ? step.getConditionToken() : "", 15);
+        condOpCombo = new JComboBox<>(new String[]{"ALWAYS", "EQUALS", "NOT_EQUALS", "CONTAINS", "NOT_CONTAINS", "EMPTY", "NOT_EMPTY"});
+        condOpCombo.setSelectedItem(step.getConditionOperator() != null ? step.getConditionOperator() : "ALWAYS");
+        condValueField = new JTextField(step.getConditionValue() != null ? step.getConditionValue() : "", 15);
+        
+        conditionInnerPanel.add(new JLabel("If:"));
+        conditionInnerPanel.add(condTokenField);
+        conditionInnerPanel.add(condOpCombo);
+        conditionInnerPanel.add(condValueField);
+        conditionInnerPanel.add(new JLabel("then execute."));
+        
+        conditionOuterPanel.add(conditionInnerPanel, BorderLayout.CENTER);
+        contentPanel.add(conditionOuterPanel);
 
         // Fields Container
         fieldsContainer = new JPanel();
@@ -328,6 +350,12 @@ public class StepEditorPanel extends JPanel {
 
     public void saveToStep() {
         step.setLabel(labelField.getText());
+        
+        // Save Condition
+        step.setConditionToken(condTokenField.getText());
+        step.setConditionOperator((String) condOpCombo.getSelectedItem());
+        step.setConditionValue(condValueField.getText());
+
         if (step instanceof UpdateStep) {
             ((UpdateStep)step).setTargetIssueToken(targetIssueField.getText());
         }

@@ -187,6 +187,15 @@ public class EmbeddedLlmService {
         return summarizeActions(text, null);
     }
 
+    /**
+     * Forcibly terminates the current LLM process.
+     */
+    public void terminate() {
+        if (currentProcess != null && currentProcess.isAlive()) {
+            currentProcess.destroyForcibly();
+        }
+    }
+
     public void close() {
         if (currentProcess != null && currentProcess.isAlive()) {
             currentProcess.destroyForcibly();
