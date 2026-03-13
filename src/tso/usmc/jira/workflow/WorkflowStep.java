@@ -32,6 +32,12 @@ public abstract class WorkflowStep {
 
     public abstract JSONObject toJson();
 
+    /**
+     * Validates step properties before execution.
+     * @throws Exception with user-friendly message if validation fails.
+     */
+    public abstract void validate() throws Exception;
+
     public static WorkflowStep fromJson(JSONObject json) {
         // Use the registry to create the correct subclass instance
         WorkflowStep step = WorkflowStepRegistry.createStep(json);

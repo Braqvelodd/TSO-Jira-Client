@@ -18,6 +18,16 @@ public class CreateStep extends WorkflowStep {
     public void setIssueType(String issueType) { this.issueType = issueType; }
 
     @Override
+    public void validate() throws Exception {
+        if (projectKey == null || projectKey.trim().isEmpty()) {
+            throw new Exception("Create Step: Project Key is required.");
+        }
+        if (issueType == null || issueType.trim().isEmpty()) {
+            throw new Exception("Create Step: Issue Type is required.");
+        }
+    }
+
+    @Override
     public JSONObject toJson() {
         JSONObject json = new JSONObject();
         json.put("type", getType().toString());

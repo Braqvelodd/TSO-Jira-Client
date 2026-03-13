@@ -1,13 +1,17 @@
 package tso.usmc.jira.workflow;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 
 public class AssetStep extends WorkflowStep {
     private boolean copyAttachments = true;
     private boolean copyLinks = true;
     private boolean copySubTasks = false;
     private boolean promptOptions = false;
-    private String subTaskFields = "summary,description,priority,assignee,reporter,environment,security";
+    private List<String> subTaskFields = new ArrayList<>(Arrays.asList("summary", "description", "priority", "assignee", "reporter", "environment", "security"));
     private String sourceIssueToken = "{{issue.key}}";
     private String targetIssueToken = "{{last_key}}";
 
@@ -27,14 +31,31 @@ public class AssetStep extends WorkflowStep {
     public boolean isPromptOptions() { return promptOptions; }
     public void setPromptOptions(boolean promptOptions) { this.promptOptions = promptOptions; }
 
-    public String getSubTaskFields() { return subTaskFields; }
-    public void setSubTaskFields(String subTaskFields) { this.subTaskFields = subTaskFields; }
+    public List<String> getSubTaskFieldsList() { return subTaskFields; }
+    public void setSubTaskFieldsList(List<String> subTaskFields) { this.subTaskFields = subTaskFields; }
+
+    /**
+     * Legacy getter for backward compatibility with WorkflowEngine.
+     */
+    public String getSubTaskFields() {
+        return String.join(",", subTaskFields);
+    }
 
     public String getSourceIssueToken() { return sourceIssueToken; }
     public void setSourceIssueToken(String sourceIssueToken) { this.sourceIssueToken = sourceIssueToken; }
 
     public String getTargetIssueToken() { return targetIssueToken; }
     public void setTargetIssueToken(String targetIssueToken) { this.targetIssueToken = targetIssueToken; }
+
+    @Override
+    public void validate() throws Exception {
+        if (sourceIssueToken == null || sourceIssueToken.trim().isEmpty()) {
+            throw new Exception("Asset Step: Source Issue Token is required.");
+        }
+        if (targetIssueToken == null || targetIssueToken.trim().isEmpty()) {
+            throw new Exception("Asset Step: Target Issue Token is required.");
+        }
+    }
 
     @Override
     public JSONObject toJson() {
@@ -46,7 +67,7 @@ public class AssetStep extends WorkflowStep {
         json.put("copyLinks", copyLinks);
         json.put("copySubTasks", copySubTasks);
         json.put("promptOptions", promptOptions);
-        json.put("subTaskFields", subTaskFields);
+        json.put("subTaskFields", new JSONArray(subTaskFields));
         json.put("sourceIssueToken", sourceIssueToken);
         json.put("targetIssueToken", targetIssueToken);
         return json;
@@ -58,7 +79,21 @@ public class AssetStep extends WorkflowStep {
         step.setCopyLinks(json.optBoolean("copyLinks", true));
         step.setCopySubTasks(json.optBoolean("copySubTasks", false));
         step.setPromptOptions(json.optBoolean("promptOptions", false));
-        step.setSubTaskFields(json.optString("subTaskFields", "summary,description,priority,assignee,reporter,environment,security"));
+        
+        if (json.has("subTaskFields")) {
+            Object obj = json.get("subTaskFields");
+            if (obj instanceof JSONArray) {
+                JSONArray arr = (JSONArray) obj;
+                List<String> fields = new ArrayList<>();
+                for (int i = 0; i < arr.length(); i++) fields.add(arr.getString(i));
+                step.setSubTaskFieldsList(fields);
+            } else if (obj instanceof String) {
+                // Backward compatibility
+                String csv = (String) obj;
+                step.setSubTaskFieldsList(new ArrayList<>(Arrays.asList(csv.split(","))));
+            }
+        }
+        
         step.setSourceIssueToken(json.optString("sourceIssueToken", "{{issue.key}}"));
         step.setTargetIssueToken(json.optString("targetIssueToken", "{{last_key}}"));
         return step;

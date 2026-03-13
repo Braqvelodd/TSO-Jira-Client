@@ -19,6 +19,16 @@ public class TransitionStep extends WorkflowStep {
     public void setTargetIssueToken(String targetIssueToken) { this.targetIssueToken = targetIssueToken; }
 
     @Override
+    public void validate() throws Exception {
+        if (targetStatus == null || targetStatus.trim().isEmpty()) {
+            throw new Exception("Transition Step: Target Status is required.");
+        }
+        if (targetIssueToken == null || targetIssueToken.trim().isEmpty()) {
+            throw new Exception("Transition Step: Target Issue Token is required.");
+        }
+    }
+
+    @Override
     public JSONObject toJson() {
         JSONObject json = new JSONObject();
         json.put("type", getType().toString());

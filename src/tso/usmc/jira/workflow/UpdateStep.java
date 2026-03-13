@@ -14,6 +14,13 @@ public class UpdateStep extends WorkflowStep {
     public void setTargetIssueToken(String targetIssueToken) { this.targetIssueToken = targetIssueToken; }
 
     @Override
+    public void validate() throws Exception {
+        if (targetIssueToken == null || targetIssueToken.trim().isEmpty()) {
+            throw new Exception("Update Step: Target Issue Token is required.");
+        }
+    }
+
+    @Override
     public JSONObject toJson() {
         JSONObject json = new JSONObject();
         json.put("type", getType().toString());

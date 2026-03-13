@@ -26,6 +26,26 @@ public class WorklogStep extends WorkflowStep {
     public void setStarted(String started) { this.started = started; }
 
     @Override
+    public void validate() throws Exception {
+        if (targetIssueToken == null || targetIssueToken.trim().isEmpty()) {
+            throw new Exception("Worklog Step: Target Issue Key/Token is required.");
+        }
+        
+        if (timeSpent == null || timeSpent.trim().isEmpty()) {
+            throw new Exception("Worklog Step: Time Spent is required.");
+        }
+
+        // Only validate format if it's a literal value, not a token/choice
+        String ts = timeSpent.trim();
+        if (!ts.contains("{{") && !ts.contains("[") && !ts.contains(",")) {
+            // Pattern for Jira time tracking: e.g., "1h 30m", "4d", "20m"
+            if (!ts.matches("^(\\d+[wdhm]\\s*)+$")) {
+                throw new Exception("Worklog Step: Invalid Time Spent format '" + ts + "'. Use Jira format like '1h 30m', '4d', or '20m'.");
+            }
+        }
+    }
+
+    @Override
     public JSONObject toJson() {
         JSONObject json = new JSONObject();
         json.put("type", getType().toString());

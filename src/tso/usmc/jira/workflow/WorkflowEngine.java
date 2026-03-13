@@ -56,6 +56,7 @@ public class WorkflowEngine {
                 for (WorkflowStep step : recipe.getSteps()) {
                     listener.onLog("Step: " + step.getLabel());
                     try {
+                        step.validate(); // NEW: Client-side validation
                         executeStep(step, issue, promptValues, metaSnap);
                     } catch (Exception ex) {
                         listener.onLog("  > Error in step '" + step.getLabel() + "': " + ex.getMessage());

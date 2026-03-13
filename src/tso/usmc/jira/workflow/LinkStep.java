@@ -22,6 +22,13 @@ public class LinkStep extends WorkflowStep {
     public void setRemote(boolean remote) { this.remote = remote; }
 
     @Override
+    public void validate() throws Exception {
+        if (linkActions.isEmpty()) {
+            throw new Exception("Link Step: At least one link action must be defined.");
+        }
+    }
+
+    @Override
     public JSONObject toJson() {
         JSONObject json = new JSONObject();
         json.put("type", getType().toString());
