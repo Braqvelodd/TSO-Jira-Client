@@ -27,8 +27,8 @@ The USMC TSO Jira Client is a feature-rich desktop application with a sophistica
 
 ### 2.4 Generic Error Handling & Concurrency
 *   **Finding:** The codebase used generic `Exception` types and ad-hoc `new Thread()` calls for background tasks.
-*   **Status:** **[PARTIALLY FIXED - Phase 2]** Implemented `ExecutionService` with a managed thread pool. Migration of existing `new Thread()` calls pending in Phase 3.
-*   **Recommendation:** Define a custom exception hierarchy (`JiraApiException`, `WorkflowException`) and centralize background execution using the `ExecutionService`.
+*   **Status:** **[FIXED - Phase 3]** Implemented `ExecutionService` with a managed thread pool. All UI panels and the config watcher now use the centralized service.
+*   **Recommendation:** Define a custom exception hierarchy (`JiraApiException`, `WorkflowException`).
 
 ---
 
@@ -41,8 +41,8 @@ The USMC TSO Jira Client is a feature-rich desktop application with a sophistica
 
 ### 3.2 Fragmented Metadata Management
 *   **Finding:** `JiraMetadataHelper`, `WorkflowFieldsConfig`, and `JqlAutocompleteService` all managed Jira field and project metadata with overlapping logic.
-*   **Status:** **[FIXED - Phase 2]** Consolidated into `MetadataCacheService` with unified memory and disk persistence.
-*   **Recommendation:** Finalize migration of all UI components to use the new cache service in Phase 3.
+*   **Status:** **[FIXED - Phase 3]** Consolidated into `MetadataCacheService` with unified memory and disk persistence. UI panels migrated to use the new service via `JiraApiClientGui`.
+*   **Recommendation:** (Done) Removed obsolete `JiraMetadataHelper`.
 
 ---
 
@@ -107,9 +107,10 @@ The USMC TSO Jira Client is a feature-rich desktop application with a sophistica
 - [x] Centralize background task execution with a global `ExecutionService`.
 - [x] Move hardcoded timeouts (LLM, API) into `JiraConfig.ini`.
 
-### Phase 3: Decoupling & Architecture
-- [ ] Migrate all `new Thread()` calls to `ExecutionService.submit()`.
-- [ ] Replace `JiraMetadataHelper` usages with `MetadataCacheService`.
+### Phase 3: Decoupling & Architecture (PARTIAL)
+- [x] Migrate all `new Thread()` calls to `ExecutionService.submit()`.
+- [x] Replace `JiraMetadataHelper` usages with `MetadataCacheService`.
+- [x] Integrate `MetadataCacheService` into main GUI.
 - [ ] Extract `JiraIssueService` and `WorkflowEngine` from UI panels.
 - [ ] Implement `WorkflowProgressListener` to remove UI calls from business logic.
 - [ ] Implement the **Step Registry Pattern** for `WorkflowStep` subclasses.

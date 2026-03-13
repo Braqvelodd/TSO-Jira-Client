@@ -86,28 +86,69 @@ public class MetadataCacheService {
         return transitions;
     }
 
+    public List<JSONObject> getIssueTypesForProject(String projectKey) throws Exception {
+        String cacheKey = "issuetypes:" + projectKey;
+        JSONObject json = getOrFetch(cacheKey, () -> {
+            String url = baseUrl + "/rest/api/2/issue/createmeta/" + projectKey + "/issuetypes";
+            return new JSONObject(apiService.executeRequest(url, "GET", null));
+        });
+
+        List<JSONObject> types = new ArrayList<>();
+        if (json.has("values")) {
+            JSONArray values = json.getJSONArray("values");
+            for (int i = 0; i < values.length(); i++) {
+                types.add(values.getJSONObject(i));
+            }
+        }
+        return types;
+    }
+
+    /**
+     * Fetches creation metadata for specific project and issue type.
+     * Supports pagination for fields.
+     */
     public Map<String, JSONObject> getCreateMetadata(String projectKey, String issueTypeName) throws Exception {
         String cacheKey = "createmeta:" + projectKey + ":" + issueTypeName;
-        JSONObject json = getOrFetch(cacheKey, () -> {
-            // Step 1: Get issue type ID
-            String typesUrl = baseUrl + "/rest/api/2/issue/createmeta/" + projectKey + "/issuetypes";
-            JSONObject typesJson = new JSONObject(apiService.executeRequest(typesUrl, "GET", null));
-            String typeId = null;
-            if (typesJson.has("values")) {
-                JSONArray values = typesJson.getJSONArray("values");
-                for (int i = 0; i < values.length(); i++) {
-                    JSONObject type = values.getJSONObject(i);
-                    if (type.getString("name").equalsIgnoreCase(issueTypeName)) {
-                        typeId = type.getString("id");
-                        break;
-                    }
-                }
+        
+        // Find the type ID first
+        List<JSONObject> types = getIssueTypesForProject(projectKey);
+        String typeId = null;
+        for (JSONObject type : types) {
+            if (type.getString("name").equalsIgnoreCase(issueTypeName)) {
+                typeId = type.getString("id");
+                break;
             }
-            if (typeId == null) throw new Exception("Issue type '" + issueTypeName + "' not found.");
+        }
+        if (typeId == null) throw new Exception("Issue type '" + issueTypeName + "' not found in " + projectKey);
 
-            // Step 2: Get fields
-            String fieldsUrl = baseUrl + "/rest/api/2/issue/createmeta/" + projectKey + "/issuetypes/" + typeId;
-            return new JSONObject(apiService.executeRequest(fieldsUrl, "GET", null));
+        final String finalTypeId = typeId;
+        JSONObject json = getOrFetch(cacheKey, () -> {
+            // Paginated fetch of fields
+            JSONArray allValues = new JSONArray();
+            int startAt = 0;
+            boolean isLast = false;
+            
+            do {
+                String fieldsUrl = baseUrl + "/rest/api/2/issue/createmeta/" + projectKey + "/issuetypes/" + finalTypeId + "?startAt=" + startAt;
+                JSONObject page = new JSONObject(apiService.executeRequest(fieldsUrl, "GET", null));
+                
+                if (page.has("values")) {
+                    JSONArray values = page.getJSONArray("values");
+                    for (int i = 0; i < values.length(); i++) {
+                        allValues.put(values.get(i));
+                    }
+                    startAt += values.length();
+                }
+                
+                isLast = page.optBoolean("isLast", true);
+                // If total is present and we've hit it, we're done
+                if (page.has("total") && startAt >= page.getInt("total")) isLast = true;
+                // Safety break for older Jira versions that might not support pagination params but return all
+                if (!page.has("values") || page.getJSONArray("values").length() == 0) isLast = true;
+
+            } while (!isLast);
+
+            return new JSONObject().put("values", allValues);
         });
 
         Map<String, JSONObject> fields = new HashMap<>();
@@ -170,8 +211,10 @@ public class MetadataCacheService {
                 JSONObject timesData = root.getJSONObject("lastFetchTime");
                 
                 for (String key : cacheData.keySet()) {
-                    cache.put(key, cacheData.getJSONObject(key));
-                    lastFetchTime.put(key, timesData.getLong(key));
+                    if (cacheData.get(key) instanceof JSONObject) {
+                        cache.put(key, cacheData.getJSONObject(key));
+                        lastFetchTime.put(key, timesData.getLong(key));
+                    }
                 }
             }
         } catch (Exception e) {
