@@ -419,13 +419,13 @@ public class JqlRunnerPanel extends JPanel implements tso.usmc.jira.util.ConfigC
     }
 
     private String getFieldValue(JSONObject issue, String fieldName) {
-        if (!issue.has("fields")) return "N/A";
-        JSONObject fields = issue.getJSONObject("fields");
-
         if ("key".equalsIgnoreCase(fieldName)) {
             return issue.optString("key", "N/A");
         }
-        
+
+        if (!issue.has("fields")) return "N/A";
+        JSONObject fields = issue.getJSONObject("fields");
+
         if ("issuelinks".equalsIgnoreCase(fieldName)) {
             if (!fields.has("issuelinks") || fields.isNull("issuelinks") || fields.getJSONArray("issuelinks").length() == 0) {
                 return "---";
@@ -462,6 +462,25 @@ public class JqlRunnerPanel extends JPanel implements tso.usmc.jira.util.ConfigC
         }
 
         Object field = fields.get(fieldName);
+
+        if (field instanceof JSONArray) {
+            JSONArray array = (JSONArray) field;
+            if (array.length() == 0) return "---";
+            java.util.List<String> values = new java.util.ArrayList<>();
+            for (int i = 0; i < array.length(); i++) {
+                Object item = array.get(i);
+                if (item instanceof JSONObject) {
+                    JSONObject obj = (JSONObject) item;
+                    if (obj.has("name")) values.add(obj.getString("name"));
+                    else if (obj.has("value")) values.add(obj.getString("value"));
+                    else if (obj.has("displayName")) values.add(obj.getString("displayName"));
+                    else values.add("[Object]");
+                } else {
+                    values.add(item.toString());
+                }
+            }
+            return String.join(", ", values);
+        }
 
         if (field instanceof JSONObject) {
             JSONObject nestedObj = (JSONObject) field;
