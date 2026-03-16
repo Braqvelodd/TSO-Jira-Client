@@ -24,7 +24,7 @@ public class JqlRunnerPanel extends JPanel implements tso.usmc.jira.util.ConfigC
 
     // UI Components
     private final JqlAutocompleteTextArea jqlArea;
-    private final JTextField fieldsField = new JTextField("key, summary, status, assignee, issuelinks");
+    private final JiraFieldAutocompleteTextField fieldsField = new JiraFieldAutocompleteTextField("key, summary, status, assignee, issuelinks");
     private final JButton executeBtn = new JButton("Execute JQL");
     private final JComboBox<String> filterCombo = new JComboBox<>();
     private final JButton saveFilterBtn = new JButton("Save Filter");
@@ -48,12 +48,14 @@ public class JqlRunnerPanel extends JPanel implements tso.usmc.jira.util.ConfigC
         this.jqlArea = new JqlAutocompleteTextArea(null);
         this.jqlArea.setText("issuetype = Bug AND status = 'To Do' ORDER BY created DESC");
         
-        this.jqlArea.addFocusListener(new java.awt.event.FocusAdapter() {
+        java.awt.event.FocusAdapter focusHandler = new java.awt.event.FocusAdapter() {
             @Override
             public void focusGained(java.awt.event.FocusEvent e) {
                 ensureAutocompleteServiceInitialized();
             }
-        });
+        };
+        this.jqlArea.addFocusListener(focusHandler);
+        this.fieldsField.addFocusListener(focusHandler);
 
         // Try initial load
         ensureAutocompleteServiceInitialized();
@@ -140,6 +142,7 @@ public class JqlRunnerPanel extends JPanel implements tso.usmc.jira.util.ConfigC
             JqlAutocompleteService service = new JqlAutocompleteService(mainFrame.getService(), mainFrame.getBaseUrl());
             this.jqlAutocompleteService = service;
             this.jqlArea.setService(service);
+            this.fieldsField.setService(service);
         } catch (Exception e) {
             // Silently fail if cert not selected yet
         }
