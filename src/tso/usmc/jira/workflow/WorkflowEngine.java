@@ -441,25 +441,66 @@ public class WorkflowEngine {
     }
 
     private Object wrapSingleValue(String fieldId, String val, JSONObject fieldMeta) {
-        if (val == null || val.equalsIgnoreCase("null") || val.trim().isEmpty()) return JSONObject.NULL;
-        String type = null;
+        if (val == null || val.equalsIgnoreCase("null") || val.trim().isEmpty()) {
+            return JSONObject.NULL;
+        }
+
+        // 1. Determine the field's "semantic type" primarily from metadata.
+        String semanticType = null;
         if (fieldMeta != null && fieldMeta.has("schema")) {
             JSONObject schema = fieldMeta.getJSONObject("schema");
-            type = "array".equals(schema.optString("type")) ? schema.optString("items") : schema.optString("type");
+            // For arrays, the item's type matters for wrapping (e.g., "user" in an array of users).
+            // For non-arrays, the field's own type matters (e.g., "priority").
+            semanticType = "array".equals(schema.optString("type"))
+                    ? schema.optString("items")
+                    : schema.optString("type");
         }
-        if (type == null) {
-            if (fieldId.equals("assignee") || fieldId.equals("reporter") || fieldId.contains("user") || fieldId.contains("owner")) type = "user";
-            else if (fieldId.equals("priority") || fieldId.equals("resolution") || fieldId.startsWith("customfield_")) type = "option";
-            else if (fieldId.equals("labels")) type = "string";
-            else if (fieldId.equals("fixVersions") || fieldId.equals("versions") || fieldId.contains("Version")) type = "version";
-            else if (fieldId.equals("components")) type = "component";
+
+        // 2. If metadata is missing, fall back to guessing based on the field ID (safety net).
+        if (semanticType == null || semanticType.trim().isEmpty()) {
+            if (fieldId.equals("assignee") || fieldId.equals("reporter") || fieldId.contains("user") || fieldId.contains("owner")) semanticType = "user";
+            else if (fieldId.equals("priority") || fieldId.equals("resolution") || fieldId.startsWith("customfield_")) semanticType = "option";
+            else if (fieldId.equals("labels")) semanticType = "string";
+            else if (fieldId.equals("fixVersions") || fieldId.equals("versions") || fieldId.contains("Version")) semanticType = "version";
+            else if (fieldId.equals("components")) semanticType = "component";
         }
-        if ("user".equals(type)) return new JSONObject().put("name", val);
-        if ("parent".equals(fieldId)) return new JSONObject().put("key", JiraUtils.cleanIssueKey(val));
-        if ("option".equals(type)) return new JSONObject().put("value", val);
-        if ("component".equals(type) || "version".equals(type)) return new JSONObject().put("name", val);
-        if ("string".equals(type)) return val;
-        if (val.matches("-?\\d+(\\.\\d+)?")) { try { return val.contains(".") ? Double.parseDouble(val) : Long.parseLong(val); } catch (Exception ignored) {} }
+
+        // 3. Wrap the value based on the determined semantic type.
+        if (semanticType != null) {
+            switch (semanticType) {
+                case "user":
+                    return new JSONObject().put("name", val);
+                case "option":
+                case "priority":
+                case "resolution":
+                    return new JSONObject().put("value", val);
+                case "component":
+                case "version":
+                    return new JSONObject().put("name", val);
+                case "number":
+                    try {
+                        return val.contains(".") ? Double.parseDouble(val) : Long.parseLong(val);
+                    } catch (NumberFormatException e) {
+                        return val; // If parsing fails, return as string
+                    }
+                case "string":
+                case "date":
+                case "datetime":
+                    return val;
+            }
+        }
+
+        // Special case for 'parent' which is identified by fieldId, not type.
+        if ("parent".equals(fieldId)) {
+            return new JSONObject().put("key", JiraUtils.cleanIssueKey(val));
+        }
+
+        // Final fallback: if no type could be determined, check for number, otherwise return raw value.
+        if (val.matches("-?\\d+(\\.\\d+)?")) {
+            try {
+                return val.contains(".") ? Double.parseDouble(val) : Long.parseLong(val);
+            } catch (Exception ignored) {}
+        }
         return val;
     }
 
