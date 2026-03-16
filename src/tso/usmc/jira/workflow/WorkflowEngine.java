@@ -451,10 +451,13 @@ public class WorkflowEngine {
             if (fieldId.equals("assignee") || fieldId.equals("reporter") || fieldId.contains("user") || fieldId.contains("owner")) type = "user";
             else if (fieldId.equals("priority") || fieldId.equals("resolution") || fieldId.startsWith("customfield_")) type = "option";
             else if (fieldId.equals("labels")) type = "string";
+            else if (fieldId.equals("fixVersions") || fieldId.equals("versions") || fieldId.contains("Version")) type = "version";
+            else if (fieldId.equals("components")) type = "component";
         }
         if ("user".equals(type)) return new JSONObject().put("name", val);
         if ("parent".equals(fieldId)) return new JSONObject().put("key", JiraUtils.cleanIssueKey(val));
-        if ("option".equals(type) || "component".equals(type) || "version".equals(type)) return new JSONObject().put(("component".equals(type) || "version".equals(type) || fieldId.equals("components") || fieldId.contains("Version")) ? "name" : "value", val);
+        if ("option".equals(type)) return new JSONObject().put("value", val);
+        if ("component".equals(type) || "version".equals(type)) return new JSONObject().put("name", val);
         if ("string".equals(type)) return val;
         if (val.matches("-?\\d+(\\.\\d+)?")) { try { return val.contains(".") ? Double.parseDouble(val) : Long.parseLong(val); } catch (Exception ignored) {} }
         return val;
