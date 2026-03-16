@@ -50,6 +50,7 @@ public class ReconciliationPanel extends JPanel {
     private final JTextArea jiraParentKeysArea = new JTextArea("TFS-49439\nTFS-35035");
     private final JButton fetchJiraBtn = new JButton("Fetch Jira Sub-tasks");
     private final JTextArea ispwReportArea = new JTextArea();
+    private final JButton configureColumnsBtn = new JButton("Configure Columns...");
     private final JButton compareBtn = new JButton("Compare Jira vs. ISPW");
     private final JLabel statusLabel = new JLabel("Ready. Fetch Jira tasks and paste ISPW report.");
 
@@ -81,6 +82,7 @@ public class ReconciliationPanel extends JPanel {
         JScrollPane ispwScroll = new JScrollPane(ispwReportArea);
         ispwScroll.setPreferredSize(new Dimension(0, 150));
         ispwPanel.add(ispwScroll, BorderLayout.CENTER);
+        ispwPanel.add(configureColumnsBtn, BorderLayout.SOUTH);
         topPanel.add(ispwPanel);
         JPanel comparePanel = new JPanel(new GridBagLayout());
         comparePanel.add(compareBtn);
@@ -108,6 +110,14 @@ public class ReconciliationPanel extends JPanel {
 
         fetchJiraBtn.addActionListener(e -> fetchJiraTasks());
         compareBtn.addActionListener(e -> performComparison());
+        configureColumnsBtn.addActionListener(e -> {
+            String text = ispwReportArea.getText();
+            if (text.trim().isEmpty()) {
+                JOptionPane.showMessageDialog(this, "Please paste an ISPW report first to use as a template.");
+                return;
+            }
+            new IspwColumnConfigDialog((JFrame)SwingUtilities.getWindowAncestor(this), text, mainFrame.getJiraConfig()).setVisible(true);
+        });
     }
     
     private void performComparison() {
@@ -121,7 +131,7 @@ public class ReconciliationPanel extends JPanel {
         int[] nameBounds = config.getIspwColumnBounds("ci_name", new int[]{5, 13});
         int[] srBounds = config.getIspwColumnBounds("sr", new int[]{30, 40});
         int[] userBounds = config.getIspwColumnBounds("user", new int[]{41, 47});
-        int actionIdx = config.getIspwActionIndex(55);
+        int[] actionBounds = config.getIspwActionBounds(new int[]{55, 56});
 
         for (String line : ispwText.split("\n")) {
             try {
@@ -136,10 +146,7 @@ public class ReconciliationPanel extends JPanel {
                     info.fullTaskName = normalizedName;
                     info.srNumber = line.substring(srBounds[0], srBounds[1]).trim();
                     info.userId = line.substring(userBounds[0], userBounds[1]).trim();
-                    char actionChar = line.charAt(actionIdx);
-                    if (actionChar == 'C') info.action = "Compile-only";
-                    else if (actionChar == 'D') info.action = "Delete";
-                    else info.action = " ";
+                    info.action = line.substring(actionBounds[0], actionBounds[1]).trim();
                     this.ispwTaskMap.put(normalizedName, info);
                 }
             } catch (Exception e) { System.err.println("Could not parse line: " + line); }

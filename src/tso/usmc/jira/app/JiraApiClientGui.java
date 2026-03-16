@@ -17,7 +17,7 @@ import tso.usmc.jira.ui.CommentSummarizerPanel;
 import tso.usmc.jira.ui.JqlRunnerPanel;
 import tso.usmc.jira.ui.RawApiPanel;
 import tso.usmc.jira.ui.ReconciliationPanel;
-import tso.usmc.jira.ui.ReportPanel; // --- NEW: Import Certificate
+import tso.usmc.jira.ui.ReportPanel;
 import tso.usmc.jira.ui.TaskBuilderPanel;
 import tso.usmc.jira.ui.TemplateExtractorPanel;
 import tso.usmc.jira.ui.WorkflowOrchestratorPanel;
@@ -36,6 +36,7 @@ public class JiraApiClientGui extends JFrame implements ConfigChangeListener {
     private JTabbedPane tabs;
     private TaskBuilderPanel taskBuilderPanel;
     private WorkflowOrchestratorPanel workflowOrchestratorPanel;
+    private final JLabel statusLabel = new JLabel(" Ready");
 
     public JiraApiClientGui() {
         this.jiraConfig = new JiraConfig();
@@ -67,21 +68,10 @@ public class JiraApiClientGui extends JFrame implements ConfigChangeListener {
         JButton editConfigButton = new JButton("Edit Configuration");
         editConfigButton.addActionListener(e -> {
             try {
-                // Get the config file path from our JiraConfig instance
                     File configFile = jiraConfig.getConfigFile();
-                    
-                    // Use ProcessBuilder to safely open the file with the default system editor (Notepad on Windows)
-                    // This is more robust than Runtime.getRuntime().exec()
                     new ProcessBuilder("notepad.exe", configFile.getAbsolutePath()).start();
-                    
                 } catch (IOException ex) {
-                    JOptionPane.showMessageDialog(
-                        null, 
-                        "Error opening config file: " + ex.getMessage(), 
-                        "Error", 
-                        JOptionPane.ERROR_MESSAGE
-                    );
-                    ex.printStackTrace(); // For debugging
+                    JOptionPane.showMessageDialog(null, "Error opening config file: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
                 }
             });
         gbc.gridx = 3; gbc.weightx = 0;
@@ -108,41 +98,31 @@ public class JiraApiClientGui extends JFrame implements ConfigChangeListener {
 
         // --- CENTER: TABS ---
         tabs = new JTabbedPane();
-        
-        // Always Enabled Tabs
         tabs.addTab("Raw API Call", new RawApiPanel(this));
         tabs.addTab("JQL Runner", new JqlRunnerPanel(this));
 
-        // Optional Tabs
         if (jiraConfig.isTabEnabled("Reports")) {
             tabs.addTab("Reports", new ReportPanel(this));
         }
-        
         if (jiraConfig.isTabEnabled("TaskBuilder")) {
             this.taskBuilderPanel = new TaskBuilderPanel(this);
             tabs.addTab("Task Builder", this.taskBuilderPanel);
         }
-
         if (jiraConfig.isTabEnabled("TemplateBuilder")) {
             tabs.addTab("Template Builder", new TemplateExtractorPanel(this));
         }
-
         if (jiraConfig.isTabEnabled("Reconciliation")) {
             tabs.addTab("Reconciliation", new ReconciliationPanel(this));
         }
-
         if (jiraConfig.isTabEnabled("BulkActions")) {
             tabs.addTab("Bulk Actions", new BulkActionPanel(this));
         }
-
         if (jiraConfig.isTabEnabled("CommentSummarizer")) {
             tabs.addTab("Comment Summarizer", new CommentSummarizerPanel(this));
         }
-
         if (jiraConfig.isTabEnabled("WorkflowAutomation")) {
             tabs.addTab("Workflow Automation", new WorkflowPanel(this, this.jiraConfig));
         }
-
         if (jiraConfig.isTabEnabled("WorkflowOrchestrator")) {
             this.workflowOrchestratorPanel = new WorkflowOrchestratorPanel(this);
             tabs.addTab("Workflow Orchestrator", this.workflowOrchestratorPanel);
@@ -152,19 +132,17 @@ public class JiraApiClientGui extends JFrame implements ConfigChangeListener {
         setLayout(new BorderLayout());
         add(headerPanel, BorderLayout.NORTH);
         add(tabs, BorderLayout.CENTER);
+        
+        JPanel bottomPanel = new JPanel(new BorderLayout());
+        bottomPanel.setBorder(BorderFactory.createEtchedBorder());
+        bottomPanel.add(statusLabel, BorderLayout.WEST);
+        add(bottomPanel, BorderLayout.SOUTH);
 
-        // Initial Cert Load
         loadCertificates();
     }
-    public TaskBuilderPanel getTaskBuilderPanel() {
-        return this.taskBuilderPanel;
-    }
-    public WorkflowOrchestratorPanel getWorkflowOrchestratorPanel() {
-        return this.workflowOrchestratorPanel;
-    }
-    public JiraConfig getJiraConfig() {
-        return this.jiraConfig;
-    }
+    public TaskBuilderPanel getTaskBuilderPanel() { return this.taskBuilderPanel; }
+    public WorkflowOrchestratorPanel getWorkflowOrchestratorPanel() { return this.workflowOrchestratorPanel; }
+    public JiraConfig getJiraConfig() { return this.jiraConfig; }
     public void showPanel(String panelName) {
         for (int i = 0; i < tabs.getTabCount(); i++) {
             if (tabs.getTitleAt(i).equals(panelName)) {
@@ -173,14 +151,8 @@ public class JiraApiClientGui extends JFrame implements ConfigChangeListener {
             }
         }
     }
-    public JFrame getMainFrame() {
-        // IMPORTANT: Replace 'frame' with the actual name of your main JFrame variable
-        // if it is different.
-        return this;
-    }
-    /**
-     * Reads from the Windows-MY store to populate the CAC dropdown.
-     */
+    public JFrame getMainFrame() { return this; }
+    
     private void loadCertificates() {
         final String CLIENT_AUTH_OID = "1.3.6.1.5.5.7.3.2";
         certComboBox.removeAllItems();
@@ -190,14 +162,10 @@ public class JiraApiClientGui extends JFrame implements ConfigChangeListener {
             Enumeration<String> aliases = ks.aliases();
             while (aliases.hasMoreElements()) {
                 String alias = aliases.nextElement();
-                
-                // --- NEW: Inspect each certificate before adding it ---
                 Certificate cert = ks.getCertificate(alias);
                 if (cert instanceof X509Certificate) {
                     X509Certificate x509Cert = (X509Certificate) cert;
                     List<String> extendedKeyUsage = x509Cert.getExtendedKeyUsage();
-                    
-                    // Only add the alias if its purpose includes Client Authentication
                     if (extendedKeyUsage != null && extendedKeyUsage.contains(CLIENT_AUTH_OID)) {
                         certComboBox.addItem(alias);
                     }
@@ -208,37 +176,22 @@ public class JiraApiClientGui extends JFrame implements ConfigChangeListener {
         }
     }
 
-    /**
-     * Returns the service. Initializes it if it doesn't exist.
-     */
     public JiraApiService getService() throws Exception {
         String selectedAlias = (String) certComboBox.getSelectedItem();
-        if (selectedAlias == null) {
-            throw new Exception("No CAC certificate selected.");
-        }
-        // If service doesn't exist or alias changed, create new service
-        if (apiService == null) {
-            apiService = new JiraApiService(selectedAlias);
-        }
-        
-        // Update logging state based on config
+        if (selectedAlias == null) throw new Exception("No CAC certificate selected.");
+        if (apiService == null) apiService = new JiraApiService(selectedAlias);
         String verbose = jiraConfig.getProperty("VERBOSE_API_LOGS");
         apiService.setLoggingEnabled("YES".equalsIgnoreCase(verbose));
-        
         return apiService;
     }
 
     public MetadataCacheService getMetadataService() throws Exception {
-        if (metadataService == null) {
-            metadataService = new MetadataCacheService(getService(), getBaseUrl());
-        }
+        if (metadataService == null) metadataService = new MetadataCacheService(getService(), getBaseUrl());
         return metadataService;
     }
 
     public JiraIssueService getIssueService() throws Exception {
-        if (issueService == null) {
-            issueService = new JiraIssueService(getService(), getBaseUrl(), getMetadataService());
-        }
+        if (issueService == null) issueService = new JiraIssueService(getService(), getBaseUrl(), getMetadataService());
         return issueService;
     }
 
@@ -246,39 +199,24 @@ public class JiraApiClientGui extends JFrame implements ConfigChangeListener {
         String url = baseUrlField.getText().trim();
         return url.endsWith("/") ? url.substring(0, url.length() - 1) : url;
     }
+
     @Override
     public void onConfigChanged() {
-        // UI updates must be run on the Event Dispatch Thread (EDT).
-        // SwingUtilities.invokeLater ensures this happens safely.
         SwingUtilities.invokeLater(() -> {
             System.out.println("GUI Detected a configuration change!");
-
-            // Update the Base URL field with the new value from config
             baseUrlField.setText(jiraConfig.getJiraBaseUrl());
-
-            // Provide feedback to the user that the reload happened.
-            JOptionPane.showMessageDialog(this,
-                    "Configuration has been reloaded.",
-                    "Config Reloaded",
-                    JOptionPane.INFORMATION_MESSAGE);
+            String time = new java.text.SimpleDateFormat("HH:mm:ss").format(new java.util.Date());
+            statusLabel.setText(" Configuration updated: " + time);
+            statusLabel.setForeground(new Color(0, 120, 0)); 
         });
     }
-    public static void main(String[] args) {
-        // Set Look and Feel to System (Windows) for better UI
-        try {
-            UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
-        } catch (Exception ignored) {}
 
+    public static void main(String[] args) {
+        try { UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName()); } catch (Exception ignored) {}
         SwingUtilities.invokeLater(() -> {
-            try {
-                // <-- MODIFIED: If config loading fails in the constructor, this will catch it.
-                new JiraApiClientGui().setVisible(true);
-            } catch (Exception e) {
-                // The JiraConfig loader already shows a user-friendly error dialog.
-                // This catch block prevents the application from starting in an invalid state.
+            try { new JiraApiClientGui().setVisible(true); } catch (Exception e) {
                 System.err.println("Failed to start Jira API Client: " + e.getMessage());
             }
         });
     }
-    
 }
