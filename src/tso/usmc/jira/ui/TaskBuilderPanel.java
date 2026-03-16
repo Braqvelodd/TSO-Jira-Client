@@ -225,8 +225,8 @@ public class TaskBuilderPanel extends JPanel {
                 while (true) {
                     int nextMatch = currentText.indexOf("******", lastPos);
                     if (nextMatch == -1 || nextMatch >= caretPos) break;
-                    taskStart = nextMatch + 3;
-                    lastPos = nextMatch + 3;
+                    taskStart = nextMatch + 6;
+                    lastPos = nextMatch + 6;
                 }
                 int taskEnd = currentText.indexOf("******", taskStart);
                 if (taskEnd == -1) taskEnd = currentText.length();
@@ -333,8 +333,8 @@ public class TaskBuilderPanel extends JPanel {
         while (true) {
             int nextMatch = text.indexOf("******", lastPos);
             if (nextMatch == -1 || nextMatch >= caretPos) break;
-            taskStart = nextMatch + 3;
-            lastPos = nextMatch + 3;
+            taskStart = nextMatch + 6;
+            lastPos = nextMatch + 6;
         }
         int taskEnd = text.indexOf("******", taskStart);
         if (taskEnd == -1) taskEnd = text.length();
@@ -386,8 +386,8 @@ public class TaskBuilderPanel extends JPanel {
         while (true) {
             int nextMatch = text.indexOf("******", lastPos);
             if (nextMatch == -1 || nextMatch >= caretPos) break;
-            taskStart = nextMatch + 3;
-            lastPos = nextMatch + 3;
+            taskStart = nextMatch + 6;
+            lastPos = nextMatch + 6;
         }
         int taskEnd = text.indexOf("******", taskStart);
         if (taskEnd == -1) taskEnd = text.length();
@@ -528,7 +528,7 @@ public class TaskBuilderPanel extends JPanel {
 
         String text = inputArea.getText();
         int currentOffset = 0;
-        for (String block : text.split("\\*{3,}")) {
+        for (String block : text.split("\\*{6,}")) {
             int blockStart = text.indexOf(block, currentOffset);
             if (block.trim().isEmpty()) {
                 if (blockStart != -1) currentOffset = blockStart + block.length();
