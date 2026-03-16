@@ -223,12 +223,12 @@ public class TaskBuilderPanel extends JPanel {
                 int taskStart = 0;
                 int lastPos = 0;
                 while (true) {
-                    int nextMatch = currentText.indexOf("***", lastPos);
+                    int nextMatch = currentText.indexOf("******", lastPos);
                     if (nextMatch == -1 || nextMatch >= caretPos) break;
                     taskStart = nextMatch + 3;
                     lastPos = nextMatch + 3;
                 }
-                int taskEnd = currentText.indexOf("***", taskStart);
+                int taskEnd = currentText.indexOf("******", taskStart);
                 if (taskEnd == -1) taskEnd = currentText.length();
                 String block = currentText.substring(taskStart, taskEnd);
                 
@@ -331,12 +331,12 @@ public class TaskBuilderPanel extends JPanel {
         int taskStart = 0;
         int lastPos = 0;
         while (true) {
-            int nextMatch = text.indexOf("***", lastPos);
+            int nextMatch = text.indexOf("******", lastPos);
             if (nextMatch == -1 || nextMatch >= caretPos) break;
             taskStart = nextMatch + 3;
             lastPos = nextMatch + 3;
         }
-        int taskEnd = text.indexOf("***", taskStart);
+        int taskEnd = text.indexOf("******", taskStart);
         if (taskEnd == -1) taskEnd = text.length();
         
         String block = text.substring(taskStart, taskEnd);
@@ -384,12 +384,12 @@ public class TaskBuilderPanel extends JPanel {
         int taskStart = 0;
         int lastPos = 0;
         while (true) {
-            int nextMatch = text.indexOf("***", lastPos);
+            int nextMatch = text.indexOf("******", lastPos);
             if (nextMatch == -1 || nextMatch >= caretPos) break;
             taskStart = nextMatch + 3;
             lastPos = nextMatch + 3;
         }
-        int taskEnd = text.indexOf("***", taskStart);
+        int taskEnd = text.indexOf("******", taskStart);
         if (taskEnd == -1) taskEnd = text.length();
         
         String block = text.substring(taskStart, taskEnd);
@@ -975,7 +975,7 @@ public class TaskBuilderPanel extends JPanel {
                     List<File> files = (List<File>) e.getTransferable().getTransferData(DataFlavor.javaFileListFlavor);
                     for (File f : files) {
                         if (inputArea.getText().length() > 0) {
-                            inputArea.append("\n***\n");
+                            inputArea.append("\n******\n");
                         }
                         inputArea.append(new String(Files.readAllBytes(f.toPath())));
                     }
