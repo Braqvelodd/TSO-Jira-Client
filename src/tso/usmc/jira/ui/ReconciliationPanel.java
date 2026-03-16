@@ -56,8 +56,10 @@ public class ReconciliationPanel extends JPanel {
 
     private final DefaultTableModel onlyInIspwModel = new DefaultTableModel();
     private final DefaultTableModel onlyInJiraModel = new DefaultTableModel();
+    private final DefaultTableModel matchesModel = new DefaultTableModel();
     private final JTable onlyInIspwTable = new JTable(onlyInIspwModel);
     private final JTable onlyInJiraTable = new JTable(onlyInJiraModel);
+    private final JTable matchesTable = new JTable(matchesModel);
 
     // Data holders
     private Map<String, JiraReconInfo> jiraTaskMap = new HashMap<>();
@@ -91,12 +93,15 @@ public class ReconciliationPanel extends JPanel {
         
         onlyInIspwModel.setColumnIdentifiers(new String[]{"Type", "Name", "Action", "SR Number", "User ID"});
         onlyInJiraModel.setColumnIdentifiers(new String[]{"Type", "Name", "Parent Issue", "Assignee", "Status", "Link"});
+        matchesModel.setColumnIdentifiers(new String[]{"Type", "Name", "Jira Key", "Status", "Assignee", "ISPW Action", "SR Number", "ISPW User", "Link"});
         
         onlyInIspwTable.setAutoResizeMode(JTable.AUTO_RESIZE_OFF);
         onlyInJiraTable.setAutoResizeMode(JTable.AUTO_RESIZE_OFF);
+        matchesTable.setAutoResizeMode(JTable.AUTO_RESIZE_OFF);
         
         resultsTabs.addTab("Only in ISPW (Not in Jira)", new JScrollPane(onlyInIspwTable));
         resultsTabs.addTab("Only in Jira (Not in ISPW)", new JScrollPane(onlyInJiraTable));
+        resultsTabs.addTab("Matches (Both)", new JScrollPane(matchesTable));
         
         JPanel statusPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
         statusPanel.setBorder(BorderFactory.createEtchedBorder());
@@ -167,6 +172,8 @@ public class ReconciliationPanel extends JPanel {
         onlyInIspw.removeAll(jiraKeys);
         Set<String> onlyInJira = new HashSet<>(jiraKeys);
         onlyInJira.removeAll(ispwKeys);
+        Set<String> matches = new HashSet<>(ispwKeys);
+        matches.retainAll(jiraKeys);
         
         SwingUtilities.invokeLater(() -> {
             onlyInIspwModel.setRowCount(0);
@@ -188,10 +195,26 @@ public class ReconciliationPanel extends JPanel {
                 onlyInJiraModel.addRow(new Object[]{type, name, info.parentSummary, info.assignee, info.status, link});
             }
 
+            matchesModel.setRowCount(0);
+            for (String key : matches) {
+                IspwReconInfo ispw = ispwTaskMap.get(key);
+                JiraReconInfo jira = jiraTaskMap.get(key);
+                String[] parts = ispw.fullTaskName.split(" ", 2);
+                String type = (parts.length > 0) ? parts[0] : ispw.fullTaskName;
+                String name = (parts.length > 1) ? parts[1] : "";
+                String link = mainFrame.getBaseUrl() + "/browse/" + jira.subtaskKey;
+                matchesModel.addRow(new Object[]{
+                    type, name, jira.subtaskKey, jira.status, jira.assignee, 
+                    ispw.action, ispw.srNumber, ispw.userId, link
+                });
+            }
+
             autoResizeColumnWidths(onlyInIspwTable);
             autoResizeColumnWidths(onlyInJiraTable);
+            autoResizeColumnWidths(matchesTable);
             
-            statusLabel.setText("Comparison Complete: " + onlyInIspw.size() + " items only in ISPW. " + onlyInJira.size() + " items only in Jira.");
+            statusLabel.setText("Comparison Complete: " + matches.size() + " matches, " + 
+                onlyInIspw.size() + " only in ISPW, " + onlyInJira.size() + " only in Jira.");
         });
     }
 
