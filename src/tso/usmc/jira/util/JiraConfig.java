@@ -26,6 +26,8 @@ public class JiraConfig {
     private final File templateFile;
     private final List<ConfigChangeListener> listeners = new ArrayList<>();
     private final Object lock = new Object();
+    private long lastReloadTime = 0;
+    private static final long RELOAD_DEBOUNCE_MS = 500;
 
     /**
      * Initializes the configuration loader.
@@ -251,6 +253,72 @@ public class JiraConfig {
     public File getTemplateFile() {
         return this.templateFile;
     }
+    public void saveProperties(Map<String, String> newProps) {
+        synchronized (lock) {
+            try {
+                Path path = configFile.toPath();
+                List<String> lines = Files.readAllLines(path);
+                Map<String, String> remaining = new LinkedHashMap<>(newProps);
+
+                for (int i = 0; i < lines.size(); i++) {
+                    String line = lines.get(i).trim();
+                    if (line.isEmpty() || line.startsWith("#")) continue;
+                    
+                    if (line.contains("=")) {
+                        String key = line.split("=", 2)[0].trim();
+                        if (remaining.containsKey(key)) {
+                            lines.set(i, key + " = " + remaining.get(key));
+                            remaining.remove(key);
+                        }
+                    }
+                }
+
+                // Append any new keys that weren't in the file already
+                for (Map.Entry<String, String> entry : remaining.entrySet()) {
+                    lines.add(entry.getKey() + " = " + entry.getValue());
+                }
+
+                Files.write(path, lines);
+                reload();
+            } catch (IOException e) {
+                System.err.println("Error saving properties: " + e.getMessage());
+            }
+        }
+    }
+
+    public void saveProperty(String key, String value) {
+        synchronized (lock) {
+            try {
+                Path path = configFile.toPath();
+                List<String> lines = Files.readAllLines(path);
+                String newLine = key + " = " + value;
+                boolean found = false;
+
+                for (int i = 0; i < lines.size(); i++) {
+                    String line = lines.get(i).trim();
+                    if (!line.startsWith("#") && (line.startsWith(key + "=") || line.startsWith(key + " "))) {
+                        // Check if the key matches exactly before the =
+                        String potentialKey = line.split("=", 2)[0].trim();
+                        if (potentialKey.equals(key)) {
+                            lines.set(i, newLine);
+                            found = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (!found) {
+                    lines.add(newLine);
+                }
+
+                Files.write(path, lines);
+                reload();
+            } catch (IOException e) {
+                System.err.println("Error saving property " + key + ": " + e.getMessage());
+            }
+        }
+    }
+
     // NEW: Public method to save a JQL filter to the template file
     public void saveJqlFilter(String name, String fields, String jql) {
         synchronized (lock) {
@@ -330,8 +398,15 @@ public class JiraConfig {
     }
     // NEW: Public method to manually trigger a reload and notify listeners
     public void reload() {
-        loadProperties();
-        // Notify all registered listeners
+        synchronized (lock) {
+            long currentTime = System.currentTimeMillis();
+            if (currentTime - lastReloadTime < RELOAD_DEBOUNCE_MS) {
+                return; // Ignore rapid-fire reload requests
+            }
+            lastReloadTime = currentTime;
+            loadProperties();
+        }
+        // Notify all registered listeners outside the sync block to avoid deadlocks
         for (ConfigChangeListener listener : listeners) {
             listener.onConfigChanged();
         }
@@ -540,13 +615,14 @@ public class JiraConfig {
         }
     }
 
-    public int getIspwActionIndex(int defaultIndex) {
-        String val = getProperty("recon.ispw.action.index");
-        if (val == null) return defaultIndex;
+    public int[] getIspwActionBounds(int[] defaultBounds) {
+        String val = getProperty("recon.ispw.action.bounds");
+        if (val == null || !val.contains(",")) return defaultBounds;
         try {
-            return Integer.parseInt(val.trim());
+            String[] parts = val.split(",");
+            return new int[]{Integer.parseInt(parts[0].trim()), Integer.parseInt(parts[1].trim())};
         } catch (Exception e) {
-            return defaultIndex;
+            return defaultBounds;
         }
     }
 

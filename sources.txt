@@ -5,6 +5,7 @@ src\tso\usmc\jira\service\JiraIssueService.java
 src\tso\usmc\jira\service\MetadataCacheService.java
 src\tso\usmc\jira\ui\AssigneeOption.java
 src\tso\usmc\jira\ui\BulkActionPanel.java
+src\tso\usmc\jira\ui\IspwColumnConfigDialog.java
 src\tso\usmc\jira\ui\CommentSummarizerPanel.java
 src\tso\usmc\jira\service\JqlAutocompleteService.java
 src\tso\usmc\jira\ui\JqlAutocompleteTextArea.java
