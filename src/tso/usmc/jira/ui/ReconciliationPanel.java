@@ -182,7 +182,7 @@ public class ReconciliationPanel extends JPanel {
                 String[] parts = info.fullTaskName.split(" ", 2);
                 String type = (parts.length > 0) ? parts[0] : info.fullTaskName;
                 String name = (parts.length > 1) ? parts[1] : "";
-                onlyInIspwModel.addRow(new Object[]{type, name, info.action, info.srNumber, info.userId});
+                onlyInIspwModel.addRow(new Object[]{type, name, formatIspwAction(info.action), info.srNumber, info.userId});
             }
 
             onlyInJiraModel.setRowCount(0);
@@ -205,7 +205,7 @@ public class ReconciliationPanel extends JPanel {
                 String link = mainFrame.getBaseUrl() + "/browse/" + jira.subtaskKey;
                 matchesModel.addRow(new Object[]{
                     type, name, jira.subtaskKey, jira.status, jira.assignee, 
-                    ispw.action, ispw.srNumber, ispw.userId, link
+                    formatIspwAction(ispw.action), ispw.srNumber, ispw.userId, link
                 });
             }
 
@@ -216,6 +216,14 @@ public class ReconciliationPanel extends JPanel {
             statusLabel.setText("Comparison Complete: " + matches.size() + " matches, " + 
                 onlyInIspw.size() + " only in ISPW, " + onlyInJira.size() + " only in Jira.");
         });
+    }
+
+    private String formatIspwAction(String action) {
+        if (action == null) return "";
+        String upper = action.toUpperCase();
+        if (upper.equals("C")) return "Compile only";
+        if (upper.equals("D")) return "Delete";
+        return action;
     }
 
     private void autoResizeColumnWidths(JTable table) {
