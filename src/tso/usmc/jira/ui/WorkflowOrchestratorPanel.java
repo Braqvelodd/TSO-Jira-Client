@@ -7,7 +7,6 @@ import tso.usmc.jira.service.MetadataCacheService;
 import tso.usmc.jira.service.JiraIssueService;
 import tso.usmc.jira.ui.SwingUtils;
 import tso.usmc.jira.util.JiraUtils;
-import tso.usmc.jira.util.WorkflowFieldsConfig;
 import tso.usmc.jira.util.ExecutionService;
 import org.json.JSONObject;
 import org.json.JSONArray;
@@ -28,7 +27,6 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
 
     private final JiraApiClientGui mainFrame;
     private final WorkflowManager workflowManager;
-    private final WorkflowFieldsConfig fieldsConfig;
     private final Map<String, String> cachedFieldOptions = new HashMap<>();
     private final List<String> cachedLinkTypes = new ArrayList<>();
     
@@ -70,8 +68,11 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
     public WorkflowOrchestratorPanel(JiraApiClientGui mainFrame) {
         this.mainFrame = mainFrame;
         this.workflowManager = new WorkflowManager();
-        this.fieldsConfig = new WorkflowFieldsConfig();
-        this.cachedFullMeta.putAll(fieldsConfig.getFieldMetadata());
+        try {
+            this.cachedFullMeta.putAll(mainFrame.getMetadataService().getDiskCache());
+        } catch (Exception e) {
+            System.err.println("Could not load initial metadata: " + e.getMessage());
+        }
         
         setLayout(new BorderLayout());
 
@@ -962,9 +963,9 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
                 } catch (Exception e) { onLog("  ! Global Field Sync Error: " + e.getMessage()); }
 
                 if (isIncremental) {
-                    fieldsConfig.updateMetadata(cachedFullMeta);
+                    mainFrame.getMetadataService().updateDiskCache(cachedFullMeta);
                 } else {
-                    fieldsConfig.replaceMetadata(cachedFullMeta);
+                    mainFrame.getMetadataService().writeDiskCache(cachedFullMeta);
                 }
                 
                 SwingUtilities.invokeLater(() -> {
@@ -1086,7 +1087,7 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
                 for (String fId : meta.keySet()) {
                     cachedFullMeta.put(fId, meta.get(fId));
                 }
-                fieldsConfig.updateMetadata(meta);
+                mainFrame.getMetadataService().updateDiskCache(meta);
 
                 SwingUtilities.invokeLater(() -> applyCreateMetadata(step, meta));
             } catch (Exception ex) {
@@ -1178,7 +1179,7 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
                 for (String fId : meta.keySet()) {
                     cachedFullMeta.put(fId, meta.get(fId));
                 }
-                fieldsConfig.updateMetadata(meta);
+                mainFrame.getMetadataService().updateDiskCache(meta);
                 
                 SwingUtilities.invokeLater(() -> applyTransitionMetadata(step, meta));
             } catch (Exception ex) {

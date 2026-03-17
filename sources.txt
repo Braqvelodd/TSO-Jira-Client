@@ -41,7 +41,6 @@ src\tso\usmc\jira\util\JsonUtils.java
 src\tso\usmc\jira\util\JiraUtils.java
 src\tso\usmc\jira\util\JiraConfig.java
 src\tso\usmc\jira\util\ConfigChangeListener.java
-src\tso\usmc\jira\util\WorkflowFieldsConfig.java
 src\tso\usmc\jira\util\ExecutionService.java
 src\tso\usmc\jira\util\JiraApiException.java
 src\tso\usmc\jira\util\WorkflowException.java

@@ -262,4 +262,30 @@ public class MetadataCacheService {
         lastFetchTime.clear();
         if (cacheFile.exists()) cacheFile.delete();
     }
+
+    public Map<String, JSONObject> getDiskCache() {
+        // Returns a copy to prevent external modification of the internal cache map
+        return new HashMap<>(cache);
+    }
+
+    public synchronized void writeDiskCache(Map<String, JSONObject> newCacheData) {
+        cache.clear();
+        cache.putAll(newCacheData);
+        // Reset fetch times as this is a full replacement
+        lastFetchTime.clear();
+        long now = System.currentTimeMillis();
+        for (String key : cache.keySet()) {
+            lastFetchTime.put(key, now);
+        }
+        saveToDisk();
+    }
+
+    public synchronized void updateDiskCache(Map<String, JSONObject> newCacheData) {
+        cache.putAll(newCacheData);
+        long now = System.currentTimeMillis();
+        for (String key : newCacheData.keySet()) {
+            lastFetchTime.put(key, now);
+        }
+        saveToDisk();
+    }
 }
