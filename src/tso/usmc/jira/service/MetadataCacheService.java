@@ -40,10 +40,39 @@ public class MetadataCacheService {
         }
 
         JSONObject data = fetcher.fetch();
-        cache.put(key, data);
+        // If this is a field definition, use smart merge
+        if (!key.contains(":")) {
+            JSONObject existing = cache.get(key);
+            cache.put(key, mergeMetadata(existing, data));
+        } else {
+            cache.put(key, data);
+        }
         lastFetchTime.put(key, now);
         saveToDisk();
         return data;
+    }
+
+    private JSONObject mergeMetadata(JSONObject existing, JSONObject incoming) {
+        if (existing == null) return incoming;
+        if (incoming == null) return existing;
+
+        // Rule: Never overwrite metadata that has allowedValues with metadata that doesn't
+        if (existing.has("allowedValues") && !incoming.has("allowedValues")) {
+            // Merge basic fields from incoming into existing
+            for (String key : incoming.keySet()) {
+                if (!existing.has(key)) {
+                    existing.put(key, incoming.get(key));
+                }
+            }
+            return existing;
+        }
+        
+        // Rule: Prefer 'createmeta' or 'editmeta' style structures (with schema) over basic field dumps
+        if (existing.has("schema") && !incoming.has("schema")) {
+            return existing;
+        }
+
+        return incoming;
     }
 
     private interface ApiFetcher {
@@ -269,19 +298,23 @@ public class MetadataCacheService {
     }
 
     public synchronized void writeDiskCache(Map<String, JSONObject> newCacheData) {
-        cache.clear();
-        cache.putAll(newCacheData);
-        // Reset fetch times as this is a full replacement
-        lastFetchTime.clear();
+        // Instead of clear(), we merge to preserve detailed data
+        for (Map.Entry<String, JSONObject> entry : newCacheData.entrySet()) {
+            cache.put(entry.getKey(), mergeMetadata(cache.get(entry.getKey()), entry.getValue()));
+        }
+        
         long now = System.currentTimeMillis();
-        for (String key : cache.keySet()) {
+        for (String key : newCacheData.keySet()) {
             lastFetchTime.put(key, now);
         }
         saveToDisk();
     }
 
     public synchronized void updateDiskCache(Map<String, JSONObject> newCacheData) {
-        cache.putAll(newCacheData);
+        for (Map.Entry<String, JSONObject> entry : newCacheData.entrySet()) {
+            cache.put(entry.getKey(), mergeMetadata(cache.get(entry.getKey()), entry.getValue()));
+        }
+        
         long now = System.currentTimeMillis();
         for (String key : newCacheData.keySet()) {
             lastFetchTime.put(key, now);

@@ -973,12 +973,6 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
                     }
                 } catch (Exception e) { onLog("  ! Global Field Sync Error: " + e.getMessage()); }
 
-                if (isIncremental) {
-                    mainFrame.getMetadataService().updateDiskCache(cachedFullMeta);
-                } else {
-                    mainFrame.getMetadataService().writeDiskCache(cachedFullMeta);
-                }
-                
                 SwingUtilities.invokeLater(() -> {
                     updateTokensFromCache();
                     for (Component c : stepsContainer.getComponents()) {
