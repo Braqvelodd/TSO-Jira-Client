@@ -567,15 +567,15 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
                 for (WorkflowStep step : recipe.getSteps()) {
                     if (step instanceof CreateStep) {
                         CreateStep cs = (CreateStep) step;
-                        addDynamicPrompt(labels, "Project (" + step.getLabel() + ")", cs.getProjectKey(), contextIssue);
-                        addDynamicPrompt(labels, "Issue Type (" + step.getLabel() + ")", cs.getIssueType(), contextIssue);
+                        addDynamicPrompt(labels, "Project (" + step.getLabel() + ")", cs.getProjectKey(), "project", contextIssue);
+                        addDynamicPrompt(labels, "Issue Type (" + step.getLabel() + ")", cs.getIssueType(), "issuetype", contextIssue);
                     }
                     
                     if (step instanceof WorklogStep) {
                         WorklogStep ws = (WorklogStep) step;
-                        addDynamicPrompt(labels, "Time Spent (" + step.getLabel() + ")", ws.getTimeSpent(), contextIssue);
-                        addDynamicPrompt(labels, "Comment (" + step.getLabel() + ")", ws.getComment(), contextIssue);
-                        addDynamicPrompt(labels, "Started (" + step.getLabel() + ")", ws.getStarted(), contextIssue);
+                        addDynamicPrompt(labels, "Time Spent (" + step.getLabel() + ")", ws.getTimeSpent(), null, contextIssue);
+                        addDynamicPrompt(labels, "Comment (" + step.getLabel() + ")", ws.getComment(), null, contextIssue);
+                        addDynamicPrompt(labels, "Started (" + step.getLabel() + ")", ws.getStarted(), null, contextIssue);
                     }
                     
                     if (step instanceof AssetStep) {
@@ -590,7 +590,7 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
                     
                     for (FieldAction fa : step.getFieldActions().values()) {
                         if (fa.getMode() == FieldAction.MappingMode.PROMPT) {
-                            addDynamicPrompt(labels, fa.getPromptLabel(), fa.getValue() != null ? fa.getValue().toString() : null, contextIssue);
+                            addDynamicPrompt(labels, fa.getPromptLabel(), fa.getValue() != null ? fa.getValue().toString() : null, fa.getFieldId(), contextIssue);
                         }
                     }
                 }
@@ -623,31 +623,43 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
         runnerInputsPanel.add(input, gbc);
     }
 
-    private void addDynamicPrompt(Set<String> labels, String label, String value, JSONObject contextIssue) {
+    private void addDynamicPrompt(Set<String> labels, String label, String value, String fieldId, JSONObject contextIssue) {
         if (label == null || label.trim().isEmpty()) return;
         String cleanLabel = label.replaceAll("\\[.*?\\]", "").trim();
         if (labels.contains(cleanLabel)) return;
 
-        String resolvedValue = value;
-        if (contextIssue != null && value != null && value.contains("{{")) {
-            resolvedValue = TokenEngine.replaceTokens(value, contextIssue);
-        }
-
-        boolean isDynamic = (value != null && (value.contains(",") || value.contains("[config:") || value.contains("[choice:"))) || label.contains("[config:") || label.contains("[choice:");
-        
-        JComponent input;
-        if (isDynamic) {
-            input = createPromptInput(label, value, contextIssue);
-        } else {
-            if (label.startsWith("Project (") || label.startsWith("Issue Type (") || label.startsWith("Time Spent (") || label.startsWith("Comment (") || label.startsWith("Started (")) return;
-            input = new JTextField(resolvedValue != null ? resolvedValue : "");
-        }
+        JComponent input = createPromptInput(label, value, fieldId, contextIssue);
         
         addInputRow(label, input, labels);
         promptFields.put(cleanLabel, input);
     }
 
-    private JComponent createPromptInput(String label, String staticOptions, JSONObject contextIssue) {
+    private JComponent createPromptInput(String label, String staticOptions, String fieldId, JSONObject contextIssue) {
+        // Automatic check for allowedValues based on fieldId
+        if (fieldId != null && cachedFullMeta.containsKey(fieldId)) {
+            JSONObject meta = cachedFullMeta.get(fieldId);
+            if (meta.has("allowedValues")) {
+                JSONArray allowed = meta.getJSONArray("allowedValues");
+                Vector<String> options = new Vector<>();
+                for (int i = 0; i < allowed.length(); i++) {
+                    JSONObject av = allowed.getJSONObject(i);
+                    options.add(av.optString("name", av.optString("value", "")));
+                }
+
+                boolean isArray = meta.has("schema") && "array".equals(meta.getJSONObject("schema").optString("type"));
+
+                if (isArray) {
+                    JList<String> list = new JList<>(options);
+                    list.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
+                    list.setVisibleRowCount(Math.min(options.size(), 4));
+                    return new JScrollPane(list);
+                } else {
+                    return new JComboBox<>(options);
+                }
+            }
+        }
+        
+        // Fallback to legacy tag-based system
         String tagSource = null;
         if (staticOptions != null && (staticOptions.contains("[config:") || staticOptions.contains("[choice:") || staticOptions.contains("[allowed:"))) tagSource = staticOptions;
         else if (label != null && (label.contains("[config:") || label.contains("[choice:") || label.contains("[allowed:"))) tagSource = label;
@@ -658,9 +670,9 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
                     int start = tagSource.indexOf("[allowed:") + 9;
                     int end = tagSource.indexOf("]", start);
                     if (end > start) {
-                        String fieldId = tagSource.substring(start, end).trim();
-                        if (cachedFullMeta.containsKey(fieldId)) {
-                            JSONObject meta = cachedFullMeta.get(fieldId);
+                        String taggedFieldId = tagSource.substring(start, end).trim();
+                        if (cachedFullMeta.containsKey(taggedFieldId)) {
+                            JSONObject meta = cachedFullMeta.get(taggedFieldId);
                             if (meta.has("allowedValues")) {
                                 JSONArray allowed = meta.getJSONArray("allowedValues");
                                 Vector<String> options = new Vector<>();
@@ -669,13 +681,12 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
                                     options.add(av.optString("name", av.optString("value", "")));
                                 }
 
-                                boolean isArray = false;
-                                if (meta.has("schema")) isArray = "array".equals(meta.getJSONObject("schema").optString("type"));
+                                boolean isArray = meta.has("schema") && "array".equals(meta.getJSONObject("schema").optString("type"));
 
                                 if (isArray) {
                                     JList<String> list = new JList<>(options);
                                     list.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
-                                    list.setVisibleRowCount(4);
+                                    list.setVisibleRowCount(Math.min(options.size(), 4));
                                     return new JScrollPane(list);
                                 } else {
                                     return new JComboBox<>(options);
@@ -752,7 +763,11 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
             return new JComboBox<>(opts);
         }
         
-        return new JTextField();
+        String resolvedValue = staticOptions;
+        if (contextIssue != null && staticOptions != null && staticOptions.contains("{{")) {
+            resolvedValue = TokenEngine.replaceTokens(staticOptions, contextIssue);
+        }
+        return new JTextField(resolvedValue != null ? resolvedValue : "");
     }
 
     private String[] smartSplit(String input) {

@@ -1,6 +1,7 @@
 package tso.usmc.jira.ui.workflow;
 
 import tso.usmc.jira.workflow.FieldAction;
+import tso.usmc.jira.ui.AutocompleteTextField;
 import tso.usmc.jira.ui.SwingUtils;
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -19,7 +20,7 @@ public class FieldActionPanel extends JPanel {
     private final JComboBox<FieldAction.MappingMode> modeCombo;
     private final JComboBox<String> keyCombo;
     private final JPanel valuePanel;
-    private final JTextField valueField;
+    private final AutocompleteTextField valueField;
     private final JTextField promptQuestionField;
     private final JTextField promptOptionsField;
     private final CardLayout cardLayout;
@@ -76,7 +77,7 @@ public class FieldActionPanel extends JPanel {
         cardLayout = new CardLayout();
         valuePanel.setLayout(cardLayout);
         
-        valueField = new JTextField(15);
+        valueField = new AutocompleteTextField(15);
         
         // Prompt Panel: Question + Optional Options
         JPanel promptPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 2, 0));
@@ -88,11 +89,11 @@ public class FieldActionPanel extends JPanel {
         promptPanel.add(new JLabel("Opts:"));
         promptPanel.add(promptOptionsField);
 
-        SwingUtils.setupExpandedView(valueField);
+        SwingUtils.setupExpandedView(valueField.getTextField());
         SwingUtils.setupExpandedView(promptQuestionField);
         SwingUtils.setupExpandedView(promptOptionsField);
         
-        valueField.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
+        valueField.getTextField().getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
             public void insertUpdate(javax.swing.event.DocumentEvent e) { validateValue(); }
             public void removeUpdate(javax.swing.event.DocumentEvent e) { validateValue(); }
             public void changedUpdate(javax.swing.event.DocumentEvent e) { validateValue(); }
@@ -106,6 +107,8 @@ public class FieldActionPanel extends JPanel {
             cardLayout.show(valuePanel, mode.toString());
             validateValue();
         });
+
+        keyCombo.addActionListener(e -> updateValueSuggestions());
 
         add(new JLabel("Field:"));
         add(keyCombo);
@@ -125,6 +128,7 @@ public class FieldActionPanel extends JPanel {
             }
             cardLayout.show(valuePanel, action.getMode().toString());
         }
+        updateValueSuggestions();
         validateValue();
     }
 
@@ -172,23 +176,44 @@ public class FieldActionPanel extends JPanel {
         for (String label : fieldOptions.keySet()) {
             if (fieldOptions.get(label).equals(currentId)) {
                 keyCombo.setSelectedItem(label);
+                updateValueSuggestions();
                 validateValue();
                 return;
             }
         }
         keyCombo.setSelectedItem(currentStr);
+        updateValueSuggestions();
         validateValue();
     }
 
+    private void updateValueSuggestions() {
+        String fieldId = getSelectedFieldId();
+        if (fullMetadata != null && fullMetadata.containsKey(fieldId)) {
+            JSONObject meta = fullMetadata.get(fieldId);
+            if (meta.has("allowedValues")) {
+                JSONArray allowed = meta.getJSONArray("allowedValues");
+                List<String> suggestions = new ArrayList<>();
+                for (int i = 0; i < allowed.length(); i++) {
+                    JSONObject av = allowed.getJSONObject(i);
+                    suggestions.add(av.optString("name", av.optString("value", "")));
+                }
+                valueField.setSuggestions(suggestions);
+                return;
+            }
+        }
+        valueField.setSuggestions(Collections.emptyList());
+    }
+    
     private void validateValue() {
+        JTextField activeTextField = valueField.getTextField();
         if (modeCombo.getSelectedItem() != FieldAction.MappingMode.SET) {
-            valueField.setBorder(UIManager.getLookAndFeelDefaults().getBorder("TextField.border"));
+            activeTextField.setBorder(UIManager.getLookAndFeelDefaults().getBorder("TextField.border"));
             return;
         }
 
         String val = valueField.getText().trim();
         if (val.isEmpty() || val.contains("{{")) {
-            valueField.setBorder(UIManager.getLookAndFeelDefaults().getBorder("TextField.border"));
+            activeTextField.setBorder(UIManager.getLookAndFeelDefaults().getBorder("TextField.border"));
             return;
         }
 
@@ -225,17 +250,17 @@ public class FieldActionPanel extends JPanel {
                 }
 
                 if (!found) {
-                    valueField.setBorder(BorderFactory.createLineBorder(Color.RED, 2));
-                    valueField.setToolTipText("Value not in allowed list for this field.");
+                    activeTextField.setBorder(BorderFactory.createLineBorder(Color.RED, 2));
+                    activeTextField.setToolTipText("Value not in allowed list for this field.");
                 } else {
-                    valueField.setBorder(UIManager.getLookAndFeelDefaults().getBorder("TextField.border"));
-                    valueField.setToolTipText(null);
+                    activeTextField.setBorder(UIManager.getLookAndFeelDefaults().getBorder("TextField.border"));
+                    activeTextField.setToolTipText(null);
                 }
                 return;
             }
         }
-        valueField.setBorder(UIManager.getLookAndFeelDefaults().getBorder("TextField.border"));
-        valueField.setToolTipText(null);
+        activeTextField.setBorder(UIManager.getLookAndFeelDefaults().getBorder("TextField.border"));
+        activeTextField.setToolTipText(null);
     }
 
     private String getSelectedFieldId() {
