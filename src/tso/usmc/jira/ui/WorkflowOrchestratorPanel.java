@@ -455,6 +455,8 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
             String val = "";
             if (comp instanceof JTextField) {
                 val = ((JTextField) comp).getText();
+            } else if (comp instanceof AutocompleteTextField) {
+                val = ((AutocompleteTextField) comp).getText();
             } else if (comp instanceof JComboBox) {
                 Object selected = ((JComboBox<?>) comp).getSelectedItem();
                 if (selected instanceof ConfigOption) {
@@ -641,7 +643,7 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
             JSONObject meta = cachedFullMeta.get(fieldId);
             if (meta.has("allowedValues")) {
                 JSONArray allowed = meta.getJSONArray("allowedValues");
-                Vector<String> options = new Vector<>();
+                List<String> options = new ArrayList<>();
                 for (int i = 0; i < allowed.length(); i++) {
                     JSONObject av = allowed.getJSONObject(i);
                     options.add(av.optString("name", av.optString("value", "")));
@@ -650,12 +652,19 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
                 boolean isArray = meta.has("schema") && "array".equals(meta.getJSONObject("schema").optString("type"));
 
                 if (isArray) {
-                    JList<String> list = new JList<>(options);
+                    JList<String> list = new JList<>(new Vector<>(options));
                     list.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
                     list.setVisibleRowCount(Math.min(options.size(), 4));
                     return new JScrollPane(list);
                 } else {
-                    return new JComboBox<>(options);
+                    AutocompleteTextField atf = new AutocompleteTextField(20);
+                    atf.setSuggestions(options);
+                    String resolvedValue = staticOptions;
+                    if (contextIssue != null && staticOptions != null && staticOptions.contains("{{")) {
+                        resolvedValue = TokenEngine.replaceTokens(staticOptions, contextIssue);
+                    }
+                    if (resolvedValue != null) atf.setText(resolvedValue);
+                    return atf;
                 }
             }
         }
@@ -676,7 +685,7 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
                             JSONObject meta = cachedFullMeta.get(taggedFieldId);
                             if (meta.has("allowedValues")) {
                                 JSONArray allowed = meta.getJSONArray("allowedValues");
-                                Vector<String> options = new Vector<>();
+                                List<String> options = new ArrayList<>();
                                 for (int i = 0; i < allowed.length(); i++) {
                                     JSONObject av = allowed.getJSONObject(i);
                                     options.add(av.optString("name", av.optString("value", "")));
@@ -685,12 +694,14 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
                                 boolean isArray = meta.has("schema") && "array".equals(meta.getJSONObject("schema").optString("type"));
 
                                 if (isArray) {
-                                    JList<String> list = new JList<>(options);
+                                    JList<String> list = new JList<>(new Vector<>(options));
                                     list.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
                                     list.setVisibleRowCount(Math.min(options.size(), 4));
                                     return new JScrollPane(list);
                                 } else {
-                                    return new JComboBox<>(options);
+                                    AutocompleteTextField atf = new AutocompleteTextField(20);
+                                    atf.setSuggestions(options);
+                                    return atf;
                                 }
                             }
                         }
