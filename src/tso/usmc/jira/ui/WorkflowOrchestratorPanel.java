@@ -637,39 +637,69 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
         promptFields.put(cleanLabel, input);
     }
 
+    private JSONObject findFieldMeta(String fieldId, JSONObject contextIssue) {
+        if (fieldId == null) return null;
+
+        // 1. Try Scoped Lookup (Project + IssueType)
+        if (contextIssue != null && contextIssue.has("fields")) {
+            JSONObject fields = contextIssue.getJSONObject("fields");
+            JSONObject project = fields.optJSONObject("project");
+            JSONObject issueType = fields.optJSONObject("issuetype");
+            if (project != null && issueType != null) {
+                String pKey = project.optString("key");
+                String tName = issueType.optString("name");
+                String scopedKey = "createmeta:" + pKey + ":" + tName;
+                
+                if (cachedFullMeta.containsKey(scopedKey)) {
+                    JSONObject scopedMeta = cachedFullMeta.get(scopedKey);
+                    if (scopedMeta.has("values")) {
+                        JSONArray values = scopedMeta.getJSONArray("values");
+                        for (int i = 0; i < values.length(); i++) {
+                            JSONObject f = values.getJSONObject(i);
+                            if (fieldId.equals(f.optString("fieldId"))) {
+                                return f;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 2. Fallback to Global/Flattened Lookup
+        return cachedFullMeta.get(fieldId);
+    }
+
     private JComponent createPromptInput(String label, String staticOptions, String fieldId, JSONObject contextIssue) {
         JComponent result = null;
         String effectiveFieldId = fieldId;
 
         // Automatic check for allowedValues based on fieldId
-        if (fieldId != null && cachedFullMeta.containsKey(fieldId)) {
-            JSONObject meta = cachedFullMeta.get(fieldId);
-            if (meta.has("allowedValues")) {
-                JSONArray allowed = meta.getJSONArray("allowedValues");
-                List<String> options = new ArrayList<>();
-                for (int i = 0; i < allowed.length(); i++) {
-                    JSONObject av = allowed.getJSONObject(i);
-                    options.add(av.optString("name", av.optString("value", "")));
-                }
+        JSONObject meta = findFieldMeta(fieldId, contextIssue);
+        if (meta != null && meta.has("allowedValues")) {
+            JSONArray allowed = meta.getJSONArray("allowedValues");
+            List<String> options = new ArrayList<>();
+            for (int i = 0; i < allowed.length(); i++) {
+                JSONObject av = allowed.getJSONObject(i);
+                options.add(av.optString("name", av.optString("value", "")));
+            }
 
-                boolean isArray = meta.has("schema") && "array".equals(meta.getJSONObject("schema").optString("type"));
+            boolean isArray = meta.has("schema") && "array".equals(meta.getJSONObject("schema").optString("type"));
 
-                if (isArray) {
-                    JList<String> list = new JList<>(new Vector<>(options));
-                    list.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
-                    list.setVisibleRowCount(Math.min(options.size(), 4));
-                    result = new JScrollPane(list);
-                } else {
-                    AutocompleteTextField atf = new AutocompleteTextField(20);
-                    atf.setSuggestions(options);
-                    atf.setAutocompleteEnabled(true); // Always on for metadata-based prompts
-                    String resolvedValue = staticOptions;
-                    if (contextIssue != null && staticOptions != null && staticOptions.contains("{{")) {
-                        resolvedValue = TokenEngine.replaceTokens(staticOptions, contextIssue);
-                    }
-                    if (resolvedValue != null) atf.setText(resolvedValue);
-                    result = atf;
+            if (isArray) {
+                JList<String> list = new JList<>(new Vector<>(options));
+                list.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
+                list.setVisibleRowCount(Math.min(options.size(), 4));
+                result = new JScrollPane(list);
+            } else {
+                AutocompleteTextField atf = new AutocompleteTextField(20);
+                atf.setSuggestions(options);
+                atf.setAutocompleteEnabled(true); // Always on for metadata-based prompts
+                String resolvedValue = staticOptions;
+                if (contextIssue != null && staticOptions != null && staticOptions.contains("{{")) {
+                    resolvedValue = TokenEngine.replaceTokens(staticOptions, contextIssue);
                 }
+                if (resolvedValue != null) atf.setText(resolvedValue);
+                result = atf;
             }
         }
         
@@ -687,29 +717,27 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
                         if (end > start) {
                             String taggedFieldId = tagSource.substring(start, end).trim();
                             effectiveFieldId = taggedFieldId;
-                            if (cachedFullMeta.containsKey(taggedFieldId)) {
-                                JSONObject meta = cachedFullMeta.get(taggedFieldId);
-                                if (meta.has("allowedValues")) {
-                                    JSONArray allowed = meta.getJSONArray("allowedValues");
-                                    List<String> options = new ArrayList<>();
-                                    for (int i = 0; i < allowed.length(); i++) {
-                                        JSONObject av = allowed.getJSONObject(i);
-                                        options.add(av.optString("name", av.optString("value", "")));
-                                    }
+                            JSONObject tMeta = findFieldMeta(taggedFieldId, contextIssue);
+                            if (tMeta != null && tMeta.has("allowedValues")) {
+                                JSONArray allowed = tMeta.getJSONArray("allowedValues");
+                                List<String> options = new ArrayList<>();
+                                for (int i = 0; i < allowed.length(); i++) {
+                                    JSONObject av = allowed.getJSONObject(i);
+                                    options.add(av.optString("name", av.optString("value", "")));
+                                }
 
-                                    boolean isArray = meta.has("schema") && "array".equals(meta.getJSONObject("schema").optString("type"));
+                                boolean isArray = tMeta.has("schema") && "array".equals(tMeta.getJSONObject("schema").optString("type"));
 
-                                    if (isArray) {
-                                        JList<String> list = new JList<>(new Vector<>(options));
-                                        list.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
-                                        list.setVisibleRowCount(Math.min(options.size(), 4));
-                                        result = new JScrollPane(list);
-                                    } else {
-                                        AutocompleteTextField atf = new AutocompleteTextField(20);
-                                        atf.setSuggestions(options);
-                                        atf.setAutocompleteEnabled(mainFrame.getJiraConfig().isAutocompleteEnabled());
-                                        result = atf;
-                                    }
+                                if (isArray) {
+                                    JList<String> list = new JList<>(new Vector<>(options));
+                                    list.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
+                                    list.setVisibleRowCount(Math.min(options.size(), 4));
+                                    result = new JScrollPane(list);
+                                } else {
+                                    AutocompleteTextField atf = new AutocompleteTextField(20);
+                                    atf.setSuggestions(options);
+                                    atf.setAutocompleteEnabled(mainFrame.getJiraConfig().isAutocompleteEnabled());
+                                    result = atf;
                                 }
                             }
                         }
@@ -795,14 +823,14 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
         // Apply Debug Tooltip
         StringBuilder debug = new StringBuilder("<html><b>Runner Debug Info:</b><br>");
         debug.append("Field ID: ").append(effectiveFieldId != null ? effectiveFieldId : "None").append("<br>");
-        if (effectiveFieldId != null && cachedFullMeta.containsKey(effectiveFieldId)) {
-            JSONObject m = cachedFullMeta.get(effectiveFieldId);
-            debug.append("Name: ").append(m.optString("name", "N/A")).append("<br>");
-            debug.append("Has allowedValues: ").append(m.has("allowedValues")).append("<br>");
-            if (m.has("allowedValues")) {
-                debug.append("Count: ").append(m.getJSONArray("allowedValues").length()).append("<br>");
+        JSONObject dMeta = findFieldMeta(effectiveFieldId, contextIssue);
+        if (effectiveFieldId != null && dMeta != null) {
+            debug.append("Name: ").append(dMeta.optString("name", "N/A")).append("<br>");
+            debug.append("Has allowedValues: ").append(dMeta.has("allowedValues")).append("<br>");
+            if (dMeta.has("allowedValues")) {
+                debug.append("Count: ").append(dMeta.getJSONArray("allowedValues").length()).append("<br>");
             }
-            debug.append("Schema Type: ").append(m.has("schema") ? m.getJSONObject("schema").optString("type") : "N/A").append("<br>");
+            debug.append("Schema Type: ").append(dMeta.has("schema") ? dMeta.getJSONObject("schema").optString("type") : "N/A").append("<br>");
         } else if (effectiveFieldId != null) {
             debug.append("<font color='red'>Not found in metadata cache.</font>");
         }
