@@ -1,0 +1,20 @@
+{
+    "recipeName": "FIx version",
+    "jqlQuery": "",
+    "metadataSnapshot": {},
+    "steps": [{
+        "conditionToken": "",
+        "conditionOperator": "ALWAYS",
+        "stepId": "6c9f5940-7996-4ba2-abc5-2105deaefa2e",
+        "conditionValue": "",
+        "targetIssueToken": "{{issue.key}}",
+        "label": "Fix version update",
+        "type": "UPDATE",
+        "fields": [{
+            "mode": "PROMPT",
+            "promptLabel": "Fix version",
+            "value": "",
+            "fieldId": "fixVersions"
+        }]
+    }]
+}
