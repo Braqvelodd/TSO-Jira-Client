@@ -276,7 +276,22 @@ public class JqlRunnerPanel extends JPanel implements tso.usmc.jira.util.ConfigC
                                         mainFrame.showPanel("Task Builder");
                                         TaskBuilderPanel tbp = mainFrame.getTaskBuilderPanel();
                                         if (tbp != null) {
-                                            tbp.setInputAreaText("PARENT_TICKET:" + selectedIssueKey + "\n" + text);
+                                            if ("release_mgmt".equals(tKey)) {
+                                                tbp.setParentTicket(""); // Clear default parent field
+                                                if (keys.size() > 1) {
+                                                    StringBuilder sb = new StringBuilder();
+                                                    for (String key : keys) {
+                                                        sb.append("parent: ").append(key).append("\n");
+                                                        sb.append(text).append("\n");
+                                                    }
+                                                    tbp.setInputAreaText(sb.toString());
+                                                } else {
+                                                    tbp.setInputAreaText("parent: " + selectedIssueKey + "\n" + text);
+                                                }
+                                            } else {
+                                                // Default behavior for other templates
+                                                tbp.setInputAreaText("PARENT_TICKET:" + selectedIssueKey + "\n" + text);
+                                            }
                                         }
                                     });
                                     contextMenu.add(item);
