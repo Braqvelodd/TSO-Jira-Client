@@ -998,8 +998,11 @@ public class TaskBuilderPanel extends JPanel {
         if (jqlAutocompleteService != null) return;
         try {
             this.jqlAutocompleteService = new JqlAutocompleteService(mainFrame.getService(), mainFrame.getBaseUrl());
+            boolean enabled = mainFrame.getJiraConfig().isAutocompleteEnabled();
             this.inputArea.setService(jqlAutocompleteService);
+            this.inputArea.setAutocompleteEnabled(enabled);
             this.defAssigneeField.setService(jqlAutocompleteService);
+            this.defAssigneeField.setAutocompleteEnabled(enabled);
         } catch (Exception e) {
             // Fails if cert not selected
         }

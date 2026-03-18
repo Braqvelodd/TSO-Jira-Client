@@ -18,6 +18,7 @@ public class AutocompleteTextField extends JPanel {
     private final JList<String> suggestionList;
     private final DefaultListModel<String> listModel;
     private List<String> allSuggestions = new ArrayList<>();
+    private boolean enabled = true;
 
     public AutocompleteTextField(int columns) {
         super(new BorderLayout());
@@ -40,6 +41,10 @@ public class AutocompleteTextField extends JPanel {
 
     public void setSuggestions(List<String> suggestions) {
         this.allSuggestions = suggestions != null ? new ArrayList<>(suggestions) : new ArrayList<>();
+    }
+
+    public void setAutocompleteEnabled(boolean enabled) {
+        this.enabled = enabled;
     }
 
     public String getText() {
@@ -118,7 +123,7 @@ public class AutocompleteTextField extends JPanel {
     }
 
     private void showSuggestions() {
-        if (allSuggestions.isEmpty()) {
+        if (!enabled || allSuggestions.isEmpty()) {
             popup.setVisible(false);
             return;
         }

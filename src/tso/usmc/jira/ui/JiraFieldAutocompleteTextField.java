@@ -16,6 +16,7 @@ public class JiraFieldAutocompleteTextField extends JTextField {
     private final DefaultListModel<String> listModel;
     private final JList<String> suggestionList;
     private boolean isUpdating = false;
+    private boolean enabled = true;
 
     public JiraFieldAutocompleteTextField(String text) {
         super(text);
@@ -29,6 +30,10 @@ public class JiraFieldAutocompleteTextField extends JTextField {
 
     public void setService(JqlAutocompleteService service) {
         this.service = service;
+    }
+
+    public void setAutocompleteEnabled(boolean enabled) {
+        this.enabled = enabled;
     }
 
     private void setupUI() {
@@ -88,7 +93,7 @@ public class JiraFieldAutocompleteTextField extends JTextField {
     }
 
     private void updatePopup() {
-        if (isUpdating || service == null) return;
+        if (!enabled || isUpdating || service == null) return;
         
         SwingUtilities.invokeLater(() -> {
             try {

@@ -17,6 +17,7 @@ public class JqlAutocompleteTextArea extends JTextArea {
     private final DefaultListModel<String> listModel;
     private final JList<String> suggestionList;
     private boolean isUpdating = false;
+    private boolean enabled = true;
 
     public JqlAutocompleteTextArea(JqlAutocompleteService service) {
         this.service = service;
@@ -30,6 +31,10 @@ public class JqlAutocompleteTextArea extends JTextArea {
 
     public void setService(JqlAutocompleteService service) {
         this.service = service;
+    }
+
+    public void setAutocompleteEnabled(boolean enabled) {
+        this.enabled = enabled;
     }
 
     private void setupUI() {
@@ -89,7 +94,7 @@ public class JqlAutocompleteTextArea extends JTextArea {
     }
 
     private void updatePopup() {
-        if (isUpdating) return;
+        if (!enabled || isUpdating) return;
         if (service == null) {
             System.out.println("DEBUG: Autocomplete service is null, skipping popup.");
             return;

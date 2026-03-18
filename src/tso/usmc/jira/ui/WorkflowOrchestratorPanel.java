@@ -638,6 +638,9 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
     }
 
     private JComponent createPromptInput(String label, String staticOptions, String fieldId, JSONObject contextIssue) {
+        JComponent result = null;
+        String effectiveFieldId = fieldId;
+
         // Automatic check for allowedValues based on fieldId
         if (fieldId != null && cachedFullMeta.containsKey(fieldId)) {
             JSONObject meta = cachedFullMeta.get(fieldId);
@@ -655,131 +658,167 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
                     JList<String> list = new JList<>(new Vector<>(options));
                     list.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
                     list.setVisibleRowCount(Math.min(options.size(), 4));
-                    return new JScrollPane(list);
+                    result = new JScrollPane(list);
                 } else {
                     AutocompleteTextField atf = new AutocompleteTextField(20);
                     atf.setSuggestions(options);
+                    atf.setAutocompleteEnabled(true); // Always on for metadata-based prompts
                     String resolvedValue = staticOptions;
                     if (contextIssue != null && staticOptions != null && staticOptions.contains("{{")) {
                         resolvedValue = TokenEngine.replaceTokens(staticOptions, contextIssue);
                     }
                     if (resolvedValue != null) atf.setText(resolvedValue);
-                    return atf;
+                    result = atf;
                 }
             }
         }
         
-        // Fallback to legacy tag-based system
-        String tagSource = null;
-        if (staticOptions != null && (staticOptions.contains("[config:") || staticOptions.contains("[choice:") || staticOptions.contains("[allowed:"))) tagSource = staticOptions;
-        else if (label != null && (label.contains("[config:") || label.contains("[choice:") || label.contains("[allowed:"))) tagSource = label;
+        if (result == null) {
+            // Fallback to legacy tag-based system
+            String tagSource = null;
+            if (staticOptions != null && (staticOptions.contains("[config:") || staticOptions.contains("[choice:") || staticOptions.contains("[allowed:"))) tagSource = staticOptions;
+            else if (label != null && (label.contains("[config:") || label.contains("[choice:") || label.contains("[allowed:"))) tagSource = label;
 
-        if (tagSource != null) {
-            try {
-                if (tagSource.contains("[allowed:")) {
-                    int start = tagSource.indexOf("[allowed:") + 9;
-                    int end = tagSource.indexOf("]", start);
-                    if (end > start) {
-                        String taggedFieldId = tagSource.substring(start, end).trim();
-                        if (cachedFullMeta.containsKey(taggedFieldId)) {
-                            JSONObject meta = cachedFullMeta.get(taggedFieldId);
-                            if (meta.has("allowedValues")) {
-                                JSONArray allowed = meta.getJSONArray("allowedValues");
-                                List<String> options = new ArrayList<>();
-                                for (int i = 0; i < allowed.length(); i++) {
-                                    JSONObject av = allowed.getJSONObject(i);
-                                    options.add(av.optString("name", av.optString("value", "")));
-                                }
-
-                                boolean isArray = meta.has("schema") && "array".equals(meta.getJSONObject("schema").optString("type"));
-
-                                if (isArray) {
-                                    JList<String> list = new JList<>(new Vector<>(options));
-                                    list.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
-                                    list.setVisibleRowCount(Math.min(options.size(), 4));
-                                    return new JScrollPane(list);
-                                } else {
-                                    AutocompleteTextField atf = new AutocompleteTextField(20);
-                                    atf.setSuggestions(options);
-                                    return atf;
-                                }
-                            }
-                        }
-                    }
-                }
-
-                if (tagSource.contains("[choice:")) {
-                    int start = tagSource.indexOf("[choice:") + 8;
-                    int end = tagSource.lastIndexOf("]");
-                    if (end > start) {
-                        String tokenExpr = tagSource.substring(start, end);
-                        String resolved = tokenExpr;
-                        if (contextIssue != null) resolved = TokenEngine.replaceTokens(tokenExpr, contextIssue);
-                        return new PromptChoicePanel(tokenExpr, resolved);
-                    }
-                }
-
-                if (tagSource.contains("[config:")) {
-                    int start = tagSource.indexOf("[config:") + 8;
-                    int end = tagSource.lastIndexOf("]");
-                    if (end > start) {
-                        String tag = tagSource.substring(start, end);
-                        String[] parts = tag.split(":");
-                        String key = parts[0];
-                        
-                        if (key.equals("teams")) {
-                            String subKey = parts.length > 1 ? parts[1] : "lead";
-                            Vector<ConfigOption> options = new Vector<>();
-                            String[] teamKeys = mainFrame.getJiraConfig().getWorkflowTeamKeys();
-                            for (String tKey : teamKeys) {
-                                String name = mainFrame.getJiraConfig().getTeamProperty(tKey, "name");
-                                String val = mainFrame.getJiraConfig().getTeamProperty(tKey, subKey);
-                                if (name != null && val != null) options.add(new ConfigOption(name, val, tKey));
-                            }
-                            return new JComboBox<>(options);
-                        } else if (key.equals("fy_summary")) {
-                            Vector<String> options = new Vector<>();
-                            options.add(mainFrame.getJiraConfig().getWorkflowFySummaryIssue());
-                            return new JComboBox<>(options);
-                        } else {
-                            String val = mainFrame.getJiraConfig().getProperty(key);
-                            if (val != null) {
-                                if (val.contains(",")) {
-                                    String[] opts = smartSplit(val);
-                                    if (contextIssue != null) {
-                                        for (int i = 0; i < opts.length; i++) {
-                                            opts[i] = TokenEngine.replaceTokens(opts[i], contextIssue);
-                                        }
+            if (tagSource != null) {
+                try {
+                    if (tagSource.contains("[allowed:")) {
+                        int start = tagSource.indexOf("[allowed:") + 9;
+                        int end = tagSource.indexOf("]", start);
+                        if (end > start) {
+                            String taggedFieldId = tagSource.substring(start, end).trim();
+                            effectiveFieldId = taggedFieldId;
+                            if (cachedFullMeta.containsKey(taggedFieldId)) {
+                                JSONObject meta = cachedFullMeta.get(taggedFieldId);
+                                if (meta.has("allowedValues")) {
+                                    JSONArray allowed = meta.getJSONArray("allowedValues");
+                                    List<String> options = new ArrayList<>();
+                                    for (int i = 0; i < allowed.length(); i++) {
+                                        JSONObject av = allowed.getJSONObject(i);
+                                        options.add(av.optString("name", av.optString("value", "")));
                                     }
-                                    return new JComboBox<>(opts);
+
+                                    boolean isArray = meta.has("schema") && "array".equals(meta.getJSONObject("schema").optString("type"));
+
+                                    if (isArray) {
+                                        JList<String> list = new JList<>(new Vector<>(options));
+                                        list.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
+                                        list.setVisibleRowCount(Math.min(options.size(), 4));
+                                        result = new JScrollPane(list);
+                                    } else {
+                                        AutocompleteTextField atf = new AutocompleteTextField(20);
+                                        atf.setSuggestions(options);
+                                        atf.setAutocompleteEnabled(mainFrame.getJiraConfig().isAutocompleteEnabled());
+                                        result = atf;
+                                    }
                                 }
-                                String resolved = val;
-                                if (contextIssue != null) resolved = TokenEngine.replaceTokens(val, contextIssue);
-                                return new JTextField(resolved);
                             }
                         }
                     }
+
+                    if (result == null && tagSource.contains("[choice:")) {
+                        int start = tagSource.indexOf("[choice:") + 8;
+                        int end = tagSource.lastIndexOf("]");
+                        if (end > start) {
+                            String tokenExpr = tagSource.substring(start, end);
+                            String resolved = tokenExpr;
+                            if (contextIssue != null) resolved = TokenEngine.replaceTokens(tokenExpr, contextIssue);
+                            result = new PromptChoicePanel(tokenExpr, resolved);
+                        }
+                    }
+
+                    if (result == null && tagSource.contains("[config:")) {
+                        int start = tagSource.indexOf("[config:") + 8;
+                        int end = tagSource.lastIndexOf("]");
+                        if (end > start) {
+                            String tag = tagSource.substring(start, end);
+                            String[] parts = tag.split(":");
+                            String key = parts[0];
+                            
+                            if (key.equals("teams")) {
+                                String subKey = parts.length > 1 ? parts[1] : "lead";
+                                Vector<ConfigOption> options = new Vector<>();
+                                String[] teamKeys = mainFrame.getJiraConfig().getWorkflowTeamKeys();
+                                for (String tKey : teamKeys) {
+                                    String name = mainFrame.getJiraConfig().getTeamProperty(tKey, "name");
+                                    String val = mainFrame.getJiraConfig().getTeamProperty(tKey, subKey);
+                                    if (name != null && val != null) options.add(new ConfigOption(name, val, tKey));
+                                }
+                                result = new JComboBox<>(options);
+                            } else if (key.equals("fy_summary")) {
+                                Vector<String> options = new Vector<>();
+                                options.add(mainFrame.getJiraConfig().getWorkflowFySummaryIssue());
+                                result = new JComboBox<>(options);
+                            } else {
+                                String val = mainFrame.getJiraConfig().getProperty(key);
+                                if (val != null) {
+                                    if (val.contains(",")) {
+                                        String[] opts = smartSplit(val);
+                                        if (contextIssue != null) {
+                                            for (int i = 0; i < opts.length; i++) {
+                                                opts[i] = TokenEngine.replaceTokens(opts[i], contextIssue);
+                                            }
+                                        }
+                                        result = new JComboBox<>(opts);
+                                    } else {
+                                        String resolved = val;
+                                        if (contextIssue != null) resolved = TokenEngine.replaceTokens(val, contextIssue);
+                                        result = new JTextField(resolved);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } catch (Exception e) {
+                    e.printStackTrace();
                 }
-            } catch (Exception e) {
-                e.printStackTrace();
             }
         }
         
-        if (staticOptions != null && !staticOptions.trim().isEmpty() && staticOptions.contains(",")) {
+        if (result == null && staticOptions != null && !staticOptions.trim().isEmpty() && staticOptions.contains(",")) {
             String[] opts = smartSplit(staticOptions);
             if (contextIssue != null) {
                 for (int i = 0; i < opts.length; i++) {
                     opts[i] = TokenEngine.replaceTokens(opts[i], contextIssue);
                 }
             }
-            return new JComboBox<>(opts);
+            result = new JComboBox<>(opts);
         }
         
-        String resolvedValue = staticOptions;
-        if (contextIssue != null && staticOptions != null && staticOptions.contains("{{")) {
-            resolvedValue = TokenEngine.replaceTokens(staticOptions, contextIssue);
+        if (result == null) {
+            String resolvedValue = staticOptions;
+            if (contextIssue != null && staticOptions != null && staticOptions.contains("{{")) {
+                resolvedValue = TokenEngine.replaceTokens(staticOptions, contextIssue);
+            }
+            result = new JTextField(resolvedValue != null ? resolvedValue : "");
         }
-        return new JTextField(resolvedValue != null ? resolvedValue : "");
+
+        // Apply Debug Tooltip
+        StringBuilder debug = new StringBuilder("<html><b>Runner Debug Info:</b><br>");
+        debug.append("Field ID: ").append(effectiveFieldId != null ? effectiveFieldId : "None").append("<br>");
+        if (effectiveFieldId != null && cachedFullMeta.containsKey(effectiveFieldId)) {
+            JSONObject m = cachedFullMeta.get(effectiveFieldId);
+            debug.append("Name: ").append(m.optString("name", "N/A")).append("<br>");
+            debug.append("Has allowedValues: ").append(m.has("allowedValues")).append("<br>");
+            if (m.has("allowedValues")) {
+                debug.append("Count: ").append(m.getJSONArray("allowedValues").length()).append("<br>");
+            }
+            debug.append("Schema Type: ").append(m.has("schema") ? m.getJSONObject("schema").optString("type") : "N/A").append("<br>");
+        } else if (effectiveFieldId != null) {
+            debug.append("<font color='red'>Not found in metadata cache.</font>");
+        }
+        debug.append("</html>");
+        
+        result.setToolTipText(debug.toString());
+        if (result instanceof AutocompleteTextField) {
+            ((AutocompleteTextField) result).getTextField().setToolTipText(debug.toString());
+        } else if (result instanceof JScrollPane) {
+            Component view = ((JScrollPane) result).getViewport().getView();
+            if (view instanceof JComponent) ((JComponent) view).setToolTipText(debug.toString());
+        } else if (result instanceof PromptChoicePanel) {
+            // Choice panel is a complex component, tooltip on container is fine
+        }
+
+        return result;
     }
 
     private String[] smartSplit(String input) {

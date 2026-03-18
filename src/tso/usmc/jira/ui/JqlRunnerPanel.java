@@ -140,9 +140,12 @@ public class JqlRunnerPanel extends JPanel implements tso.usmc.jira.util.ConfigC
         
         try {
             JqlAutocompleteService service = new JqlAutocompleteService(mainFrame.getService(), mainFrame.getBaseUrl());
+            boolean enabled = mainFrame.getJiraConfig().isAutocompleteEnabled();
             this.jqlAutocompleteService = service;
             this.jqlArea.setService(service);
+            this.jqlArea.setAutocompleteEnabled(enabled);
             this.fieldsField.setService(service);
+            this.fieldsField.setAutocompleteEnabled(enabled);
         } catch (Exception e) {
             // Silently fail if cert not selected yet
         }

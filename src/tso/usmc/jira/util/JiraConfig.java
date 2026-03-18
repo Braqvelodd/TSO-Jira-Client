@@ -666,5 +666,10 @@ public class JiraConfig {
             return 30;
         }
     }
+
+    public boolean isAutocompleteEnabled() {
+        String value = getProperty("autocomplete.enabled");
+        return value == null || Boolean.parseBoolean(value.trim());
+    }
 }
 
