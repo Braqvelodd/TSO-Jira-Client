@@ -673,18 +673,54 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
         JComponent result = null;
         String effectiveFieldId = fieldId;
 
-        // Automatic check for allowedValues based on fieldId
-        JSONObject meta = findFieldMeta(fieldId, contextIssue);
-        if (meta != null && meta.has("allowedValues")) {
-            JSONArray allowed = meta.getJSONArray("allowedValues");
-            List<String> options = new ArrayList<>();
-            for (int i = 0; i < allowed.length(); i++) {
-                JSONObject av = allowed.getJSONObject(i);
-                options.add(av.optString("name", av.optString("value", "")));
+        // Collect UNIQUE allowed values from ALL projects in the cache for this fieldId
+        Set<String> mergedOptions = new TreeSet<>();
+        boolean isArray = false;
+        
+        if (fieldId != null) {
+            // 1. Scan Scoped Metadata (createmeta:PROJ:TYPE)
+            for (String key : cachedFullMeta.keySet()) {
+                if (key.startsWith("createmeta:")) {
+                    JSONObject scopedMeta = cachedFullMeta.get(key);
+                    if (scopedMeta.has("values")) {
+                        JSONArray values = scopedMeta.getJSONArray("values");
+                        for (int i = 0; i < values.length(); i++) {
+                            JSONObject f = values.getJSONObject(i);
+                            if (fieldId.equals(f.optString("fieldId"))) {
+                                if (f.has("allowedValues")) {
+                                    JSONArray allowed = f.getJSONArray("allowedValues");
+                                    for (int j = 0; j < allowed.length(); j++) {
+                                        JSONObject av = allowed.getJSONObject(j);
+                                        mergedOptions.add(av.optString("name", av.optString("value", "")));
+                                    }
+                                }
+                                if (f.has("schema") && "array".equals(f.getJSONObject("schema").optString("type"))) {
+                                    isArray = true;
+                                }
+                            }
+                        }
+                    }
+                }
             }
 
-            boolean isArray = meta.has("schema") && "array".equals(meta.getJSONObject("schema").optString("type"));
+            // 2. Fallback/Include Global/Flattened Lookup
+            JSONObject globalMeta = cachedFullMeta.get(fieldId);
+            if (globalMeta != null) {
+                if (globalMeta.has("allowedValues")) {
+                    JSONArray allowed = globalMeta.getJSONArray("allowedValues");
+                    for (int i = 0; i < allowed.length(); i++) {
+                        JSONObject av = allowed.getJSONObject(i);
+                        mergedOptions.add(av.optString("name", av.optString("value", "")));
+                    }
+                }
+                if (globalMeta.has("schema") && "array".equals(globalMeta.getJSONObject("schema").optString("type"))) {
+                    isArray = true;
+                }
+            }
+        }
 
+        if (!mergedOptions.isEmpty()) {
+            List<String> options = new ArrayList<>(mergedOptions);
             if (isArray) {
                 JList<String> list = new JList<>(new Vector<>(options));
                 list.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
@@ -717,18 +753,46 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
                         if (end > start) {
                             String taggedFieldId = tagSource.substring(start, end).trim();
                             effectiveFieldId = taggedFieldId;
-                            JSONObject tMeta = findFieldMeta(taggedFieldId, contextIssue);
-                            if (tMeta != null && tMeta.has("allowedValues")) {
-                                JSONArray allowed = tMeta.getJSONArray("allowedValues");
-                                List<String> options = new ArrayList<>();
-                                for (int i = 0; i < allowed.length(); i++) {
-                                    JSONObject av = allowed.getJSONObject(i);
-                                    options.add(av.optString("name", av.optString("value", "")));
+                            
+                            // Repeat merge logic for tagged field
+                            Set<String> taggedOptions = new TreeSet<>();
+                            boolean tIsArray = false;
+                            for (String key : cachedFullMeta.keySet()) {
+                                if (key.startsWith("createmeta:")) {
+                                    JSONObject scopedMeta = cachedFullMeta.get(key);
+                                    if (scopedMeta.has("values")) {
+                                        JSONArray values = scopedMeta.getJSONArray("values");
+                                        for (int i = 0; i < values.length(); i++) {
+                                            JSONObject f = values.getJSONObject(i);
+                                            if (taggedFieldId.equals(f.optString("fieldId"))) {
+                                                if (f.has("allowedValues")) {
+                                                    JSONArray allowed = f.getJSONArray("allowedValues");
+                                                    for (int j = 0; j < allowed.length(); j++) {
+                                                        JSONObject av = allowed.getJSONObject(j);
+                                                        taggedOptions.add(av.optString("name", av.optString("value", "")));
+                                                    }
+                                                }
+                                                if (f.has("schema") && "array".equals(f.getJSONObject("schema").optString("type"))) tIsArray = true;
+                                            }
+                                        }
+                                    }
                                 }
+                            }
+                            JSONObject tGlobal = cachedFullMeta.get(taggedFieldId);
+                            if (tGlobal != null) {
+                                if (tGlobal.has("allowedValues")) {
+                                    JSONArray allowed = tGlobal.getJSONArray("allowedValues");
+                                    for (int i = 0; i < allowed.length(); i++) {
+                                        JSONObject av = allowed.getJSONObject(i);
+                                        taggedOptions.add(av.optString("name", av.optString("value", "")));
+                                    }
+                                }
+                                if (tGlobal.has("schema") && "array".equals(tGlobal.getJSONObject("schema").optString("type"))) tIsArray = true;
+                            }
 
-                                boolean isArray = tMeta.has("schema") && "array".equals(tMeta.getJSONObject("schema").optString("type"));
-
-                                if (isArray) {
+                            if (!taggedOptions.isEmpty()) {
+                                List<String> options = new ArrayList<>(taggedOptions);
+                                if (tIsArray) {
                                     JList<String> list = new JList<>(new Vector<>(options));
                                     list.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
                                     list.setVisibleRowCount(Math.min(options.size(), 4));
