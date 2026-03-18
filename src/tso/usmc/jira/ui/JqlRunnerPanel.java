@@ -278,16 +278,31 @@ public class JqlRunnerPanel extends JPanel implements tso.usmc.jira.util.ConfigC
                                         if (tbp != null) {
                                             if ("release_mgmt".equals(tKey)) {
                                                 tbp.setParentTicket(""); // Clear default parent field
-                                                if (keys.size() > 1) {
-                                                    StringBuilder sb = new StringBuilder();
-                                                    for (String key : keys) {
-                                                        sb.append("parent: ").append(key).append("\n");
-                                                        sb.append(text).append("\n");
+                                                
+                                                String[] lines = text.split("\n");
+                                                StringBuilder defs = new StringBuilder();
+                                                StringBuilder content = new StringBuilder();
+                                                String sep = "******************************************************************";
+                                                
+                                                for (String l : lines) {
+                                                    if (l.startsWith("DEFAULT_")) {
+                                                        defs.append(l).append("\n");
+                                                    } else if (l.startsWith("******")) {
+                                                        sep = l;
+                                                    } else {
+                                                        content.append(l).append("\n");
                                                     }
-                                                    tbp.setInputAreaText(sb.toString());
-                                                } else {
-                                                    tbp.setInputAreaText("parent: " + selectedIssueKey + "\n" + text);
                                                 }
+                                                
+                                                StringBuilder finalSb = new StringBuilder(defs);
+                                                if (defs.length() > 0) finalSb.append("\n");
+                                                
+                                                for (String key : keys) {
+                                                    finalSb.append(content);
+                                                    finalSb.append("parent: ").append(key).append("\n");
+                                                    finalSb.append(sep).append("\n\n");
+                                                }
+                                                tbp.setInputAreaText(finalSb.toString().trim());
                                             } else {
                                                 // Default behavior for other templates
                                                 tbp.setInputAreaText("PARENT_TICKET:" + selectedIssueKey + "\n" + text);
