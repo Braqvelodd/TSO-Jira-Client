@@ -45,4 +45,4 @@ src\tso\usmc\jira\util\ExecutionService.java
 src\tso\usmc\jira\util\JiraApiException.java
 src\tso\usmc\jira\util\WorkflowException.java
 src\tso\usmc\jira\ui\JiraFieldAutocompleteTextField.java
-src/tso/usmc/jira/ui/AutocompleteTextField.java
+src\tso\usmc\jira\ui\AutocompleteTextField.java
