@@ -439,6 +439,11 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
                         runnerTableModel.addRow(new Object[]{key, summary, status, assignee});
                     }
                     onLog("Found " + issues.length() + " issues.");
+                    
+                    if (issues.length() > 0) {
+                        runnerTable.setRowSelectionInterval(0, issues.length() - 1);
+                    }
+                    
                     updateRunnerInputs();
                 });
             } catch (Exception e) {
