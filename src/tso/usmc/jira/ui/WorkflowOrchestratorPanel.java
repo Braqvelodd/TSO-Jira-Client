@@ -270,9 +270,17 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
     }
 
     public void setRunnerIssueKey(String recipeName, String key) {
-        runnerRecipeCombo.setSelectedItem(recipeName);
-        runnerJqlField.setText(key);
-        updateRunnerInputs();
+        SwingUtilities.invokeLater(() -> {
+            for (Component c : getComponents()) {
+                if (c instanceof JTabbedPane) {
+                    ((JTabbedPane) c).setSelectedIndex(1);
+                    break;
+                }
+            }
+            runnerRecipeCombo.setSelectedItem(recipeName);
+            runnerJqlField.setText(key);
+            executeRunnerSearch();
+        });
     }
 
     public void runWorkflowDirectly(String recipeName, String issueKeys) {
@@ -572,13 +580,6 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
                         CreateStep cs = (CreateStep) step;
                         addDynamicPrompt(labels, "Project (" + step.getLabel() + ")", cs.getProjectKey(), "project", contextIssue);
                         addDynamicPrompt(labels, "Issue Type (" + step.getLabel() + ")", cs.getIssueType(), "issuetype", contextIssue);
-                    }
-                    
-                    if (step instanceof WorklogStep) {
-                        WorklogStep ws = (WorklogStep) step;
-                        addDynamicPrompt(labels, "Time Spent (" + step.getLabel() + ")", ws.getTimeSpent(), null, contextIssue);
-                        addDynamicPrompt(labels, "Comment (" + step.getLabel() + ")", ws.getComment(), null, contextIssue);
-                        addDynamicPrompt(labels, "Started (" + step.getLabel() + ")", ws.getStarted(), null, contextIssue);
                     }
                     
                     if (step instanceof AssetStep) {
