@@ -447,10 +447,9 @@ public class WorkflowEngine {
 
         // 1. Determine the field's "semantic type" primarily from metadata.
         String semanticType = null;
+        String source = "METADATA";
         if (fieldMeta != null && fieldMeta.has("schema")) {
             JSONObject schema = fieldMeta.getJSONObject("schema");
-            // For arrays, the item's type matters for wrapping (e.g., "user" in an array of users).
-            // For non-arrays, the field's own type matters (e.g., "priority").
             semanticType = "array".equals(schema.optString("type"))
                     ? schema.optString("items")
                     : schema.optString("type");
@@ -458,6 +457,7 @@ public class WorkflowEngine {
 
         // 2. If metadata is missing, fall back to guessing based on the field ID (safety net).
         if (semanticType == null || semanticType.trim().isEmpty()) {
+            source = "FALLBACK";
             if (fieldId.equals("assignee") || fieldId.equals("reporter") || fieldId.contains("user") || fieldId.contains("owner")) semanticType = "user";
             else if (fieldId.equals("priority") || fieldId.equals("resolution") || fieldId.startsWith("customfield_")) semanticType = "option";
             else if (fieldId.equals("labels")) semanticType = "string";
@@ -465,40 +465,47 @@ public class WorkflowEngine {
             else if (fieldId.equals("components")) semanticType = "component";
         }
 
+        if (verboseLogging && listener != null) {
+            listener.onLog("    > Field [" + fieldId + "] wrapping value [" + val + "] using " + source + " (" + (semanticType != null ? semanticType : "UNKNOWN") + ")");
+        }
+
         // 3. Wrap the value based on the determined semantic type.
         if (semanticType != null) {
-            switch (semanticType) {
+            switch (semanticType.toLowerCase()) {
                 case "user":
                     return new JSONObject().put("name", val);
-                case "option":
                 case "priority":
                 case "resolution":
+                case "status":
+                    return new JSONObject().put("name", val);
+                case "option":
                     return new JSONObject().put("value", val);
                 case "component":
                 case "version":
+                case "project":
+                case "issuetype":
                     return new JSONObject().put("name", val);
                 case "number":
                     try {
-                        return val.contains(".") ? Double.parseDouble(val) : Long.parseLong(val);
+                        if (val.contains(".")) return Double.parseDouble(val);
+                        return Long.parseLong(val);
                     } catch (NumberFormatException e) {
-                        return val; // If parsing fails, return as string
+                        return val;
                     }
                 case "string":
                 case "date":
                 case "datetime":
+                case "sd-request-type":
+                case "service-desk-request-type":
                     return val;
             }
-        }
-
-        // Special case for 'parent' which is identified by fieldId, not type.
-        if ("parent".equals(fieldId)) {
-            return new JSONObject().put("key", JiraUtils.cleanIssueKey(val));
         }
 
         // Final fallback: if no type could be determined, check for number, otherwise return raw value.
         if (val.matches("-?\\d+(\\.\\d+)?")) {
             try {
-                return val.contains(".") ? Double.parseDouble(val) : Long.parseLong(val);
+                if (val.contains(".")) return Double.parseDouble(val);
+                return Long.parseLong(val);
             } catch (Exception ignored) {}
         }
         return val;
