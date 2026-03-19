@@ -314,7 +314,7 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
                     issues.add(new JSONObject(resp));
                 }
 
-                WorkflowEngine engine = new WorkflowEngine(mainFrame.getService(), mainFrame.getIssueService(), mainFrame.getBaseUrl(), this);
+                WorkflowEngine engine = new WorkflowEngine(mainFrame.getService(), mainFrame.getIssueService(), mainFrame.getMetadataService(), mainFrame.getBaseUrl(), this);
                 engine.setVerboseLogging(verboseLogCheck.isSelected());
                 lastResults = engine.execute(recipe, issues, new HashMap<>());
 
@@ -501,7 +501,7 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
                     return;
                 }
                 
-                WorkflowEngine engine = new WorkflowEngine(mainFrame.getService(), mainFrame.getIssueService(), mainFrame.getBaseUrl(), this);
+                WorkflowEngine engine = new WorkflowEngine(mainFrame.getService(), mainFrame.getIssueService(), mainFrame.getMetadataService(), mainFrame.getBaseUrl(), this);
                 engine.setVerboseLogging(verboseLogCheck.isSelected());
                 engine.setDryRun(dryRunCheck.isSelected());
                 lastResults = engine.execute(recipe, issuesToProcess, promptValues);

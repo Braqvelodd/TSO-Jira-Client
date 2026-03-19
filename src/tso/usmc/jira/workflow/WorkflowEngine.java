@@ -4,6 +4,7 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 import tso.usmc.jira.service.JiraApiService;
 import tso.usmc.jira.service.JiraIssueService;
+import tso.usmc.jira.service.MetadataCacheService;
 import tso.usmc.jira.util.JiraUtils;
 import java.util.*;
 
@@ -30,6 +31,7 @@ public class WorkflowEngine {
 
     private final JiraApiService apiService;
     private final JiraIssueService issueService;
+    private final MetadataCacheService metadataService;
     private final String baseUrl;
     private final WorkflowProgressListener listener;
     
@@ -38,9 +40,10 @@ public class WorkflowEngine {
     private boolean verboseLogging = false;
     private boolean dryRun = false;
 
-    public WorkflowEngine(JiraApiService apiService, JiraIssueService issueService, String baseUrl, WorkflowProgressListener listener) {
+    public WorkflowEngine(JiraApiService apiService, JiraIssueService issueService, MetadataCacheService metadataService, String baseUrl, WorkflowProgressListener listener) {
         this.apiService = apiService;
         this.issueService = issueService;
+        this.metadataService = metadataService;
         this.baseUrl = baseUrl;
         this.listener = listener;
     }
@@ -56,7 +59,7 @@ public class WorkflowEngine {
     public List<ExecutionResult> execute(WorkflowRecipe recipe, List<JSONObject> issues, Map<String, String> promptValues) {
         List<ExecutionResult> results = new ArrayList<>();
         try {
-            JSONObject metaSnap = recipe.getMetadataSnapshot();
+            Map<String, JSONObject> metaSnap = metadataService != null ? metadataService.getDiskCache() : new HashMap<>();
             String mode = dryRun ? "[DRY RUN - VALIDATE ONLY]" : "[LIVE EXECUTION]";
             listener.onLog(mode + " Starting workflow: " + recipe.getRecipeName() + " on " + issues.size() + " issues.");
 
@@ -144,7 +147,7 @@ public class WorkflowEngine {
         }
     }
 
-    private void executeStep(WorkflowStep step, JSONObject issue, Map<String, String> prompts, JSONObject metaSnap) throws Exception {
+    private void executeStep(WorkflowStep step, JSONObject issue, Map<String, String> prompts, Map<String, JSONObject> metaSnap) throws Exception {
         if (step instanceof CreateStep) {
             CreateStep cs = (CreateStep) step;
             String proj = resolveStepProperty(cs.getProjectKey(), "Project (" + step.getLabel() + ")", prompts, issue);
@@ -414,7 +417,7 @@ public class WorkflowEngine {
         }
     }
 
-    private JSONObject buildFields(WorkflowStep step, JSONObject issue, Map<String, String> prompts, JSONObject metaSnap) {
+    private JSONObject buildFields(WorkflowStep step, JSONObject issue, Map<String, String> prompts, Map<String, JSONObject> metaSnap) {
         JSONObject fields = new JSONObject();
         for (FieldAction fa : step.getFieldActions().values()) {
             if ("teams_selection".equalsIgnoreCase(fa.getFieldId())) continue;
@@ -428,7 +431,7 @@ public class WorkflowEngine {
                 catch (Exception ignored) {}
             }
 
-            JSONObject fieldMeta = metaSnap != null ? metaSnap.optJSONObject(fieldId) : null;
+            JSONObject fieldMeta = metaSnap != null ? metaSnap.get(fieldId) : null;
             boolean isArray = (fieldMeta != null && fieldMeta.has("schema") && "array".equals(fieldMeta.getJSONObject("schema").optString("type"))) || (fieldId.equals("labels") || fieldId.equals("components") || fieldId.equals("fixVersions") || fieldId.equals("versions"));
 
             if (isArray) {
