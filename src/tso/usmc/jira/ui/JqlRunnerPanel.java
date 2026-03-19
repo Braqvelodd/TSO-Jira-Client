@@ -26,6 +26,7 @@ public class JqlRunnerPanel extends JPanel implements tso.usmc.jira.util.ConfigC
     private final JqlAutocompleteTextArea jqlArea;
     private final JiraFieldAutocompleteTextField fieldsField = new JiraFieldAutocompleteTextField("key, summary, status, assignee, issuelinks");
     private final JButton executeBtn = new JButton("Execute JQL");
+    private final JButton workflowsBtn = new JButton("Workflows \u25BE"); // Down arrow
     private final JComboBox<String> filterCombo = new JComboBox<>();
     private final JButton saveFilterBtn = new JButton("Save Filter");
     private final JLabel statusLabel = new JLabel("Enter a JQL query and click Execute.");
@@ -81,7 +82,12 @@ public class JqlRunnerPanel extends JPanel implements tso.usmc.jira.util.ConfigC
         JPanel fieldsPanel = new JPanel(new BorderLayout(5, 5));
         fieldsPanel.add(new JLabel("Fields to display:"), BorderLayout.WEST);
         fieldsPanel.add(fieldsField, BorderLayout.CENTER);
-        fieldsPanel.add(executeBtn, BorderLayout.EAST);
+        
+        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 5, 0));
+        buttonPanel.add(workflowsBtn);
+        buttonPanel.add(executeBtn);
+        fieldsPanel.add(buttonPanel, BorderLayout.EAST);
+        
         configPanel.add(fieldsPanel, BorderLayout.SOUTH);
         
         // --- CENTER: Results Table ---
@@ -106,6 +112,7 @@ public class JqlRunnerPanel extends JPanel implements tso.usmc.jira.util.ConfigC
 
         // --- Action Listeners ---
         executeBtn.addActionListener(e -> executeJql());
+        workflowsBtn.addActionListener(e -> showWorkflowsMenu());
         saveFilterBtn.addActionListener(e -> saveCurrentFilter());
         filterCombo.addActionListener(e -> applySelectedFilter());
 
@@ -529,5 +536,103 @@ public class JqlRunnerPanel extends JPanel implements tso.usmc.jira.util.ConfigC
             }
         }
         return field.toString();
+    }
+
+    private void showWorkflowsMenu() {
+        // Get selected keys
+        int keyColumnIndex = -1;
+        for (int i = 0; i < tableModel.getColumnCount(); i++) {
+            if ("key".equalsIgnoreCase(tableModel.getColumnName(i))) {
+                keyColumnIndex = i;
+                break;
+            }
+        }
+
+        if (keyColumnIndex == -1) {
+            JOptionPane.showMessageDialog(this, "The results table must have a 'key' column to run workflows.", "Missing Column", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+
+        int[] selectedRows = resultsTable.getSelectedRows();
+        if (selectedRows.length == 0) {
+            JOptionPane.showMessageDialog(this, "Please select one or more issues from the table first.", "No Selection", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+
+        java.util.List<String> keys = new java.util.ArrayList<>();
+        for (int r : selectedRows) {
+            keys.add((String) resultsTable.getModel().getValueAt(resultsTable.convertRowIndexToModel(r), keyColumnIndex));
+        }
+        String issueKeys = String.join(",", keys);
+
+        final JPopupMenu menu = new JPopupMenu();
+        tso.usmc.jira.workflow.WorkflowManager wm = new tso.usmc.jira.workflow.WorkflowManager();
+        java.util.List<String> recipes = wm.listWorkflows();
+
+        for (String rName : recipes) {
+            try {
+                tso.usmc.jira.workflow.WorkflowRecipe recipe = wm.loadWorkflow(rName);
+                if (recipe != null && (recipe.getJqlQuery() == null || recipe.getJqlQuery().trim().isEmpty())) {
+                    JMenuItem item = new JMenuItem(rName);
+                    item.addActionListener(al -> {
+                        if (hasPrompts(recipe)) {
+                            mainFrame.showPanel("Workflow Orchestrator");
+                            WorkflowOrchestratorPanel wop = mainFrame.getWorkflowOrchestratorPanel();
+                            if (wop != null) {
+                                wop.setRunnerIssueKey(rName, issueKeys);
+                            }
+                        } else {
+                            WorkflowOrchestratorPanel wop = mainFrame.getWorkflowOrchestratorPanel();
+                            if (wop != null) {
+                                wop.runWorkflowDirectly(rName, issueKeys);
+                            }
+                        }
+                    });
+                    menu.add(item);
+                }
+            } catch (Exception ignored) {}
+        }
+
+        if (menu.getComponentCount() == 0) {
+            JMenuItem empty = new JMenuItem("No workflows available");
+            empty.setEnabled(false);
+            menu.add(empty);
+        }
+
+        menu.show(workflowsBtn, 0, workflowsBtn.getHeight());
+    }
+
+    private boolean hasPrompts(tso.usmc.jira.workflow.WorkflowRecipe recipe) {
+        for (tso.usmc.jira.workflow.WorkflowStep step : recipe.getSteps()) {
+            if (step instanceof tso.usmc.jira.workflow.CreateStep) {
+                tso.usmc.jira.workflow.CreateStep cs = (tso.usmc.jira.workflow.CreateStep) step;
+                String pk = cs.getProjectKey();
+                String it = cs.getIssueType();
+                if ((pk != null && (pk.contains(",") || pk.contains("[config:") || pk.contains("[choice:"))) ||
+                    (it != null && (it.contains(",") || it.contains("[config:") || it.contains("[choice:")))) {
+                    return true;
+                }
+            }
+            if (step instanceof tso.usmc.jira.workflow.WorklogStep) {
+                tso.usmc.jira.workflow.WorklogStep ws = (tso.usmc.jira.workflow.WorklogStep) step;
+                String ts = ws.getTimeSpent();
+                String c = ws.getComment();
+                String s = ws.getStarted();
+                if ((ts != null && (ts.contains(",") || ts.contains("[config:") || ts.contains("[choice:"))) ||
+                    (c != null && (c.contains(",") || c.contains("[config:") || c.contains("[choice:"))) ||
+                    (s != null && (s.contains(",") || s.contains("[config:") || s.contains("[choice:")))) {
+                    return true;
+                }
+            }
+            if (step instanceof tso.usmc.jira.workflow.AssetStep) {
+                if (((tso.usmc.jira.workflow.AssetStep) step).isPromptOptions()) return true;
+            }
+            for (tso.usmc.jira.workflow.FieldAction fa : step.getFieldActions().values()) {
+                if (fa.getMode() == tso.usmc.jira.workflow.FieldAction.MappingMode.PROMPT) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 }
