@@ -95,7 +95,7 @@ public class WorkflowEngine {
                         }
 
                         step.validate(); // Client-side structure validation
-                        executeStep(step, issue, promptValues, metaSnap);
+                        executeStep(step, issue, promptValues);
                         result.logEntries.add("COMPLETED: " + step.getLabel());
                     } catch (Exception ex) {
                         String errorMsg = "Error in step '" + step.getLabel() + "': " + ex.getMessage();
@@ -147,13 +147,13 @@ public class WorkflowEngine {
         }
     }
 
-    private void executeStep(WorkflowStep step, JSONObject issue, Map<String, String> prompts, Map<String, JSONObject> metaSnap) throws Exception {
+    private void executeStep(WorkflowStep step, JSONObject issue, Map<String, String> prompts) throws Exception {
         if (step instanceof CreateStep) {
             CreateStep cs = (CreateStep) step;
             String proj = resolveStepProperty(cs.getProjectKey(), "Project (" + step.getLabel() + ")", prompts, issue);
             String type = resolveStepProperty(cs.getIssueType(), "Issue Type (" + step.getLabel() + ")", prompts, issue);
             
-            JSONObject fields = buildFields(step, issue, prompts, metaSnap);
+            JSONObject fields = buildFields(step, issue, prompts);
             fields.put("project", new JSONObject().put("key", proj));
             fields.put("issuetype", new JSONObject().put("name", type));
 
@@ -180,7 +180,7 @@ public class WorkflowEngine {
             String targetKey = JiraUtils.cleanIssueKey(resolveTokens(us.getTargetIssueToken(), issue));
             if (targetKey == null || targetKey.trim().isEmpty()) return;
             
-            JSONObject fields = buildFields(step, issue, prompts, metaSnap);
+            JSONObject fields = buildFields(step, issue, prompts);
             
             if (dryRun) {
                 listener.onLog("  > [DRY RUN] Would update " + targetKey);
@@ -204,7 +204,7 @@ public class WorkflowEngine {
             String tid = JiraUtils.findTransitionIdByName(transMeta, ts.getTargetStatus());
             
             if (tid != null) {
-                JSONObject fields = buildFields(step, issue, prompts, metaSnap);
+                JSONObject fields = buildFields(step, issue, prompts);
                 if (dryRun) {
                     listener.onLog("  > [DRY RUN] Transition '" + ts.getTargetStatus() + "' (ID: " + tid + ") IS AVAILABLE for " + targetKey);
                     if (fields.length() > 0) listener.onLog("  > [DRY RUN] Would set fields: " + fields.keySet());
@@ -417,7 +417,7 @@ public class WorkflowEngine {
         }
     }
 
-    private JSONObject buildFields(WorkflowStep step, JSONObject issue, Map<String, String> prompts, Map<String, JSONObject> metaSnap) {
+    private JSONObject buildFields(WorkflowStep step, JSONObject issue, Map<String, String> prompts) {
         JSONObject fields = new JSONObject();
         for (FieldAction fa : step.getFieldActions().values()) {
             if ("teams_selection".equalsIgnoreCase(fa.getFieldId())) continue;
@@ -431,7 +431,7 @@ public class WorkflowEngine {
                 catch (Exception ignored) {}
             }
 
-            JSONObject fieldMeta = metaSnap != null ? metaSnap.get(fieldId) : null;
+            JSONObject fieldMeta = metadataService != null ? metadataService.getFieldMetadata(fieldId) : null;
             boolean isArray = (fieldMeta != null && fieldMeta.has("schema") && "array".equals(fieldMeta.getJSONObject("schema").optString("type"))) || (fieldId.equals("labels") || fieldId.equals("components") || fieldId.equals("fixVersions") || fieldId.equals("versions"));
 
             if (isArray) {
