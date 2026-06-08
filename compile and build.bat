@@ -14,8 +14,8 @@ if "%ENV%"=="WORK" (
     set "JDK_BIN=C:\Program Files\Java\jdk21\TSO\bin"
     set "SOURCES=@sources.txt"
 ) else (
-    @REM set "JDK_BIN=C:\Program Files\Java\jdk-25\bin"
-    set "JDK_BIN=C:\Program Files\Java\jdk-25.0.2\bin"
+    set "JDK_BIN=C:\Program Files\Java\jdk-25\bin"
+    @REM set "JDK_BIN=C:\Program Files\Java\jdk-25.0.2\bin"
     set "SOURCES=@sources.txt"
 )
 

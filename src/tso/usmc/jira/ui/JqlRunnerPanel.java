@@ -274,12 +274,12 @@ public class JqlRunnerPanel extends JPanel implements tso.usmc.jira.util.ConfigC
                                 String label = jiraConfig.getTemplateLabel(tKey);
                                 String text = jiraConfig.getTemplateText(tKey);
                                 if (label != null && text != null) {
-                                    JMenuItem item = new JMenuItem(label);
-                                    item.addActionListener(al -> {
-                                        mainFrame.showPanel("Task Builder");
-                                        TaskBuilderPanel tbp = mainFrame.getTaskBuilderPanel();
-                                        if (tbp != null) {
-                                            if ("release_mgmt".equals(tKey)) {
+                                    if ("release_mgmt".equals(tKey)) {
+                                        JMenuItem item = new JMenuItem(label);
+                                        item.addActionListener(al -> {
+                                            mainFrame.showPanel("Task Builder");
+                                            TaskBuilderPanel tbp = mainFrame.getTaskBuilderPanel();
+                                            if (tbp != null) {
                                                 tbp.setParentTicket(""); // Clear default parent field
                                                 
                                                 String[] lines = text.split("\n");
@@ -306,13 +306,25 @@ public class JqlRunnerPanel extends JPanel implements tso.usmc.jira.util.ConfigC
                                                     finalSb.append(sep).append("\n\n");
                                                 }
                                                 tbp.setInputAreaText(finalSb.toString().trim());
-                                            } else {
-                                                // Default behavior for other templates
+                                            }
+                                        });
+                                        contextMenu.add(item);
+
+                                        // New context option to build release management with CIs
+                                        JMenuItem itemWithCIs = new JMenuItem(label + " with CIs");
+                                        itemWithCIs.addActionListener(al -> buildReleaseMgmtWithCIs(keys));
+                                        contextMenu.add(itemWithCIs);
+                                    } else {
+                                        JMenuItem item = new JMenuItem(label);
+                                        item.addActionListener(al -> {
+                                            mainFrame.showPanel("Task Builder");
+                                            TaskBuilderPanel tbp = mainFrame.getTaskBuilderPanel();
+                                            if (tbp != null) {
                                                 tbp.setInputAreaText("PARENT_TICKET:" + selectedIssueKey + "\n" + text);
                                             }
-                                        }
-                                    });
-                                    contextMenu.add(item);
+                                        });
+                                        contextMenu.add(item);
+                                    }
                                 }
                             }
                         }
@@ -529,5 +541,157 @@ public class JqlRunnerPanel extends JPanel implements tso.usmc.jira.util.ConfigC
             }
         }
         return field.toString();
+    }
+
+    private void buildReleaseMgmtWithCIs(java.util.List<String> keys) {
+        statusLabel.setText("Building release management with CIs...");
+        
+        ExecutionService.submit(() -> {
+            try {
+                String text = jiraConfig.getTemplateText("release_mgmt");
+                if (text == null) {
+                    SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(this, "Release management template not found.", "Error", JOptionPane.ERROR_MESSAGE));
+                    return;
+                }
+                
+                String[] lines = text.split("\n");
+                StringBuilder defs = new StringBuilder();
+                StringBuilder content = new StringBuilder();
+                String sep = "******************************************************************";
+                
+                for (String l : lines) {
+                    if (l.startsWith("DEFAULT_")) {
+                        defs.append(l).append("\n");
+                    } else if (l.startsWith("******")) {
+                        sep = l;
+                    } else {
+                        content.append(l).append("\n");
+                    }
+                }
+                
+                StringBuilder finalSb = new StringBuilder(defs);
+                if (defs.length() > 0) finalSb.append("\n");
+                
+                for (String key : keys) {
+                    java.util.Set<String> ciSet = fetchCIsForTicket(key);
+                    String ciLines = String.join("\n", ciSet);
+                    
+                    String issueContent = content.toString();
+                    if (issueContent.contains("CIs:")) {
+                        issueContent = issueContent.replace("CIs:", "CIs:\n" + ciLines);
+                    } else {
+                        issueContent = issueContent + "\nCIs:\n" + ciLines;
+                    }
+                    
+                    finalSb.append(issueContent);
+                    finalSb.append("parent: ").append(key).append("\n");
+                    finalSb.append(sep).append("\n\n");
+                }
+                
+                SwingUtilities.invokeLater(() -> {
+                    mainFrame.showPanel("Task Builder");
+                    TaskBuilderPanel tbp = mainFrame.getTaskBuilderPanel();
+                    if (tbp != null) {
+                        tbp.setParentTicket(""); // Clear default parent field
+                        tbp.setInputAreaText(finalSb.toString().trim());
+                    }
+                    statusLabel.setText("Release management with CIs built successfully.");
+                });
+                
+            } catch (Exception ex) {
+                ex.printStackTrace();
+                SwingUtilities.invokeLater(() -> {
+                    JOptionPane.showMessageDialog(this, "Error building release management with CIs: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+                    statusLabel.setText("Error building release management.");
+                });
+            }
+        });
+    }
+
+    private java.util.Set<String> fetchCIsForTicket(String key) throws Exception {
+        java.util.Set<String> ciSet = new java.util.TreeSet<>();
+        
+        // 1. Fetch issue key details
+        String url = mainFrame.getBaseUrl() + "/rest/api/2/issue/" + key + "?expand=names";
+        String response = mainFrame.getService().executeRequest(url, "GET", null);
+        JSONObject issueJson = new JSONObject(response);
+        JSONObject fields = issueJson.optJSONObject("fields");
+        if (fields == null) return ciSet;
+        
+        // Check if it's an Epic
+        String epicKey = null;
+        JSONObject issueTypeObj = fields.optJSONObject("issuetype");
+        if (issueTypeObj != null && "Epic".equalsIgnoreCase(issueTypeObj.optString("name"))) {
+            epicKey = key;
+        } else {
+            // Find Epic Link field from names
+            JSONObject namesObj = issueJson.optJSONObject("names");
+            if (namesObj != null) {
+                for (String fieldId : namesObj.keySet()) {
+                    if ("Epic Link".equalsIgnoreCase(namesObj.getString(fieldId))) {
+                        epicKey = fields.optString(fieldId);
+                        if (epicKey != null && epicKey.trim().isEmpty()) {
+                            epicKey = null;
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+        
+        java.util.List<String> keysToQuery = new java.util.ArrayList<>();
+        if (epicKey != null) {
+            epicKey = epicKey.trim();
+            // Fetch all issues in the Epic
+            String searchUrl = mainFrame.getBaseUrl() + "/rest/api/2/search?jql=" + 
+                              java.net.URLEncoder.encode("\"Epic Link\" = " + epicKey, "UTF-8") + 
+                              "&fields=key&maxResults=500";
+            String searchResp = mainFrame.getService().executeRequest(searchUrl, "GET", null);
+            JSONObject searchJson = new JSONObject(searchResp);
+            JSONArray issuesArray = searchJson.optJSONArray("issues");
+            if (issuesArray != null) {
+                for (int i = 0; i < issuesArray.length(); i++) {
+                    JSONObject issue = issuesArray.getJSONObject(i);
+                    String k = issue.optString("key");
+                    if (k != null && !k.isEmpty()) {
+                        keysToQuery.add(k);
+                    }
+                }
+            }
+            keysToQuery.add(epicKey);
+        } else {
+            // Fallback: Selected ticket itself
+            keysToQuery.add(key);
+        }
+        
+        // 2. Query all sub-tasks under the keysToQuery
+        if (!keysToQuery.isEmpty()) {
+            String jql = "parent in (" + String.join(",", keysToQuery) + ")";
+            String searchUrl = mainFrame.getBaseUrl() + "/rest/api/2/search?jql=" + 
+                              java.net.URLEncoder.encode(jql, "UTF-8") + 
+                              "&fields=summary,issuetype&maxResults=500";
+            String searchResp = mainFrame.getService().executeRequest(searchUrl, "GET", null);
+            JSONObject searchJson = new JSONObject(searchResp);
+            JSONArray subTasksArray = searchJson.optJSONArray("issues");
+            
+            if (subTasksArray != null) {
+                java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("^(COB|PROC|JCL|ASM|COPY|SYS)[ \\t]+(.+)$", java.util.regex.Pattern.CASE_INSENSITIVE);
+                for (int i = 0; i < subTasksArray.length(); i++) {
+                    JSONObject subTask = subTasksArray.getJSONObject(i);
+                    JSONObject subTaskFields = subTask.optJSONObject("fields");
+                    if (subTaskFields != null) {
+                        String summary = subTaskFields.optString("summary", "").trim();
+                        java.util.regex.Matcher m = pattern.matcher(summary);
+                        if (m.find()) {
+                            String type = m.group(1).toUpperCase();
+                            String ciName = m.group(2).trim();
+                            ciSet.add(type + " " + ciName);
+                        }
+                    }
+                }
+            }
+        }
+        
+        return ciSet;
     }
 }

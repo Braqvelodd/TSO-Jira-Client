@@ -190,6 +190,7 @@ public class StepEditorPanel extends JPanel {
         // --- CONDITION SECTION ---
         JPanel conditionOuterPanel = new JPanel(new BorderLayout());
         conditionOuterPanel.setBorder(BorderFactory.createTitledBorder("Step Execution Condition (Optional)"));
+        conditionOuterPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
         
         conditionInnerPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 2));
         condTokenField = new JTextField(step.getConditionToken() != null ? step.getConditionToken() : "", 15);
