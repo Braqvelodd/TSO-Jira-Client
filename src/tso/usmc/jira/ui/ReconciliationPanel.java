@@ -126,6 +126,8 @@ public class ReconciliationPanel extends JPanel {
         });
 
         setupContextMenu();
+        setupTextAreaContextMenu(jiraParentKeysArea);
+        setupTextAreaContextMenu(ispwReportArea);
     }
     
     private void performComparison() {
@@ -494,6 +496,45 @@ public class ReconciliationPanel extends JPanel {
                 } else {
                     tbp.setInputAreaText(tasksText);
                 }
+            }
+        });
+    }
+
+    private void setupTextAreaContextMenu(JTextArea textArea) {
+        JPopupMenu menu = new JPopupMenu();
+        
+        JMenuItem selectAllItem = new JMenuItem("Select All");
+        selectAllItem.addActionListener(e -> textArea.selectAll());
+        menu.add(selectAllItem);
+        
+        JMenuItem copyItem = new JMenuItem("Copy");
+        copyItem.addActionListener(e -> textArea.copy());
+        menu.add(copyItem);
+        
+        JMenuItem pasteItem = new JMenuItem("Paste");
+        pasteItem.addActionListener(e -> textArea.paste());
+        menu.add(pasteItem);
+        
+        JMenuItem cutItem = new JMenuItem("Cut");
+        cutItem.addActionListener(e -> textArea.cut());
+        menu.add(cutItem);
+        
+        textArea.addMouseListener(new java.awt.event.MouseAdapter() {
+            @Override
+            public void mouseReleased(java.awt.event.MouseEvent e) {
+                if (e.isPopupTrigger()) showPopup(e);
+            }
+
+            @Override
+            public void mousePressed(java.awt.event.MouseEvent e) {
+                if (e.isPopupTrigger()) showPopup(e);
+            }
+
+            private void showPopup(java.awt.event.MouseEvent e) {
+                copyItem.setEnabled(textArea.getSelectedText() != null);
+                cutItem.setEnabled(textArea.getSelectedText() != null && textArea.isEditable());
+                pasteItem.setEnabled(textArea.isEditable());
+                menu.show(e.getComponent(), e.getX(), e.getY());
             }
         });
     }
