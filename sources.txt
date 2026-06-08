@@ -30,6 +30,7 @@ src\tso\usmc\jira\workflow\LinkAction.java
 src\tso\usmc\jira\workflow\LinkStep.java
 src\tso\usmc\jira\workflow\TransitionStep.java
 src\tso\usmc\jira\workflow\UpdateStep.java
+src\tso\usmc\jira\workflow\TokenEngine.java
 src\tso\usmc\jira\workflow\WorkflowEngine.java
 src\tso\usmc\jira\workflow\WorkflowProgressListener.java
 src\tso\usmc\jira\workflow\WorkflowStep.java

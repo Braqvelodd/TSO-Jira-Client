@@ -4,6 +4,7 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 import tso.usmc.jira.service.JiraApiService;
 import tso.usmc.jira.service.JiraIssueService;
+import tso.usmc.jira.service.MetadataCacheService;
 import tso.usmc.jira.util.JiraUtils;
 import java.util.*;
 
@@ -30,6 +31,7 @@ public class WorkflowEngine {
 
     private final JiraApiService apiService;
     private final JiraIssueService issueService;
+    private final MetadataCacheService metadataService;
     private final String baseUrl;
     private final WorkflowProgressListener listener;
     
@@ -38,9 +40,10 @@ public class WorkflowEngine {
     private boolean verboseLogging = false;
     private boolean dryRun = false;
 
-    public WorkflowEngine(JiraApiService apiService, JiraIssueService issueService, String baseUrl, WorkflowProgressListener listener) {
+    public WorkflowEngine(JiraApiService apiService, JiraIssueService issueService, MetadataCacheService metadataService, String baseUrl, WorkflowProgressListener listener) {
         this.apiService = apiService;
         this.issueService = issueService;
+        this.metadataService = metadataService;
         this.baseUrl = baseUrl;
         this.listener = listener;
     }
@@ -56,7 +59,7 @@ public class WorkflowEngine {
     public List<ExecutionResult> execute(WorkflowRecipe recipe, List<JSONObject> issues, Map<String, String> promptValues) {
         List<ExecutionResult> results = new ArrayList<>();
         try {
-            JSONObject metaSnap = recipe.getMetadataSnapshot();
+            Map<String, JSONObject> metaSnap = metadataService != null ? metadataService.getDiskCache() : new HashMap<>();
             String mode = dryRun ? "[DRY RUN - VALIDATE ONLY]" : "[LIVE EXECUTION]";
             listener.onLog(mode + " Starting workflow: " + recipe.getRecipeName() + " on " + issues.size() + " issues.");
 
@@ -92,7 +95,7 @@ public class WorkflowEngine {
                         }
 
                         step.validate(); // Client-side structure validation
-                        executeStep(step, issue, promptValues, metaSnap);
+                        executeStep(step, issue, promptValues);
                         result.logEntries.add("COMPLETED: " + step.getLabel());
                     } catch (Exception ex) {
                         String errorMsg = "Error in step '" + step.getLabel() + "': " + ex.getMessage();
@@ -144,13 +147,13 @@ public class WorkflowEngine {
         }
     }
 
-    private void executeStep(WorkflowStep step, JSONObject issue, Map<String, String> prompts, JSONObject metaSnap) throws Exception {
+    private void executeStep(WorkflowStep step, JSONObject issue, Map<String, String> prompts) throws Exception {
         if (step instanceof CreateStep) {
             CreateStep cs = (CreateStep) step;
             String proj = resolveStepProperty(cs.getProjectKey(), "Project (" + step.getLabel() + ")", prompts, issue);
             String type = resolveStepProperty(cs.getIssueType(), "Issue Type (" + step.getLabel() + ")", prompts, issue);
             
-            JSONObject fields = buildFields(step, issue, prompts, metaSnap);
+            JSONObject fields = buildFields(step, issue, prompts);
             fields.put("project", new JSONObject().put("key", proj));
             fields.put("issuetype", new JSONObject().put("name", type));
 
@@ -177,7 +180,7 @@ public class WorkflowEngine {
             String targetKey = JiraUtils.cleanIssueKey(resolveTokens(us.getTargetIssueToken(), issue));
             if (targetKey == null || targetKey.trim().isEmpty()) return;
             
-            JSONObject fields = buildFields(step, issue, prompts, metaSnap);
+            JSONObject fields = buildFields(step, issue, prompts);
             
             if (dryRun) {
                 listener.onLog("  > [DRY RUN] Would update " + targetKey);
@@ -201,7 +204,7 @@ public class WorkflowEngine {
             String tid = JiraUtils.findTransitionIdByName(transMeta, ts.getTargetStatus());
             
             if (tid != null) {
-                JSONObject fields = buildFields(step, issue, prompts, metaSnap);
+                JSONObject fields = buildFields(step, issue, prompts);
                 if (dryRun) {
                     listener.onLog("  > [DRY RUN] Transition '" + ts.getTargetStatus() + "' (ID: " + tid + ") IS AVAILABLE for " + targetKey);
                     if (fields.length() > 0) listener.onLog("  > [DRY RUN] Would set fields: " + fields.keySet());
@@ -414,7 +417,7 @@ public class WorkflowEngine {
         }
     }
 
-    private JSONObject buildFields(WorkflowStep step, JSONObject issue, Map<String, String> prompts, JSONObject metaSnap) {
+    private JSONObject buildFields(WorkflowStep step, JSONObject issue, Map<String, String> prompts) {
         JSONObject fields = new JSONObject();
         for (FieldAction fa : step.getFieldActions().values()) {
             if ("teams_selection".equalsIgnoreCase(fa.getFieldId())) continue;
@@ -428,7 +431,7 @@ public class WorkflowEngine {
                 catch (Exception ignored) {}
             }
 
-            JSONObject fieldMeta = metaSnap != null ? metaSnap.optJSONObject(fieldId) : null;
+            JSONObject fieldMeta = metadataService != null ? metadataService.getFieldMetadata(fieldId) : null;
             boolean isArray = (fieldMeta != null && fieldMeta.has("schema") && "array".equals(fieldMeta.getJSONObject("schema").optString("type"))) || (fieldId.equals("labels") || fieldId.equals("components") || fieldId.equals("fixVersions") || fieldId.equals("versions"));
 
             if (isArray) {
@@ -447,10 +450,9 @@ public class WorkflowEngine {
 
         // 1. Determine the field's "semantic type" primarily from metadata.
         String semanticType = null;
+        String source = "METADATA";
         if (fieldMeta != null && fieldMeta.has("schema")) {
             JSONObject schema = fieldMeta.getJSONObject("schema");
-            // For arrays, the item's type matters for wrapping (e.g., "user" in an array of users).
-            // For non-arrays, the field's own type matters (e.g., "priority").
             semanticType = "array".equals(schema.optString("type"))
                     ? schema.optString("items")
                     : schema.optString("type");
@@ -458,6 +460,7 @@ public class WorkflowEngine {
 
         // 2. If metadata is missing, fall back to guessing based on the field ID (safety net).
         if (semanticType == null || semanticType.trim().isEmpty()) {
+            source = "FALLBACK";
             if (fieldId.equals("assignee") || fieldId.equals("reporter") || fieldId.contains("user") || fieldId.contains("owner")) semanticType = "user";
             else if (fieldId.equals("priority") || fieldId.equals("resolution") || fieldId.startsWith("customfield_")) semanticType = "option";
             else if (fieldId.equals("labels")) semanticType = "string";
@@ -465,40 +468,47 @@ public class WorkflowEngine {
             else if (fieldId.equals("components")) semanticType = "component";
         }
 
+        if (verboseLogging && listener != null) {
+            listener.onLog("    > Field [" + fieldId + "] wrapping value [" + val + "] using " + source + " (" + (semanticType != null ? semanticType : "UNKNOWN") + ")");
+        }
+
         // 3. Wrap the value based on the determined semantic type.
         if (semanticType != null) {
-            switch (semanticType) {
+            switch (semanticType.toLowerCase()) {
                 case "user":
                     return new JSONObject().put("name", val);
-                case "option":
                 case "priority":
                 case "resolution":
+                case "status":
+                    return new JSONObject().put("name", val);
+                case "option":
                     return new JSONObject().put("value", val);
                 case "component":
                 case "version":
+                case "project":
+                case "issuetype":
                     return new JSONObject().put("name", val);
                 case "number":
                     try {
-                        return val.contains(".") ? Double.parseDouble(val) : Long.parseLong(val);
+                        if (val.contains(".")) return Double.parseDouble(val);
+                        return Long.parseLong(val);
                     } catch (NumberFormatException e) {
-                        return val; // If parsing fails, return as string
+                        return val;
                     }
                 case "string":
                 case "date":
                 case "datetime":
+                case "sd-request-type":
+                case "service-desk-request-type":
                     return val;
             }
-        }
-
-        // Special case for 'parent' which is identified by fieldId, not type.
-        if ("parent".equals(fieldId)) {
-            return new JSONObject().put("key", JiraUtils.cleanIssueKey(val));
         }
 
         // Final fallback: if no type could be determined, check for number, otherwise return raw value.
         if (val.matches("-?\\d+(\\.\\d+)?")) {
             try {
-                return val.contains(".") ? Double.parseDouble(val) : Long.parseLong(val);
+                if (val.contains(".")) return Double.parseDouble(val);
+                return Long.parseLong(val);
             } catch (Exception ignored) {}
         }
         return val;

@@ -8,7 +8,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Unified service for fetching and caching Jira metadata (projects, issue types, fields, transitions).
- * Combines logic from JiraMetadataHelper and WorkflowFieldsConfig with in-memory and disk persistence.
+ * Serves as the single source of truth for Jira metadata with in-memory and disk persistence.
  */
 public class MetadataCacheService {
     private final JiraApiService apiService;
@@ -320,5 +320,66 @@ public class MetadataCacheService {
             lastFetchTime.put(key, now);
         }
         saveToDisk();
+    }
+
+    /**
+     * Attempts to find metadata for a specific field ID by searching through all cached metadata.
+     * This looks at top-level field definitions and inside createmeta/editmeta/transitions blobs.
+     */
+    public JSONObject getFieldMetadata(String fieldId) {
+        // 1. Check top-level cache (where fields:all or individual updates go)
+        if (cache.containsKey(fieldId)) {
+            return cache.get(fieldId);
+        }
+
+        // 2. Search inside fields:all
+        if (cache.containsKey("fields:all")) {
+            JSONObject fieldsAll = cache.get("fields:all");
+            if (fieldsAll.has("fields")) {
+                JSONArray arr = fieldsAll.getJSONArray("fields");
+                for (int i = 0; i < arr.length(); i++) {
+                    JSONObject f = arr.getJSONObject(i);
+                    if (fieldId.equals(f.optString("id"))) {
+                        return f;
+                    }
+                }
+            }
+        }
+
+        // 3. Search inside createmeta, editmeta, and transitions blobs
+        for (String key : cache.keySet()) {
+            if (key.startsWith("createmeta:") || key.startsWith("editmeta:") || key.startsWith("transitions:")) {
+                JSONObject blob = cache.get(key);
+                
+                // Createmeta structure: { "values": [ { "fieldId": "...", ... }, ... ] }
+                if (blob.has("values")) {
+                    JSONArray values = blob.getJSONArray("values");
+                    for (int i = 0; i < values.length(); i++) {
+                        JSONObject f = values.getJSONObject(i);
+                        if (fieldId.equals(f.optString("fieldId"))) return f;
+                    }
+                }
+                
+                // Editmeta / Transitions structure: { "fields": { "fieldId": { ... }, ... } }
+                if (blob.has("fields")) {
+                    JSONObject fields = blob.getJSONObject("fields");
+                    if (fields.has(fieldId)) return fields.getJSONObject(fieldId);
+                }
+                
+                // Transitions can also be an array of transitions, each with fields
+                if (blob.has("transitions")) {
+                    JSONArray trans = blob.getJSONArray("transitions");
+                    for (int i = 0; i < trans.length(); i++) {
+                        JSONObject t = trans.getJSONObject(i);
+                        if (t.has("fields")) {
+                            JSONObject fields = t.getJSONObject("fields");
+                            if (fields.has(fieldId)) return fields.getJSONObject(fieldId);
+                        }
+                    }
+                }
+            }
+        }
+
+        return null;
     }
 }

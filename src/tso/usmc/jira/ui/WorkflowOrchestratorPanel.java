@@ -270,9 +270,17 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
     }
 
     public void setRunnerIssueKey(String recipeName, String key) {
-        runnerRecipeCombo.setSelectedItem(recipeName);
-        runnerJqlField.setText(key);
-        updateRunnerInputs();
+        SwingUtilities.invokeLater(() -> {
+            for (Component c : getComponents()) {
+                if (c instanceof JTabbedPane) {
+                    ((JTabbedPane) c).setSelectedIndex(1);
+                    break;
+                }
+            }
+            runnerRecipeCombo.setSelectedItem(recipeName);
+            runnerJqlField.setText(key);
+            executeRunnerSearch();
+        });
     }
 
     public void runWorkflowDirectly(String recipeName, String issueKeys) {
@@ -314,7 +322,7 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
                     issues.add(new JSONObject(resp));
                 }
 
-                WorkflowEngine engine = new WorkflowEngine(mainFrame.getService(), mainFrame.getIssueService(), mainFrame.getBaseUrl(), this);
+                WorkflowEngine engine = new WorkflowEngine(mainFrame.getService(), mainFrame.getIssueService(), mainFrame.getMetadataService(), mainFrame.getBaseUrl(), this);
                 engine.setVerboseLogging(verboseLogCheck.isSelected());
                 lastResults = engine.execute(recipe, issues, new HashMap<>());
 
@@ -431,6 +439,11 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
                         runnerTableModel.addRow(new Object[]{key, summary, status, assignee});
                     }
                     onLog("Found " + issues.length() + " issues.");
+                    
+                    if (issues.length() > 0) {
+                        runnerTable.setRowSelectionInterval(0, issues.length() - 1);
+                    }
+                    
                     updateRunnerInputs();
                 });
             } catch (Exception e) {
@@ -501,7 +514,7 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
                     return;
                 }
                 
-                WorkflowEngine engine = new WorkflowEngine(mainFrame.getService(), mainFrame.getIssueService(), mainFrame.getBaseUrl(), this);
+                WorkflowEngine engine = new WorkflowEngine(mainFrame.getService(), mainFrame.getIssueService(), mainFrame.getMetadataService(), mainFrame.getBaseUrl(), this);
                 engine.setVerboseLogging(verboseLogCheck.isSelected());
                 engine.setDryRun(dryRunCheck.isSelected());
                 lastResults = engine.execute(recipe, issuesToProcess, promptValues);
@@ -572,13 +585,6 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
                         CreateStep cs = (CreateStep) step;
                         addDynamicPrompt(labels, "Project (" + step.getLabel() + ")", cs.getProjectKey(), "project", contextIssue);
                         addDynamicPrompt(labels, "Issue Type (" + step.getLabel() + ")", cs.getIssueType(), "issuetype", contextIssue);
-                    }
-                    
-                    if (step instanceof WorklogStep) {
-                        WorklogStep ws = (WorklogStep) step;
-                        addDynamicPrompt(labels, "Time Spent (" + step.getLabel() + ")", ws.getTimeSpent(), null, contextIssue);
-                        addDynamicPrompt(labels, "Comment (" + step.getLabel() + ")", ws.getComment(), null, contextIssue);
-                        addDynamicPrompt(labels, "Started (" + step.getLabel() + ")", ws.getStarted(), null, contextIssue);
                     }
                     
                     if (step instanceof AssetStep) {
