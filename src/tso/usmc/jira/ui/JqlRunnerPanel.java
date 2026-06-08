@@ -675,7 +675,7 @@ public class JqlRunnerPanel extends JPanel implements tso.usmc.jira.util.ConfigC
             JSONArray subTasksArray = searchJson.optJSONArray("issues");
             
             if (subTasksArray != null) {
-                java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("^(COB|PROC|JCL|ASM|COPY|SYS)[ \\t]+(.+)$", java.util.regex.Pattern.CASE_INSENSITIVE);
+                java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("^(COB|PROC|JCL|ASM|COPY|SYS|DMGR)[ \\t]+(.+)$", java.util.regex.Pattern.CASE_INSENSITIVE);
                 for (int i = 0; i < subTasksArray.length(); i++) {
                     JSONObject subTask = subTasksArray.getJSONObject(i);
                     JSONObject subTaskFields = subTask.optJSONObject("fields");
