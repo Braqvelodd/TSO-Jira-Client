@@ -48,3 +48,6 @@ src\tso\usmc\jira\util\WorkflowException.java
 src\tso\usmc\jira\ui\JiraFieldAutocompleteTextField.java
 src\tso\usmc\jira\ui\AutocompleteTextField.java
 src\tso\usmc\jira\workflow\TokenEngine.java
+src\tso\usmc\jira\ui\StyledBorder.java
+src\tso\usmc\jira\ui\ThemeSettingsPanel.java
+src\tso\usmc\jira\util\ThemeManager.java

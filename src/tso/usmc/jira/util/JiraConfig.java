@@ -671,5 +671,107 @@ public class JiraConfig {
         String value = getProperty("autocomplete.enabled");
         return value == null || Boolean.parseBoolean(value.trim());
     }
+
+    public String getTheme() {
+        String theme = getProperty("theme");
+        if (theme == null || theme.trim().isEmpty()) {
+            return "default";
+        }
+        return theme.trim().toLowerCase();
+    }
+
+    public void setTheme(String theme) {
+        saveProperty("theme", theme);
+    }
+
+    public String getThemeAccentColor() {
+        String color = getProperty("theme_accent_color");
+        if (color == null || color.trim().isEmpty()) {
+            return "#0078D7";
+        }
+        return color.trim();
+    }
+
+    public void setThemeAccentColor(String color) {
+        saveProperty("theme_accent_color", color);
+    }
+
+    public String getThemeCssFilePath() {
+        String path = getProperty("theme_css_file");
+        if (path == null || path.trim().isEmpty()) {
+            File parentDir = configFile.getParentFile();
+            File cssFile = new File(parentDir, "custom_theme.css");
+            ensureCssFileExists(cssFile);
+            return cssFile.getAbsolutePath();
+        }
+        File cssFile = new File(path.trim());
+        ensureCssFileExists(cssFile);
+        return cssFile.getAbsolutePath();
+    }
+
+    private void ensureCssFileExists(File file) {
+        if (!file.exists()) {
+            try {
+                File parentDir = file.getParentFile();
+                if (parentDir != null && !parentDir.exists()) {
+                    parentDir.mkdirs();
+                }
+                List<String> defaultCss = new ArrayList<>();
+                defaultCss.add("/* Custom CSS Stylesheet for USMC TSO Jira Client */");
+                defaultCss.add("/* You can style swing components by class name or custom style classes. */");
+                defaultCss.add("");
+                defaultCss.add("/* Component Type Selectors */");
+                defaultCss.add("JPanel {");
+                defaultCss.add("    background-color: rgba(30, 41, 59, 0.2);");
+                defaultCss.add("    border-color: rgba(255, 255, 255, 0.1);");
+                defaultCss.add("    border-radius: 8px;");
+                defaultCss.add("}");
+                defaultCss.add("");
+                defaultCss.add("JButton {");
+                defaultCss.add("    background-color: #3b82f6;");
+                defaultCss.add("    color: #ffffff;");
+                defaultCss.add("    border-radius: 6px;");
+                defaultCss.add("    border-color: #2563eb;");
+                defaultCss.add("    border-width: 1px;");
+                defaultCss.add("    padding: 6px;");
+                defaultCss.add("}");
+                defaultCss.add("");
+                defaultCss.add("JButton:hover {");
+                defaultCss.add("    background-color: #2563eb;");
+                defaultCss.add("    border-color: #1d4ed8;");
+                defaultCss.add("}");
+                defaultCss.add("");
+                defaultCss.add("JLabel {");
+                defaultCss.add("    color: #f8fafc;");
+                defaultCss.add("}");
+                defaultCss.add("");
+                defaultCss.add("JTextField, JTextArea, JComboBox {");
+                defaultCss.add("    background-color: rgba(15, 23, 42, 0.6);");
+                defaultCss.add("    color: #f1f5f9;");
+                defaultCss.add("    border-color: rgba(255, 255, 255, 0.15);");
+                defaultCss.add("    border-radius: 4px;");
+                defaultCss.add("    border-width: 1px;");
+                defaultCss.add("}");
+                defaultCss.add("");
+                defaultCss.add("/* Custom class styling */");
+                defaultCss.add(".glass-panel {");
+                defaultCss.add("    background-color: rgba(255, 255, 255, 0.1);");
+                defaultCss.add("    border-color: rgba(255, 255, 255, 0.2);");
+                defaultCss.add("    border-radius: 12px;");
+                defaultCss.add("}");
+                defaultCss.add("");
+                defaultCss.add(".primary-button {");
+                defaultCss.add("    background-color: #10b981;");
+                defaultCss.add("    border-color: #059669;");
+                defaultCss.add("}");
+                defaultCss.add(".primary-button:hover {");
+                defaultCss.add("    background-color: #059669;");
+                defaultCss.add("}");
+                Files.write(file.toPath(), defaultCss);
+            } catch (IOException e) {
+                System.err.println("Failed to create default CSS file: " + e.getMessage());
+            }
+        }
+    }
 }
 

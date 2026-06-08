@@ -24,6 +24,7 @@ import tso.usmc.jira.ui.WorkflowOrchestratorPanel;
 import tso.usmc.jira.ui.WorkflowPanel;
 import tso.usmc.jira.util.ConfigChangeListener;
 import tso.usmc.jira.util.JiraConfig; 
+import tso.usmc.jira.util.ThemeManager; 
 
 
 public class JiraApiClientGui extends JFrame implements ConfigChangeListener {
@@ -37,9 +38,44 @@ public class JiraApiClientGui extends JFrame implements ConfigChangeListener {
     private TaskBuilderPanel taskBuilderPanel;
     private WorkflowOrchestratorPanel workflowOrchestratorPanel;
     private final JLabel statusLabel = new JLabel(" Ready");
+    private final ThemeManager themeManager;
 
     public JiraApiClientGui() {
         this.jiraConfig = new JiraConfig();
+        this.themeManager = new ThemeManager(jiraConfig);
+        
+        // Create custom content pane to support gradient backdrop
+        JPanel contentPane = new JPanel(new BorderLayout()) {
+            @Override
+            protected void paintComponent(Graphics g) {
+                super.paintComponent(g);
+                String theme = jiraConfig.getTheme();
+                if (!"default".equals(theme)) {
+                    Graphics2D g2 = (Graphics2D) g.create();
+                    g2.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+                    int w = getWidth();
+                    int h = getHeight();
+                    Color color1 = new Color(15, 23, 42);   // Slate 900
+                    Color color2 = new Color(30, 41, 59);   // Slate 800
+                    
+                    GradientPaint gp = new GradientPaint(0, 0, color1, w, h, color2);
+                    g2.setPaint(gp);
+                    g2.fillRect(0, 0, w, h);
+                    
+                    // Indigo glow
+                    g2.setPaint(new RadialGradientPaint(
+                        new Point(w * 3 / 4, h / 4),
+                        Math.max(w, h) * 0.6f,
+                        new float[]{0.0f, 1.0f},
+                        new Color[]{new Color(99, 102, 241, 20), new Color(0, 0, 0, 0)}
+                    ));
+                    g2.fillRect(0, 0, w, h);
+                    g2.dispose();
+                }
+            }
+        };
+        setContentPane(contentPane);
+
         this.baseUrlField = new JTextField(jiraConfig.getJiraBaseUrl());
         this.jiraConfig.addConfigChangeListener(this);
         setTitle("USMC TSO CCB Jira Client");
@@ -128,6 +164,9 @@ public class JiraApiClientGui extends JFrame implements ConfigChangeListener {
             tabs.addTab("Workflow Orchestrator", this.workflowOrchestratorPanel);
         }
 
+        // Add Theme Settings tab
+        tabs.addTab("Theme Settings", new tso.usmc.jira.ui.ThemeSettingsPanel(this, this.jiraConfig, this.themeManager));
+
         // Layout Assembly
         setLayout(new BorderLayout());
         add(headerPanel, BorderLayout.NORTH);
@@ -139,6 +178,7 @@ public class JiraApiClientGui extends JFrame implements ConfigChangeListener {
         add(bottomPanel, BorderLayout.SOUTH);
 
         loadCertificates();
+        themeManager.applyTheme(this);
     }
     public TaskBuilderPanel getTaskBuilderPanel() { return this.taskBuilderPanel; }
     public WorkflowOrchestratorPanel getWorkflowOrchestratorPanel() { return this.workflowOrchestratorPanel; }
@@ -208,6 +248,7 @@ public class JiraApiClientGui extends JFrame implements ConfigChangeListener {
             String time = new java.text.SimpleDateFormat("HH:mm:ss").format(new java.util.Date());
             statusLabel.setText(" Configuration updated: " + time);
             statusLabel.setForeground(new Color(0, 120, 0)); 
+            themeManager.applyTheme(this);
         });
     }
 
