@@ -183,6 +183,7 @@ public class JiraApiClientGui extends JFrame implements ConfigChangeListener {
     public TaskBuilderPanel getTaskBuilderPanel() { return this.taskBuilderPanel; }
     public WorkflowOrchestratorPanel getWorkflowOrchestratorPanel() { return this.workflowOrchestratorPanel; }
     public JiraConfig getJiraConfig() { return this.jiraConfig; }
+    public ThemeManager getThemeManager() { return this.themeManager; }
     public void showPanel(String panelName) {
         for (int i = 0; i < tabs.getTabCount(); i++) {
             if (tabs.getTitleAt(i).equals(panelName)) {

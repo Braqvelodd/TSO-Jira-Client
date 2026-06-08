@@ -18,10 +18,15 @@ public class ThemeManager {
     private static final String MODERN_DARK_CSS = 
         "JPanel {\n" +
         "    background-color: #0f172a;\n" +
+        "    color: #f8fafc;\n" +
         "    border-color: #1e293b;\n" +
         "    border-width: 1px;\n" +
         "}\n" +
         "JLabel {\n" +
+        "    color: #f8fafc;\n" +
+        "}\n" +
+        "JCheckBox, JRadioButton {\n" +
+        "    background-color: transparent;\n" +
         "    color: #f8fafc;\n" +
         "}\n" +
         "JButton {\n" +
@@ -30,18 +35,27 @@ public class ThemeManager {
         "    border-color: #2563eb;\n" +
         "    border-width: 1px;\n" +
         "    border-radius: 6px;\n" +
-        "    padding: 6px;\n" +
+        "    padding: 6px 12px;\n" +
         "}\n" +
         "JButton:hover {\n" +
         "    background-color: #2563eb;\n" +
         "    border-color: #1d4ed8;\n" +
         "}\n" +
-        "JTextField, JTextArea, JComboBox, JTable {\n" +
+        "JTextField, JTextArea {\n" +
         "    background-color: #1e293b;\n" +
         "    color: #f1f5f9;\n" +
         "    border-color: #334155;\n" +
         "    border-width: 1px;\n" +
         "    border-radius: 4px;\n" +
+        "    padding: 4px 6px;\n" +
+        "}\n" +
+        "JComboBox, JTable, JList, JTableHeader {\n" +
+        "    background-color: #1e293b;\n" +
+        "    color: #f1f5f9;\n" +
+        "}\n" +
+        "JViewport, JScrollPane {\n" +
+        "    background-color: #0f172a;\n" +
+        "    color: #f8fafc;\n" +
         "}\n" +
         "JTabbedPane {\n" +
         "    background-color: #0f172a;\n" +
@@ -51,11 +65,16 @@ public class ThemeManager {
     private static final String GLASSMORPHISM_BLUE_CSS = 
         "JPanel {\n" +
         "    background-color: rgba(255, 255, 255, 0.08);\n" +
+        "    color: #ffffff;\n" +
         "    border-color: rgba(255, 255, 255, 0.15);\n" +
         "    border-width: 1px;\n" +
         "    border-radius: 12px;\n" +
         "}\n" +
         "JLabel {\n" +
+        "    color: #ffffff;\n" +
+        "}\n" +
+        "JCheckBox, JRadioButton {\n" +
+        "    background-color: transparent;\n" +
         "    color: #ffffff;\n" +
         "}\n" +
         "JButton {\n" +
@@ -64,18 +83,27 @@ public class ThemeManager {
         "    border-color: rgba(255, 255, 255, 0.2);\n" +
         "    border-width: 1px;\n" +
         "    border-radius: 8px;\n" +
-        "    padding: 6px;\n" +
+        "    padding: 6px 12px;\n" +
         "}\n" +
         "JButton:hover {\n" +
         "    background-color: rgba(59, 130, 246, 0.55);\n" +
         "    border-color: rgba(255, 255, 255, 0.35);\n" +
         "}\n" +
-        "JTextField, JTextArea, JComboBox, JTable {\n" +
+        "JTextField, JTextArea {\n" +
         "    background-color: rgba(15, 23, 42, 0.4);\n" +
         "    color: #f1f5f9;\n" +
         "    border-color: rgba(255, 255, 255, 0.12);\n" +
         "    border-width: 1px;\n" +
         "    border-radius: 6px;\n" +
+        "    padding: 4px 6px;\n" +
+        "}\n" +
+        "JComboBox, JTable, JList, JTableHeader {\n" +
+        "    background-color: rgba(15, 23, 42, 0.4);\n" +
+        "    color: #f1f5f9;\n" +
+        "}\n" +
+        "JViewport, JScrollPane {\n" +
+        "    background-color: transparent;\n" +
+        "    color: #ffffff;\n" +
         "}\n" +
         "JTabbedPane {\n" +
         "    background-color: rgba(255, 255, 255, 0.04);\n" +
@@ -139,10 +167,15 @@ public class ThemeManager {
 
         return "JPanel {\n" +
                "    background-color: #0f172a;\n" +
+               "    color: #f8fafc;\n" +
                "    border-color: #1e293b;\n" +
                "    border-width: 1px;\n" +
                "}\n" +
                "JLabel {\n" +
+               "    color: #f8fafc;\n" +
+               "}\n" +
+               "JCheckBox, JRadioButton {\n" +
+               "    background-color: transparent;\n" +
                "    color: #f8fafc;\n" +
                "}\n" +
                "JButton {\n" +
@@ -151,18 +184,27 @@ public class ThemeManager {
                "    border-color: " + accentColorHex + ";\n" +
                "    border-width: 1px;\n" +
                "    border-radius: 6px;\n" +
-               "    padding: 6px;\n" +
+               "    padding: 6px 12px;\n" +
                "}\n" +
                "JButton:hover {\n" +
                "    background-color: " + hoverAccentHex + ";\n" +
                "    border-color: " + hoverAccentHex + ";\n" +
                "}\n" +
-               "JTextField, JTextArea, JComboBox, JTable {\n" +
+               "JTextField, JTextArea {\n" +
                "    background-color: #1e293b;\n" +
                "    color: #f1f5f9;\n" +
                "    border-color: " + accentColorHex + ";\n" +
                "    border-width: 1px;\n" +
                "    border-radius: 4px;\n" +
+               "    padding: 4px 6px;\n" +
+               "}\n" +
+               "JComboBox, JTable, JList, JTableHeader {\n" +
+               "    background-color: #1e293b;\n" +
+               "    color: #f1f5f9;\n" +
+               "}\n" +
+               "JViewport, JScrollPane {\n" +
+               "    background-color: #0f172a;\n" +
+               "    color: #f8fafc;\n" +
                "}\n" +
                "JTabbedPane {\n" +
                "    background-color: #0f172a;\n" +
@@ -170,23 +212,25 @@ public class ThemeManager {
                "}\n";
     }
 
-    public void applyTheme(JFrame frame) {
+    public void applyTheme(Component rootComponent) {
         String activeTheme = config.getTheme();
         if ("default".equals(activeTheme)) {
             // Restore native LaF styling
             try {
                 UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
-                restoreOriginalStyles(frame);
-                SwingUtilities.updateComponentTreeUI(frame);
+                restoreOriginalStyles(rootComponent);
+                if (rootComponent instanceof JFrame) {
+                    SwingUtilities.updateComponentTreeUI(rootComponent);
+                }
             } catch (Exception ignored) {}
             return;
         }
 
         // Apply custom colors/styles recursively
         reloadTheme();
-        originalBorders.putIfAbsent(frame, null); // Anchor
-        applyThemeRecursive(frame);
-        frame.repaint();
+        originalBorders.putIfAbsent(rootComponent, (rootComponent instanceof JComponent) ? ((JComponent) rootComponent).getBorder() : null);
+        applyThemeRecursive(rootComponent);
+        rootComponent.repaint();
     }
 
     private void restoreOriginalStyles(Component comp) {
@@ -384,8 +428,22 @@ public class ThemeManager {
         Insets padding = null;
         if (style.containsKey("padding")) {
             try {
-                int pad = Integer.parseInt(style.get("padding").replace("px", "").trim());
-                padding = new Insets(pad, pad, pad, pad);
+                String val = style.get("padding").replace("px", "").trim();
+                String[] parts = val.split("\\s+");
+                if (parts.length == 1) {
+                    int p = Integer.parseInt(parts[0]);
+                    padding = new Insets(p, p, p, p);
+                } else if (parts.length == 2) {
+                    int pv = Integer.parseInt(parts[0]);
+                    int ph = Integer.parseInt(parts[1]);
+                    padding = new Insets(pv, ph, pv, ph);
+                } else if (parts.length == 4) {
+                    int top = Integer.parseInt(parts[0]);
+                    int right = Integer.parseInt(parts[1]);
+                    int bottom = Integer.parseInt(parts[2]);
+                    int left = Integer.parseInt(parts[3]);
+                    padding = new Insets(top, left, bottom, right);
+                }
             } catch (Exception ignored) {}
         }
 
@@ -402,7 +460,8 @@ public class ThemeManager {
                 }
             }
 
-            if (borderRadius > 0 || (bg != null && bg.getAlpha() < 255) || (borderCol != null && borderWidth > 0)) {
+            boolean needsTransparency = borderRadius > 0 || (bg != null && bg.getAlpha() < 255);
+            if (needsTransparency) {
                 // To support transparency or rounded corners, turn off native background opacity painting
                 jc.setOpaque(false);
                 if (comp instanceof JButton) {

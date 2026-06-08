@@ -1190,6 +1190,9 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
         });
         panel.updateLinkTypes(cachedLinkTypes);
         stepsContainer.add(panel);
+        if (mainFrame.getThemeManager() != null) {
+            mainFrame.getThemeManager().applyTheme(panel);
+        }
         stepsContainer.revalidate();
         stepsContainer.repaint();
     }
