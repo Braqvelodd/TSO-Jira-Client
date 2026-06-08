@@ -101,14 +101,13 @@ public class JiraUserAutocompleteTextField extends JTextField {
                 if (pos == 0) { popup.setVisible(false); return; }
 
                 String beforeCaret = text.substring(0, pos);
-                int atIndex = beforeCaret.lastIndexOf('@');
+                String userInput = beforeCaret.trim();
                 
-                if (atIndex == -1) {
-                    popup.setVisible(false);
-                    return;
+                // If they type '@', strip it
+                if (userInput.startsWith("@")) {
+                    userInput = userInput.substring(1);
                 }
-
-                String userInput = beforeCaret.substring(atIndex + 1);
+                
                 if (userInput.length() < 1) {
                     popup.setVisible(false);
                     return;
@@ -142,14 +141,11 @@ public class JiraUserAutocompleteTextField extends JTextField {
             isUpdating = true;
             String text = getText();
             int pos = getCaretPosition();
-            String beforeCaret = text.substring(0, pos);
-            int atIndex = beforeCaret.lastIndexOf('@');
             
-            if (atIndex != -1) {
-                String newText = text.substring(0, atIndex) + selected + text.substring(pos);
-                setText(newText);
-                setCaretPosition(atIndex + selected.length());
-            }
+            // For a single-value text field, replace the entire text before caret with the selection.
+            String newText = selected + text.substring(pos);
+            setText(newText);
+            setCaretPosition(selected.length());
             popup.setVisible(false);
         } finally {
             isUpdating = false;

@@ -103,26 +103,59 @@ public class JiraUserAutocompleteTextArea extends JTextArea {
                 // Identify the current line and prefix
                 int lineStart = getLineStartOffset(getLineOfOffset(pos));
                 String line = text.substring(lineStart, pos);
-                String lineLower = line.toLowerCase();
                 
-                String userInput = "";
-                boolean shouldShow = false;
-                
-                if (lineLower.startsWith("assignee:") || lineLower.startsWith("default_assignee:") || lineLower.startsWith("notify:")) {
-                    int atIndex = line.lastIndexOf('@');
-                    if (atIndex != -1) {
-                        userInput = line.substring(atIndex + 1);
-                        shouldShow = true;
-                    }
-                }
-
-                if (!shouldShow || userInput.length() < 1) {
+                int colonIndex = line.indexOf(':');
+                if (colonIndex == -1) {
                     popup.setVisible(false);
                     return;
                 }
-
-                List<String> matches = service.getUserSuggestions(userInput);
-
+                
+                String prefix = line.substring(0, colonIndex).trim().toLowerCase();
+                String value = line.substring(colonIndex + 1);
+                
+                boolean isUserField = prefix.equals("assignee") || prefix.equals("default_assignee") || prefix.equals("notify");
+                boolean isComponentField = prefix.equals("component") || prefix.equals("default_component");
+                boolean isTransitionField = prefix.equals("transition") || prefix.equals("default_transition");
+                boolean isIssueTypeField = prefix.equals("issue-type") || prefix.equals("default_type");
+                
+                if (!isUserField && !isComponentField && !isTransitionField && !isIssueTypeField) {
+                    popup.setVisible(false);
+                    return;
+                }
+                
+                String userInput;
+                int lastComma = value.lastIndexOf(',');
+                if (lastComma != -1) {
+                    userInput = value.substring(lastComma + 1).trim();
+                } else {
+                    userInput = value.trim();
+                }
+                
+                // Also support and strip '@' prefix if typed
+                if (userInput.startsWith("@")) {
+                    userInput = userInput.substring(1);
+                }
+                
+                if (userInput.length() < 1) {
+                    popup.setVisible(false);
+                    return;
+                }
+                
+                List<String> matches = new java.util.ArrayList<>();
+                if (isUserField) {
+                    matches = service.getUserSuggestions(userInput);
+                } else {
+                    String fieldName = null;
+                    if (isComponentField) fieldName = "component";
+                    else if (isTransitionField) fieldName = "status";
+                    else if (isIssueTypeField) fieldName = "issuetype";
+                    
+                    if (fieldName != null) {
+                        service.fetchDataIfNeeded();
+                        matches = service.getSuggestions(fieldName, userInput);
+                    }
+                }
+                
                 if (matches.isEmpty()) {
                     popup.setVisible(false);
                 } else {
@@ -152,9 +185,26 @@ public class JiraUserAutocompleteTextArea extends JTextArea {
             int lineStart = getLineStartOffset(getLineOfOffset(pos));
             String line = text.substring(lineStart, pos);
             
-            int atIndex = line.lastIndexOf('@');
-            if (atIndex != -1) {
-                int replaceStart = lineStart + atIndex;
+            int colonIndex = line.indexOf(':');
+            if (colonIndex != -1) {
+                int lastComma = line.lastIndexOf(',');
+                int replaceStartInLine;
+                if (lastComma > colonIndex) {
+                    replaceStartInLine = lastComma + 1;
+                } else {
+                    replaceStartInLine = colonIndex + 1;
+                }
+                
+                while (replaceStartInLine < line.length() && Character.isWhitespace(line.charAt(replaceStartInLine))) {
+                    replaceStartInLine++;
+                }
+                
+                // If they typed '@', skip/replace it as well
+                if (replaceStartInLine < line.length() && line.charAt(replaceStartInLine) == '@') {
+                    replaceStartInLine++;
+                }
+                
+                int replaceStart = lineStart + replaceStartInLine;
                 replaceRange(selected, replaceStart, pos);
                 setCaretPosition(replaceStart + selected.length());
             }
