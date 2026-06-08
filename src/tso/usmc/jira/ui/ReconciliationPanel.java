@@ -96,6 +96,7 @@ public class ReconciliationPanel extends JPanel {
         matchesModel.setColumnIdentifiers(new String[]{"Type", "Name", "Jira Key", "Status", "Assignee", "ISPW Action", "SR Number", "ISPW User", "Link"});
         
         onlyInIspwTable.setAutoResizeMode(JTable.AUTO_RESIZE_OFF);
+        onlyInIspwTable.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
         onlyInJiraTable.setAutoResizeMode(JTable.AUTO_RESIZE_OFF);
         matchesTable.setAutoResizeMode(JTable.AUTO_RESIZE_OFF);
         
@@ -123,6 +124,8 @@ public class ReconciliationPanel extends JPanel {
             }
             new IspwColumnConfigDialog((JFrame)SwingUtilities.getWindowAncestor(this), text, mainFrame.getJiraConfig()).setVisible(true);
         });
+
+        setupContextMenu();
     }
     
     private void performComparison() {
@@ -373,5 +376,125 @@ public class ReconciliationPanel extends JPanel {
             } while (startAt < total);
         }
         return tasks;
+    }
+
+    private void setupContextMenu() {
+        onlyInIspwTable.addMouseListener(new java.awt.event.MouseAdapter() {
+            @Override
+            public void mouseReleased(java.awt.event.MouseEvent e) {
+                if (e.isPopupTrigger()) showPopup(e);
+            }
+
+            @Override
+            public void mousePressed(java.awt.event.MouseEvent e) {
+                if (e.isPopupTrigger()) showPopup(e);
+            }
+
+            private void showPopup(java.awt.event.MouseEvent e) {
+                int row = onlyInIspwTable.rowAtPoint(e.getPoint());
+                if (row >= 0 && row < onlyInIspwTable.getRowCount()) {
+                    if (!onlyInIspwTable.isRowSelected(row)) {
+                        onlyInIspwTable.setRowSelectionInterval(row, row);
+                    }
+                    
+                    int[] selectedRows = onlyInIspwTable.getSelectedRows();
+                    if (selectedRows.length > 0) {
+                        JPopupMenu popup = new JPopupMenu();
+                        JMenuItem buildItem = new JMenuItem("Send selected to Task Builder");
+                        buildItem.addActionListener(al -> buildTaskBuilderEntries(selectedRows));
+                        popup.add(buildItem);
+                        popup.show(e.getComponent(), e.getX(), e.getY());
+                    }
+                }
+            }
+        });
+    }
+
+    private void buildTaskBuilderEntries(int[] selectedRows) {
+        // 1. Get the list of parent keys from the jiraParentKeysArea
+        String[] rawKeys = jiraParentKeysArea.getText().trim().toUpperCase().split("\\s+");
+        java.util.List<String> keyList = new java.util.ArrayList<>();
+        keyList.add("-- None / Use Defaults --");
+        for (String k : rawKeys) {
+            String clean = k.trim();
+            if (!clean.isEmpty()) {
+                keyList.add(clean);
+            }
+        }
+        
+        String selectedParent = null;
+        if (keyList.size() > 1) {
+            Object selected = JOptionPane.showInputDialog(
+                this,
+                "Select Parent Key for the selected ISPW tasks:",
+                "Assign Parent Key",
+                JOptionPane.QUESTION_MESSAGE,
+                null,
+                keyList.toArray(new String[0]),
+                keyList.get(1) // Default to the first actual key
+            );
+            if (selected == null) {
+                return; // User canceled the dialog
+            }
+            selectedParent = selected.toString();
+            if (selectedParent.startsWith("--")) {
+                selectedParent = null;
+            }
+        }
+        
+        // 2. Build the task builder formatted string
+        StringBuilder sb = new StringBuilder();
+        String sep = "******************************************************************";
+        
+        for (int i = 0; i < selectedRows.length; i++) {
+            int modelRow = onlyInIspwTable.convertRowIndexToModel(selectedRows[i]);
+            String type = (String) onlyInIspwModel.getValueAt(modelRow, 0);
+            String name = (String) onlyInIspwModel.getValueAt(modelRow, 1);
+            String action = (String) onlyInIspwModel.getValueAt(modelRow, 2);
+            String srNumber = (String) onlyInIspwModel.getValueAt(modelRow, 3);
+            String userId = (String) onlyInIspwModel.getValueAt(modelRow, 4);
+            
+            sb.append(type).append(" ").append(name).append("\n");
+            sb.append("Action: ").append(action).append("\n");
+            sb.append("SR Number: ").append(srNumber).append("\n");
+            sb.append("User ID: ").append(userId).append("\n");
+            
+            if (selectedParent != null) {
+                sb.append("parent: ").append(selectedParent).append("\n");
+            }
+            
+            if (i < selectedRows.length - 1) {
+                sb.append(sep).append("\n\n");
+            } else {
+                sb.append(sep);
+            }
+        }
+        
+        final String tasksText = sb.toString();
+        
+        // 3. Swap to Task Builder panel and populate
+        SwingUtilities.invokeLater(() -> {
+            mainFrame.showPanel("Task Builder");
+            TaskBuilderPanel tbp = mainFrame.getTaskBuilderPanel();
+            if (tbp != null) {
+                String currentText = tbp.getInputAreaText();
+                if (currentText != null && !currentText.trim().isEmpty()) {
+                    int choice = JOptionPane.showConfirmDialog(
+                        tbp,
+                        "Task Builder already has content. Do you want to append the new tasks?\n(Selecting 'No' will overwrite the existing content)",
+                        "Append or Overwrite",
+                        JOptionPane.YES_NO_CANCEL_OPTION,
+                        JOptionPane.QUESTION_MESSAGE
+                    );
+                    if (choice == JOptionPane.YES_OPTION) {
+                        tbp.appendInputAreaText(tasksText);
+                    } else if (choice == JOptionPane.NO_OPTION) {
+                        tbp.setInputAreaText(tasksText);
+                    }
+                } else {
+                    tbp.setInputAreaText(tasksText);
+                }
+            }
+        });
     }
 }

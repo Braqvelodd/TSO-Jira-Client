@@ -1021,11 +1021,27 @@ public class TaskBuilderPanel extends JPanel {
         }
     }
     public void setInputAreaText(String text) {
-    // IMPORTANT: Replace 'yourInputTextArea' with the actual name of your JTextArea variable!
-    if (text != null) {
-        inputArea.setText(text);
+        if (text != null) {
+            inputArea.setText(text);
+        }
     }
-}
+
+    public String getInputAreaText() {
+        return inputArea.getText();
+    }
+
+    public void appendInputAreaText(String text) {
+        if (text != null) {
+            String current = inputArea.getText();
+            if (!current.isEmpty()) {
+                if (!current.endsWith("\n")) {
+                    inputArea.append("\n");
+                }
+                inputArea.append("******\n");
+            }
+            inputArea.append(text);
+        }
+    }
 
     /**
      * NEW: Custom renderer to display JiraTask objects in the JList
