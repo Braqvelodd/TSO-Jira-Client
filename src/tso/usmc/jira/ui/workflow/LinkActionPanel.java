@@ -1,13 +1,15 @@
 package tso.usmc.jira.ui.workflow;
 
 import tso.usmc.jira.workflow.LinkAction;
-import tso.usmc.jira.ui.SwingUtils;
-import javax.swing.*;
-import java.awt.*;
-import java.util.List;
-import java.util.Vector;
+import tso.usmc.jira.ui.UiUtils;
 
-public class LinkActionPanel extends JPanel {
+import javafx.geometry.Insets;
+import javafx.geometry.Pos;
+import javafx.scene.control.*;
+import javafx.scene.layout.*;
+import java.util.List;
+
+public class LinkActionPanel extends HBox {
     public interface LinkActionListener {
         void onMoveUp(LinkActionPanel panel);
         void onMoveDown(LinkActionPanel panel);
@@ -15,97 +17,115 @@ public class LinkActionPanel extends JPanel {
     }
 
     private final LinkAction action;
-    private final JCheckBox remoteToggle;
-    private final JPanel modePanel;
-    private final CardLayout cardLayout;
-    private final JTextField inwardField;
+    private final CheckBox remoteToggle;
+    private final StackPane modePanel;
+    private final TextField inwardField;
 
     // Jira Link fields
-    private final JComboBox<String> linkTypeCombo;
-    private final JTextField outwardField;
+    private final ComboBox<String> linkTypeCombo;
+    private final TextField outwardField;
 
     // Remote Link fields
-    private final JTextField remoteUrlField;
-    private final JTextField remoteTitleField;
-    private final JTextField remoteRelField;
-    private final JTextField remoteSummaryField;
+    private final TextField remoteUrlField;
+    private final TextField remoteTitleField;
+    private final TextField remoteRelField;
+    private final TextField remoteSummaryField;
 
     public LinkActionPanel(LinkAction action, List<String> linkTypes, LinkActionListener listener) {
         this.action = action;
-        setLayout(new BorderLayout());
-        setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, Color.LIGHT_GRAY));
-
-        JPanel main = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
         
+        setSpacing(5);
+        setAlignment(Pos.CENTER_LEFT);
+        setPadding(new Insets(2, 5, 2, 5));
+        setMinWidth(Region.USE_PREF_SIZE);
+        setStyle("-fx-border-color: lightgray; -fx-border-width: 0 0 1px 0;");
+
         // Controls
-        JPanel controls = new JPanel(new FlowLayout(FlowLayout.LEFT, 1, 0));
-        JButton upBtn = new JButton("▲");
-        JButton downBtn = new JButton("▼");
-        JButton delBtn = new JButton("X");
-        Dimension btnDim = new Dimension(22, 22);
-        upBtn.setPreferredSize(btnDim); downBtn.setPreferredSize(btnDim); delBtn.setPreferredSize(btnDim);
-        upBtn.setMargin(new Insets(0, 0, 0, 0)); downBtn.setMargin(new Insets(0, 0, 0, 0)); delBtn.setMargin(new Insets(0, 0, 0, 0));
-        delBtn.setForeground(Color.RED);
-        upBtn.addActionListener(e -> listener.onMoveUp(this));
-        downBtn.addActionListener(e -> listener.onMoveDown(this));
-        delBtn.addActionListener(e -> listener.onRemove(this));
-        controls.add(upBtn); controls.add(downBtn); controls.add(delBtn);
-        main.add(controls);
+        HBox controls = new HBox(2);
+        controls.setAlignment(Pos.CENTER_LEFT);
+        Button upBtn = new Button("^");
+        Button downBtn = new Button("v");
+        Button delBtn = new Button("X");
+        
+        upBtn.setMinSize(22, 22); upBtn.setMaxSize(22, 22);
+        downBtn.setMinSize(22, 22); downBtn.setMaxSize(22, 22);
+        delBtn.setMinSize(22, 22); delBtn.setMaxSize(22, 22);
+        
+        upBtn.getStyleClass().addAll("list-action-btn", "action-btn-up");
+        downBtn.getStyleClass().addAll("list-action-btn", "action-btn-down");
+        delBtn.getStyleClass().addAll("list-action-btn", "action-btn-delete");
+        upBtn.setOnAction(e -> listener.onMoveUp(this));
+        downBtn.setOnAction(e -> listener.onMoveDown(this));
+        delBtn.setOnAction(e -> listener.onRemove(this));
+        
+        controls.getChildren().addAll(upBtn, downBtn, delBtn);
+        getChildren().add(controls);
 
-        remoteToggle = new JCheckBox("Remote?", action.isRemote());
-        main.add(remoteToggle);
+        remoteToggle = new CheckBox("Remote?");
+        remoteToggle.setSelected(action.isRemote());
+        getChildren().add(remoteToggle);
 
-        inwardField = new JTextField(action.getInwardIssueToken(), 10);
-        main.add(new JLabel("Inward:"));
-        main.add(inwardField);
+        inwardField = new TextField(action.getInwardIssueToken());
+        inwardField.setPrefWidth(100);
+        getChildren().addAll(new Label("Inward:"), inwardField);
 
-        modePanel = new JPanel();
-        cardLayout = new CardLayout();
-        modePanel.setLayout(cardLayout);
+        modePanel = new StackPane();
 
         // Jira Panel
-        JPanel jiraPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
+        HBox jiraPanel = new HBox(5);
+        jiraPanel.setAlignment(Pos.CENTER_LEFT);
         
-        linkTypeCombo = new JComboBox<>(new Vector<>(linkTypes));
+        linkTypeCombo = new ComboBox<>();
+        linkTypeCombo.getItems().addAll(linkTypes);
         linkTypeCombo.setEditable(true);
-        linkTypeCombo.setPreferredSize(new Dimension(150, 22));
-        // Set initial value
-        linkTypeCombo.setSelectedItem(action.getLinkType());
+        linkTypeCombo.setPrefWidth(150);
+        if (action.getLinkType() != null) {
+            linkTypeCombo.getSelectionModel().select(action.getLinkType());
+        }
 
-        outwardField = new JTextField(action.getOutwardIssueToken(), 10);
-        jiraPanel.add(new JLabel("Type:")); jiraPanel.add(linkTypeCombo);
-        jiraPanel.add(new JLabel("Outward:")); jiraPanel.add(outwardField);
+        outwardField = new TextField(action.getOutwardIssueToken());
+        outwardField.setPrefWidth(100);
+        jiraPanel.getChildren().addAll(new Label("Type:"), linkTypeCombo, new Label("Outward:"), outwardField);
         
         // Remote Panel
-        JPanel remotePanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
-        remoteUrlField = new JTextField(action.getUrl(), 15);
-        remoteTitleField = new JTextField(action.getTitle(), 10);
-        remoteRelField = new JTextField(action.getRelationship(), 8);
-        remoteSummaryField = new JTextField(action.getSummary(), 10);
-        remotePanel.add(new JLabel("URL:")); remotePanel.add(remoteUrlField);
-        remotePanel.add(new JLabel("Title:")); remotePanel.add(remoteTitleField);
-        remotePanel.add(new JLabel("Rel:")); remotePanel.add(remoteRelField);
-        remotePanel.add(new JLabel("Summ:")); remotePanel.add(remoteSummaryField);
+        HBox remotePanel = new HBox(5);
+        remotePanel.setAlignment(Pos.CENTER_LEFT);
+        remoteUrlField = new TextField(action.getUrl());
+        remoteUrlField.setPrefWidth(150);
+        remoteTitleField = new TextField(action.getTitle());
+        remoteTitleField.setPrefWidth(100);
+        remoteRelField = new TextField(action.getRelationship());
+        remoteRelField.setPrefWidth(80);
+        remoteSummaryField = new TextField(action.getSummary());
+        remoteSummaryField.setPrefWidth(100);
+        
+        remotePanel.getChildren().addAll(
+            new Label("URL:"), remoteUrlField,
+            new Label("Title:"), remoteTitleField,
+            new Label("Rel:"), remoteRelField,
+            new Label("Summ:"), remoteSummaryField
+        );
 
-        modePanel.add(jiraPanel, "Jira");
-        modePanel.add(remotePanel, "Remote");
-        main.add(modePanel);
+        modePanel.getChildren().addAll(jiraPanel, remotePanel);
+        getChildren().add(modePanel);
 
-        add(main, BorderLayout.CENTER);
+        remoteToggle.setOnAction(e -> updateModeUI(jiraPanel, remotePanel));
+        updateModeUI(jiraPanel, remotePanel);
 
-        remoteToggle.addActionListener(e -> updateModeUI());
-        updateModeUI();
-
-        SwingUtils.setupExpandedView(inwardField);
-        SwingUtils.setupExpandedView(outwardField);
-        SwingUtils.setupExpandedView(remoteUrlField);
-        SwingUtils.setupExpandedView(remoteTitleField);
-        SwingUtils.setupExpandedView(remoteRelField);
-        SwingUtils.setupExpandedView(remoteSummaryField);
+        UiUtils.setupExpandedView(inwardField);
+        UiUtils.setupExpandedView(outwardField);
+        UiUtils.setupExpandedView(remoteUrlField);
+        UiUtils.setupExpandedView(remoteTitleField);
+        UiUtils.setupExpandedView(remoteRelField);
+        UiUtils.setupExpandedView(remoteSummaryField);
     }
 
-    private void updateModeUI() {
-        cardLayout.show(modePanel, remoteToggle.isSelected() ? "Remote" : "Jira");
+    private void updateModeUI(HBox jiraPanel, HBox remotePanel) {
+        boolean remote = remoteToggle.isSelected();
+        jiraPanel.setVisible(!remote);
+        jiraPanel.setManaged(!remote);
+        remotePanel.setVisible(remote);
+        remotePanel.setManaged(remote);
     }
 
     public void saveToLinkAction() {
@@ -117,8 +137,11 @@ public class LinkActionPanel extends JPanel {
             action.setRelationship(remoteRelField.getText());
             action.setSummary(remoteSummaryField.getText());
         } else {
-            Object selected = linkTypeCombo.getSelectedItem();
-            action.setLinkType(selected != null ? selected.toString() : "");
+            String selected = linkTypeCombo.getSelectionModel().getSelectedItem();
+            if (selected == null || selected.trim().isEmpty()) {
+                selected = linkTypeCombo.getEditor().getText();
+            }
+            action.setLinkType(selected != null ? selected.trim() : "");
             action.setOutwardIssueToken(outwardField.getText());
         }
     }
@@ -129,10 +152,15 @@ public class LinkActionPanel extends JPanel {
     }
 
     public void updateLinkTypes(List<String> linkTypes) {
-        String current = (String) linkTypeCombo.getSelectedItem();
-        linkTypeCombo.removeAllItems();
-        linkTypeCombo.addItem("");
-        for (String lt : linkTypes) linkTypeCombo.addItem(lt);
-        if (current != null) linkTypeCombo.setSelectedItem(current);
+        String current = linkTypeCombo.getSelectionModel().getSelectedItem();
+        if (current == null || current.trim().isEmpty()) {
+            current = linkTypeCombo.getEditor().getText();
+        }
+        linkTypeCombo.getItems().clear();
+        linkTypeCombo.getItems().add("");
+        linkTypeCombo.getItems().addAll(linkTypes);
+        if (current != null) {
+            linkTypeCombo.getSelectionModel().select(current);
+        }
     }
 }

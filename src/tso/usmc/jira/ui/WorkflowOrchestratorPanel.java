@@ -5,58 +5,66 @@ import tso.usmc.jira.ui.workflow.StepEditorPanel;
 import tso.usmc.jira.workflow.*;
 import tso.usmc.jira.service.MetadataCacheService;
 import tso.usmc.jira.service.JiraIssueService;
-import tso.usmc.jira.ui.SwingUtils;
+import tso.usmc.jira.ui.UiUtils;
 import tso.usmc.jira.util.JiraUtils;
 import tso.usmc.jira.util.ExecutionService;
 import org.json.JSONObject;
 import org.json.JSONArray;
 
-import javax.swing.*;
-import javax.swing.event.DocumentEvent;
-import javax.swing.event.DocumentListener;
-import javax.swing.table.DefaultTableModel;
-import java.awt.*;
+import javafx.application.Platform;
+import javafx.beans.property.SimpleStringProperty;
+import javafx.geometry.Insets;
+import javafx.geometry.Orientation;
+import javafx.geometry.Pos;
+import javafx.scene.Node;
+import javafx.scene.control.*;
+import javafx.scene.layout.*;
+import javafx.scene.input.MouseButton;
+import javafx.scene.input.Clipboard;
+import javafx.scene.input.ClipboardContent;
+import javafx.scene.input.Dragboard;
+import javafx.scene.input.TransferMode;
+import javafx.stage.FileChooser;
+
 import java.io.IOException;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.PrintWriter;
 import java.util.*;
-import java.util.List;
 
-public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgressListener {
+public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowProgressListener {
 
     private final JiraApiClientGui mainFrame;
     private final WorkflowManager workflowManager;
     private final Map<String, String> cachedFieldOptions = new HashMap<>();
     private final List<String> cachedLinkTypes = new ArrayList<>();
+    private StepEditorPanel activeDraggedPanel = null;
     
-    // Designer Components
-    private final DefaultListModel<String> recipeListModel = new DefaultListModel<>();
-    private final JList<String> recipeList = new JList<>(recipeListModel);
-    private final JTextField recipeNameField = new JTextField(20);
-    private final JTextField jqlField = new JTextField(30);
-    private final JTextField contextIssueField = new JTextField(10); 
-    private final JButton fetchMetaBtn = new JButton("Fetch Metadata");
-    private final JProgressBar syncProgress = new JProgressBar();
-    private final JPanel stepsContainer = new JPanel();
-    private final DefaultListModel<String> tokenListModel = new DefaultListModel<>();
-    private final JList<String> tokenList = new JList<>(tokenListModel);
-    private final JTextField tokenSearchField = new JTextField();
+    // UI Elements - Designer
+    private final ListView<String> recipeList = new ListView<>();
+    private final TextField recipeNameField = new TextField();
+    private final TextField jqlField = new TextField();
+    private final TextField contextIssueField = new TextField(); 
+    private final Button fetchMetaBtn = new Button("Fetch Metadata");
+    private final ProgressBar syncProgress = new ProgressBar();
+    private final VBox stepsContainer = new VBox(10);
+    private final ListView<String> tokenList = new ListView<>();
+    private final TextField tokenSearchField = new TextField();
     
-    // Runner Components
-    private final JComboBox<String> runnerRecipeCombo = new JComboBox<>();
-    private final JTextField runnerJqlField = new JTextField();
-    private final JButton searchBtn = new JButton("Search Issues");
-    private final DefaultTableModel runnerTableModel = new DefaultTableModel();
-    private final JTable runnerTable = new JTable(runnerTableModel);
-    private final JPanel runnerInputsPanel = new JPanel();
-    private final Map<String, JComponent> promptFields = new HashMap<>();
-    private final JTextArea runnerLog = new JTextArea();
-    private final JButton runBtn = new JButton("Run Workflow on Selected");
-    private final JButton exportReportBtn = new JButton("Export Report (CSV)");
-    private final JCheckBox verboseLogCheck = new JCheckBox("Verbose API Logs");
-    private final JCheckBox dryRunCheck = new JCheckBox("Dry Run (Validate only)");
-    private final JLabel statusLabel = new JLabel("Ready.");
+    // UI Elements - Runner
+    private final ComboBox<String> runnerRecipeCombo = new ComboBox<>();
+    private final TextField runnerJqlField = new TextField();
+    private final Button searchBtn = new Button("Search Issues");
+    private final TableView<RunnerIssueRow> runnerTable = new TableView<>();
+    private final GridPane runnerInputsPanel = new GridPane();
+    private final Map<String, Node> promptFields = new HashMap<>();
+    private final TextArea runnerLog = new TextArea();
+    private final Button runBtn = new Button("Run Workflow on Selected");
+    private final Button exportReportBtn = new Button("Export Report (CSV)");
+    private final CheckBox verboseLogCheck = new CheckBox("Verbose API Logs");
+    private final CheckBox dryRunCheck = new CheckBox("Dry Run (Validate only)");
+    private final Label statusLabel = new Label("Ready.");
+    private TabPane mainTabs;
 
     // Results data
     private final List<JSONObject> currentSearchIssues = new ArrayList<>();
@@ -64,6 +72,32 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
 
     private final Map<String, JSONObject> cachedFullMeta = new HashMap<>();
     private final List<String> allTokens = new ArrayList<>();
+
+    public static class RunnerIssueRow {
+        private final SimpleStringProperty key;
+        private final SimpleStringProperty summary;
+        private final SimpleStringProperty status;
+        private final SimpleStringProperty assignee;
+
+        public RunnerIssueRow(String key, String summary, String status, String assignee) {
+            this.key = new SimpleStringProperty(key);
+            this.summary = new SimpleStringProperty(summary);
+            this.status = new SimpleStringProperty(status);
+            this.assignee = new SimpleStringProperty(assignee);
+        }
+
+        public String getKey() { return key.get(); }
+        public SimpleStringProperty keyProperty() { return key; }
+
+        public String getSummary() { return summary.get(); }
+        public SimpleStringProperty summaryProperty() { return summary; }
+
+        public String getStatus() { return status.get(); }
+        public SimpleStringProperty statusProperty() { return status; }
+
+        public String getAssignee() { return assignee.get(); }
+        public SimpleStringProperty assigneeProperty() { return assignee; }
+    }
 
     public WorkflowOrchestratorPanel(JiraApiClientGui mainFrame) {
         this.mainFrame = mainFrame;
@@ -74,32 +108,32 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
             System.err.println("Could not load initial metadata: " + e.getMessage());
         }
         
-        setLayout(new BorderLayout());
+        UiUtils.setupExpandedView(recipeNameField);
+        UiUtils.setupExpandedView(jqlField);
+        UiUtils.setupExpandedView(contextIssueField);
+        UiUtils.setupExpandedView(runnerJqlField);
 
-        SwingUtils.setupExpandedView(recipeNameField);
-        SwingUtils.setupExpandedView(jqlField);
-        SwingUtils.setupExpandedView(contextIssueField);
-        SwingUtils.setupExpandedView(runnerJqlField);
-
-        JTabbedPane mainTabs = new JTabbedPane();
-        mainTabs.addTab("Designer", createDesignerPanel());
-        mainTabs.addTab("Runner", createRunnerPanel());
+        mainTabs = new TabPane();
+        Tab designerTab = new Tab("Designer", createDesignerPanel());
+        designerTab.setClosable(false);
+        Tab runnerTab = new Tab("Runner", createRunnerPanel());
+        runnerTab.setClosable(false);
         
-        add(mainTabs, BorderLayout.CENTER);
+        mainTabs.getTabs().addAll(designerTab, runnerTab);
+        setCenter(mainTabs);
         
         refreshRecipeList();
         updateTokensFromCache();
 
-        runnerRecipeCombo.addActionListener(e -> updateRunnerInputs());
+        runnerRecipeCombo.setOnAction(e -> updateRunnerInputs());
     }
 
     // --- WorkflowProgressListener Implementation ---
 
     @Override
     public void onLog(String message) {
-        SwingUtilities.invokeLater(() -> {
-            runnerLog.append(message + "\n");
-            runnerLog.setCaretPosition(runnerLog.getDocument().getLength());
+        Platform.runLater(() -> {
+            runnerLog.appendText(message + "\n");
         });
     }
 
@@ -111,156 +145,160 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
 
     @Override
     public void onComplete() {
-        SwingUtilities.invokeLater(() -> {
-            runBtn.setEnabled(true);
-            exportReportBtn.setEnabled(true);
+        Platform.runLater(() -> {
+            runBtn.setDisable(false);
+            exportReportBtn.setDisable(false);
             statusLabel.setText("Workflow Execution Complete.");
         });
     }
 
-    private JPanel createDesignerPanel() {
-        JPanel panel = new JPanel(new BorderLayout());
+    private Node createDesignerPanel() {
+        BorderPane panel = new BorderPane();
         
         // Left: List
-        JPanel left = new JPanel(new BorderLayout());
-        left.setBorder(BorderFactory.createTitledBorder("Recipes"));
-        left.setPreferredSize(new Dimension(200, 0));
-        left.add(new JScrollPane(recipeList), BorderLayout.CENTER);
+        BorderPane left = new BorderPane();
+        left.setPadding(new Insets(10));
+        left.setPrefWidth(200);
+        Label recipesTitle = new Label("Recipes");
+        recipesTitle.setStyle("-fx-font-weight: bold;");
+        left.setTop(recipesTitle);
+        BorderPane.setMargin(recipesTitle, new Insets(0, 0, 5, 0));
         
-        JPanel leftButtons = new JPanel(new FlowLayout());
-        JButton newBtn = new JButton("New");
-        JButton delBtn = new JButton("Delete");
-        leftButtons.add(newBtn);
-        leftButtons.add(delBtn);
-        left.add(leftButtons, BorderLayout.SOUTH);
+        left.setCenter(recipeList);
+        BorderPane.setMargin(recipeList, new Insets(0, 0, 5, 0));
         
-        panel.add(left, BorderLayout.WEST);
+        HBox leftButtons = new HBox(10);
+        leftButtons.setAlignment(Pos.CENTER);
+        Button newBtn = new Button("New");
+        Button delBtn = new Button("Delete");
+        leftButtons.getChildren().addAll(newBtn, delBtn);
+        left.setBottom(leftButtons);
+        
+        panel.setLeft(left);
         
         // Right: Tokens
-        JPanel right = new JPanel(new BorderLayout());
-        right.setBorder(BorderFactory.createTitledBorder("Token Browser"));
-        right.setMinimumSize(new Dimension(0, 0));
+        BorderPane right = new BorderPane();
+        right.setPadding(new Insets(10));
+        Label tokenTitle = new Label("Token Browser");
+        tokenTitle.setStyle("-fx-font-weight: bold;");
+        right.setTop(tokenTitle);
+        BorderPane.setMargin(tokenTitle, new Insets(0, 0, 5, 0));
         
-        JPanel tokenSearchPanel = new JPanel(new BorderLayout());
-        tokenSearchPanel.add(new JLabel(" Search: "), BorderLayout.WEST);
-        tokenSearchPanel.add(tokenSearchField, BorderLayout.CENTER);
-        right.add(tokenSearchPanel, BorderLayout.NORTH);
+        HBox tokenSearchPanel = new HBox(5);
+        tokenSearchPanel.setAlignment(Pos.CENTER_LEFT);
+        tokenSearchPanel.getChildren().addAll(new Label(" Search: "), tokenSearchField);
+        HBox.setHgrow(tokenSearchField, Priority.ALWAYS);
         
-        tokenList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
-        tokenList.setFont(new Font("Monospaced", Font.PLAIN, 11));
-        tokenList.setToolTipText("Double-click to copy token");
-        right.add(new JScrollPane(tokenList), BorderLayout.CENTER);
+        VBox rightCenter = new VBox(5);
+        rightCenter.getChildren().addAll(tokenSearchPanel, tokenList);
+        VBox.setVgrow(tokenList, Priority.ALWAYS);
+        right.setCenter(rightCenter);
+        
+        tokenList.getSelectionModel().setSelectionMode(SelectionMode.SINGLE);
+        tokenList.setStyle("-fx-font-family: monospace; -fx-font-size: 11px;");
+        tokenList.setTooltip(new Tooltip("Double-click to copy token"));
         
         // Center: Editor
-        JPanel center = new JPanel(new BorderLayout());
-        center.setMinimumSize(new Dimension(300, 0));
+        BorderPane center = new BorderPane();
+        center.setPadding(new Insets(10));
         
         // Editor Header
-        JPanel header = new JPanel(new GridBagLayout());
-        GridBagConstraints gbc = new GridBagConstraints();
-        gbc.insets = new Insets(5,5,5,5);
-        gbc.fill = GridBagConstraints.HORIZONTAL;
+        GridPane header = new GridPane();
+        header.setHgap(10);
+        header.setVgap(10);
+        header.setPadding(new Insets(10));
         
-        gbc.gridx=0; gbc.gridy=0; header.add(new JLabel("Recipe Name:"), gbc);
-        gbc.gridx=1; gbc.weightx=1.0; header.add(recipeNameField, gbc);
+        header.add(new Label("Recipe Name:"), 0, 0);
+        header.add(recipeNameField, 1, 0);
+        GridPane.setHgrow(recipeNameField, Priority.ALWAYS);
         
-        gbc.gridx=0; gbc.gridy=1; gbc.weightx=0; header.add(new JLabel("JQL Query:"), gbc);
-        gbc.gridx=1; gbc.weightx=1.0; header.add(jqlField, gbc);
+        header.add(new Label("JQL Query:"), 0, 1);
+        header.add(jqlField, 1, 1);
+        GridPane.setHgrow(jqlField, Priority.ALWAYS);
         
-        gbc.gridx=0; gbc.gridy=2; gbc.weightx=0; header.add(new JLabel("Project Filter / Context Issue:"), gbc);
-        gbc.gridx=1; gbc.weightx=1.0; header.add(contextIssueField, gbc);
-        gbc.gridx=2; gbc.weightx=0; header.add(fetchMetaBtn, gbc);
-        contextIssueField.setToolTipText("Deep Sync: PROJ1, PROJ2 (Rebuild Filtered) or +PROJ1 (Incremental Add). Transition Meta: Issue Key.");
+        header.add(new Label("Project Filter / Context Issue:"), 0, 2);
+        header.add(contextIssueField, 1, 2);
+        GridPane.setHgrow(contextIssueField, Priority.ALWAYS);
+        header.add(fetchMetaBtn, 2, 2);
+        contextIssueField.setTooltip(new Tooltip("Deep Sync: PROJ1, PROJ2 (Rebuild Filtered) or +PROJ1 (Incremental Add). Transition Meta: Issue Key."));
 
-        syncProgress.setIndeterminate(true);
+        syncProgress.setProgress(ProgressBar.INDETERMINATE_PROGRESS);
         syncProgress.setVisible(false);
-        gbc.gridx=0; gbc.gridy=3; gbc.gridwidth=3; gbc.weightx=1.0; header.add(syncProgress, gbc);
+        header.add(syncProgress, 0, 3, 3, 1);
 
-        JButton saveBtn = new JButton("Save Recipe");
-        gbc.gridy=0; gbc.gridx=2; gbc.weightx=0; header.add(saveBtn, gbc);
+        Button saveBtn = new Button("Save Recipe");
+        header.add(saveBtn, 2, 0);
 
-        JButton toggleTokensBtn = new JButton("Toggle Tokens");
-        gbc.gridy=1; gbc.gridx=2; header.add(toggleTokensBtn, gbc);
+        Button toggleTokensBtn = new Button("Toggle Tokens");
+        header.add(toggleTokensBtn, 2, 1);
         
-        center.add(header, BorderLayout.NORTH);
+        center.setTop(header);
         
         // Editor Steps
-        stepsContainer.setLayout(new BoxLayout(stepsContainer, BoxLayout.Y_AXIS));
-        JPanel stepsWrapper = new JPanel(new BorderLayout());
-        stepsWrapper.add(stepsContainer, BorderLayout.NORTH);
-        JScrollPane stepsScroll = new JScrollPane(stepsWrapper);
-        stepsScroll.getVerticalScrollBar().setUnitIncrement(16);
-        center.add(stepsScroll, BorderLayout.CENTER);
+        ScrollPane stepsScroll = new ScrollPane();
+        stepsScroll.setContent(stepsContainer);
+        stepsScroll.setFitToWidth(true);
+        stepsContainer.setMinWidth(Region.USE_PREF_SIZE);
+        center.setCenter(stepsScroll);
+        BorderPane.setMargin(stepsScroll, new Insets(10, 0, 10, 0));
         
         // Editor Footer
-        JPanel footer = new JPanel(new FlowLayout(FlowLayout.LEFT));
-        JButton addTransBtn = new JButton("Add Transition");
-        JButton addUpdateBtn = new JButton("Add Update");
-        JButton addCreateBtn = new JButton("Add Create");
-        JButton addLinkBtn = new JButton("Add Link");
-        JButton addAssetBtn = new JButton("Add Asset (Links/Att/Sub)");
-        JButton addWorklogBtn = new JButton("Add Worklog");
-        footer.add(addTransBtn);
-        footer.add(addUpdateBtn);
-        footer.add(addCreateBtn);
-        footer.add(addLinkBtn);
-        footer.add(addAssetBtn);
-        footer.add(addWorklogBtn);
-        center.add(footer, BorderLayout.SOUTH);
+        HBox footer = new HBox(10);
+        footer.setAlignment(Pos.CENTER_LEFT);
+        Button addTransBtn = new Button("Add Transition");
+        Button addUpdateBtn = new Button("Add Update");
+        Button addCreateBtn = new Button("Add Create");
+        Button addLinkBtn = new Button("Add Link");
+        Button addAssetBtn = new Button("Add Asset (Links/Att/Sub)");
+        Button addWorklogBtn = new Button("Add Worklog");
+        footer.getChildren().addAll(addTransBtn, addUpdateBtn, addCreateBtn, addLinkBtn, addAssetBtn, addWorklogBtn);
+        center.setBottom(footer);
 
         // Split Editor and Tokens
-        JSplitPane split = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, center, right);
-        split.setResizeWeight(1.0);
-        split.setOneTouchExpandable(true);
-        split.setDividerLocation(1.0);
+        SplitPane split = new SplitPane();
+        split.getItems().addAll(center, right);
+        split.setDividerPositions(0.75);
         
-        panel.add(split, BorderLayout.CENTER);
+        panel.setCenter(split);
         
-        toggleTokensBtn.addActionListener(e -> {
-            int location = split.getDividerLocation();
-            int max = split.getMaximumDividerLocation();
-            if (location >= max - 50) {
-                split.setDividerLocation(max - 250);
+        toggleTokensBtn.setOnAction(e -> {
+            if (split.getDividerPositions()[0] > 0.95) {
+                split.setDividerPositions(0.75);
             } else {
-                split.setDividerLocation(max);
+                split.setDividerPositions(1.0);
             }
         });
         
         // Listeners
-        recipeList.addListSelectionListener(e -> {
-            if (!e.getValueIsAdjusting()) loadRecipe(recipeList.getSelectedValue());
+        recipeList.getSelectionModel().selectedItemProperty().addListener((obs, oldVal, newVal) -> {
+            if (newVal != null) loadRecipe(newVal);
         });
         
-        newBtn.addActionListener(e -> clearEditor());
-        delBtn.addActionListener(e -> deleteRecipe());
-        saveBtn.addActionListener(e -> saveRecipe());
-        fetchMetaBtn.addActionListener(e -> fetchLiveMetadata());
+        newBtn.setOnAction(e -> clearEditor());
+        delBtn.setOnAction(e -> deleteRecipe());
+        saveBtn.setOnAction(e -> saveRecipe());
+        fetchMetaBtn.setOnAction(e -> fetchLiveMetadata());
         
-        addTransBtn.addActionListener(e -> addStep(new TransitionStep()));
-        addUpdateBtn.addActionListener(e -> addStep(new UpdateStep()));
-        addCreateBtn.addActionListener(e -> addStep(new CreateStep()));
-        addLinkBtn.addActionListener(e -> addStep(new LinkStep()));
-        addAssetBtn.addActionListener(e -> addStep(new AssetStep()));
-        addWorklogBtn.addActionListener(e -> addStep(new WorklogStep()));
+        addTransBtn.setOnAction(e -> addStep(new TransitionStep()));
+        addUpdateBtn.setOnAction(e -> addStep(new UpdateStep()));
+        addCreateBtn.setOnAction(e -> addStep(new CreateStep()));
+        addLinkBtn.setOnAction(e -> addStep(new LinkStep()));
+        addAssetBtn.setOnAction(e -> addStep(new AssetStep()));
+        addWorklogBtn.setOnAction(e -> addStep(new WorklogStep()));
 
-        tokenSearchField.getDocument().addDocumentListener(new DocumentListener() {
-            public void insertUpdate(DocumentEvent e) { filterTokens(); }
-            public void removeUpdate(DocumentEvent e) { filterTokens(); }
-            public void changedUpdate(DocumentEvent e) { filterTokens(); }
-        });
+        tokenSearchField.textProperty().addListener((obs, oldVal, newVal) -> filterTokens());
 
-        tokenList.addMouseListener(new java.awt.event.MouseAdapter() {
-            public void mouseClicked(java.awt.event.MouseEvent e) {
-                if (e.getClickCount() == 2) {
-                    String selected = tokenList.getSelectedValue();
-                    if (selected != null) {
-                        int start = selected.indexOf("{{");
-                        int end = selected.lastIndexOf("}}");
-                        if (start >= 0 && end > start) {
-                            String token = selected.substring(start, end + 2);
-                            java.awt.datatransfer.StringSelection selection = new java.awt.datatransfer.StringSelection(token);
-                            Toolkit.getDefaultToolkit().getSystemClipboard().setContents(selection, selection);
-                        }
+        tokenList.setOnMouseClicked(e -> {
+            if (e.getButton() == MouseButton.PRIMARY && e.getClickCount() == 2) {
+                String selected = tokenList.getSelectionModel().getSelectedItem();
+                if (selected != null) {
+                    int start = selected.indexOf("{{");
+                    int end = selected.lastIndexOf("}}");
+                    if (start >= 0 && end > start) {
+                        String token = selected.substring(start, end + 2);
+                        ClipboardContent content = new ClipboardContent();
+                        content.putString(token);
+                        Clipboard.getSystemClipboard().setContent(content);
                     }
                 }
             }
@@ -270,29 +308,19 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
     }
 
     public void setRunnerIssueKey(String recipeName, String key) {
-        SwingUtilities.invokeLater(() -> {
-            for (Component c : getComponents()) {
-                if (c instanceof JTabbedPane) {
-                    ((JTabbedPane) c).setSelectedIndex(1);
-                    break;
-                }
-            }
-            runnerRecipeCombo.setSelectedItem(recipeName);
+        Platform.runLater(() -> {
+            mainTabs.getSelectionModel().select(1);
+            runnerRecipeCombo.getSelectionModel().select(recipeName);
             runnerJqlField.setText(key);
             executeRunnerSearch();
         });
     }
 
     public void runWorkflowDirectly(String recipeName, String issueKeys) {
-        SwingUtilities.invokeLater(() -> {
+        Platform.runLater(() -> {
             mainFrame.showPanel("Workflow Orchestrator");
-            for (Component c : getComponents()) {
-                if (c instanceof JTabbedPane) {
-                    ((JTabbedPane) c).setSelectedIndex(1);
-                    break;
-                }
-            }
-            runnerRecipeCombo.setSelectedItem(recipeName);
+            mainTabs.getSelectionModel().select(1);
+            runnerRecipeCombo.getSelectionModel().select(recipeName);
             runnerJqlField.setText(issueKeys);
             runnerLog.setText("");
             executeRunnerSearch();
@@ -332,72 +360,93 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
         });
     }
 
-    private JPanel createRunnerPanel() {
-        JPanel panel = new JPanel(new BorderLayout());
+    private Node createRunnerPanel() {
+        BorderPane panel = new BorderPane();
         
-        JPanel top = new JPanel(new GridBagLayout());
-        top.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
-        GridBagConstraints gbc = new GridBagConstraints();
-        gbc.insets = new Insets(5, 5, 5, 5);
-        gbc.fill = GridBagConstraints.HORIZONTAL;
-
-        gbc.gridx = 0; gbc.gridy = 0; top.add(new JLabel("Select Recipe:"), gbc);
-        gbc.gridx = 1; gbc.weightx = 1.0; top.add(runnerRecipeCombo, gbc);
+        VBox top = new VBox(10);
+        top.setPadding(new Insets(10));
         
-        JPanel checkPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 5, 0));
-        checkPanel.add(verboseLogCheck);
-        checkPanel.add(dryRunCheck);
-        gbc.gridx = 2; gbc.weightx = 0; top.add(checkPanel, gbc);
+        GridPane topGrid = new GridPane();
+        topGrid.setHgap(10);
+        topGrid.setVgap(10);
 
-        gbc.gridx = 0; gbc.gridy = 1; gbc.weightx = 0; top.add(new JLabel("JQL Query / Issue Key:"), gbc);
-        gbc.gridx = 1; gbc.weightx = 1.0; top.add(runnerJqlField, gbc);
-        gbc.gridx = 2; gbc.weightx = 0; top.add(searchBtn, gbc);
+        topGrid.add(new Label("Select Recipe:"), 0, 0);
+        topGrid.add(runnerRecipeCombo, 1, 0);
+        GridPane.setHgrow(runnerRecipeCombo, Priority.ALWAYS);
+        runnerRecipeCombo.setMaxWidth(Double.MAX_VALUE);
+        
+        HBox checkPanel = new HBox(10);
+        checkPanel.setAlignment(Pos.CENTER_LEFT);
+        checkPanel.getChildren().addAll(verboseLogCheck, dryRunCheck);
+        topGrid.add(checkPanel, 2, 0);
 
-        runnerInputsPanel.setLayout(new GridBagLayout());
-        gbc.gridx = 0; gbc.gridy = 2; gbc.gridwidth = 3;
-        gbc.fill = GridBagConstraints.HORIZONTAL;
-        top.add(runnerInputsPanel, gbc);
+        topGrid.add(new Label("JQL Query / Issue Key:"), 0, 1);
+        topGrid.add(runnerJqlField, 1, 1);
+        GridPane.setHgrow(runnerJqlField, Priority.ALWAYS);
+        topGrid.add(searchBtn, 2, 1);
 
-        runnerTable.setFillsViewportHeight(true);
-        runnerTable.setAutoCreateRowSorter(true);
-        runnerTable.addMouseListener(new java.awt.event.MouseAdapter() {
-            @Override
-            public void mouseClicked(java.awt.event.MouseEvent e) {
-                if (e.getClickCount() == 2) {
-                    int row = runnerTable.rowAtPoint(e.getPoint());
-                    if (row >= 0) {
-                        String key = (String) runnerTableModel.getValueAt(runnerTable.convertRowIndexToModel(row), 0);
-                        tso.usmc.jira.util.JiraUtils.browseIssue(mainFrame.getBaseUrl(), key);
-                    }
+        runnerInputsPanel.setHgap(10);
+        runnerInputsPanel.setVgap(5);
+        
+        top.getChildren().addAll(topGrid, runnerInputsPanel);
+        panel.setTop(top);
+
+        // Runner table setup
+        TableColumn<RunnerIssueRow, String> keyCol = new TableColumn<>("Key");
+        keyCol.setCellValueFactory(cellData -> cellData.getValue().keyProperty());
+        keyCol.setPrefWidth(120);
+
+        TableColumn<RunnerIssueRow, String> summaryCol = new TableColumn<>("Summary");
+        summaryCol.setCellValueFactory(cellData -> cellData.getValue().summaryProperty());
+        summaryCol.setPrefWidth(350);
+
+        TableColumn<RunnerIssueRow, String> statusCol = new TableColumn<>("Status");
+        statusCol.setCellValueFactory(cellData -> cellData.getValue().statusProperty());
+        statusCol.setPrefWidth(120);
+
+        TableColumn<RunnerIssueRow, String> assigneeCol = new TableColumn<>("Assignee");
+        assigneeCol.setCellValueFactory(cellData -> cellData.getValue().assigneeProperty());
+        assigneeCol.setPrefWidth(150);
+
+        runnerTable.getColumns().addAll(keyCol, summaryCol, statusCol, assigneeCol);
+        runnerTable.getSelectionModel().setSelectionMode(SelectionMode.MULTIPLE);
+        
+        runnerTable.setRowFactory(tv -> {
+            TableRow<RunnerIssueRow> row = new TableRow<>();
+            row.setOnMouseClicked(event -> {
+                if (event.getClickCount() == 2 && (!row.isEmpty())) {
+                    RunnerIssueRow rowData = row.getItem();
+                    JiraUtils.browseIssue(mainFrame.getBaseUrl(), rowData.getKey());
                 }
-            }
+            });
+            return row;
         });
-        runnerTableModel.setColumnIdentifiers(new String[]{"Key", "Summary", "Status", "Assignee"});
-        
-        JSplitPane split = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
-        split.setTopComponent(new JScrollPane(runnerTable));
+
+        SplitPane split = new SplitPane();
+        split.setOrientation(Orientation.VERTICAL);
+        split.getItems().addAll(runnerTable, runnerLog);
+        split.setDividerPositions(0.4);
         
         runnerLog.setEditable(false);
-        runnerLog.setFont(new Font("Monospaced", Font.PLAIN, 12));
-        split.setBottomComponent(new JScrollPane(runnerLog));
-        split.setDividerLocation(200);
+        runnerLog.setStyle("-fx-font-family: monospace; -fx-font-size: 12px;");
+        
+        panel.setCenter(split);
 
-        panel.add(top, BorderLayout.NORTH);
-        panel.add(split, BorderLayout.CENTER);
+        HBox bottom = new HBox(10);
+        bottom.setPadding(new Insets(10));
+        bottom.setAlignment(Pos.CENTER_RIGHT);
+        
+        runBtn.setStyle("-fx-background-color: #c8ffc8;");
+        exportReportBtn.setDisable(true); // Enable after run
+        Button clearLogBtn = new Button("Clear Log");
+        
+        bottom.getChildren().addAll(clearLogBtn, exportReportBtn, runBtn);
+        panel.setBottom(bottom);
 
-        JPanel bottom = new JPanel(new FlowLayout());
-        runBtn.setBackground(new Color(200, 255, 200));
-        exportReportBtn.setEnabled(false); // Enable after run
-        JButton clearLogBtn = new JButton("Clear Log");
-        bottom.add(clearLogBtn);
-        bottom.add(exportReportBtn);
-        bottom.add(runBtn);
-        panel.add(bottom, BorderLayout.SOUTH);
-
-        searchBtn.addActionListener(e -> executeRunnerSearch());
-        runBtn.addActionListener(e -> runWorkflowOnSelected());
-        exportReportBtn.addActionListener(e -> exportToCsv());
-        clearLogBtn.addActionListener(e -> runnerLog.setText(""));
+        searchBtn.setOnAction(e -> executeRunnerSearch());
+        runBtn.setOnAction(e -> runWorkflowOnSelected());
+        exportReportBtn.setOnAction(e -> exportToCsv());
+        clearLogBtn.setOnAction(e -> runnerLog.setText(""));
 
         return panel;
     }
@@ -416,7 +465,7 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
 
         final String jql = finalJql;
         onLog("Searching: " + jql);
-        runnerTableModel.setRowCount(0);
+        runnerTable.getItems().clear();
         currentSearchIssues.clear();
 
         ExecutionService.submit(() -> {
@@ -426,22 +475,24 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
                 String searchResp = mainFrame.getService().executeRequest(searchUrl, "GET", null);
                 JSONArray issues = new JSONObject(searchResp).getJSONArray("issues");
                 
-                SwingUtilities.invokeLater(() -> {
-                    for (int i = 0; i < issues.length(); i++) {
-                        JSONObject issue = issues.getJSONObject(i);
-                        currentSearchIssues.add(issue);
-                        JSONObject fields = issue.getJSONObject("fields");
-                        String key = issue.getString("key");
-                        String summary = fields.optString("summary", "N/A");
-                        String status = fields.optJSONObject("status") != null ? fields.getJSONObject("status").getString("name") : "N/A";
-                        String assignee = fields.optJSONObject("assignee") != null ? fields.getJSONObject("assignee").getString("displayName") : "Unassigned";
-                        
-                        runnerTableModel.addRow(new Object[]{key, summary, status, assignee});
-                    }
+                List<RunnerIssueRow> rows = new ArrayList<>();
+                for (int i = 0; i < issues.length(); i++) {
+                    JSONObject issue = issues.getJSONObject(i);
+                    currentSearchIssues.add(issue);
+                    JSONObject fields = issue.getJSONObject("fields");
+                    String key = issue.getString("key");
+                    String summary = fields.optString("summary", "N/A");
+                    String status = fields.optJSONObject("status") != null ? fields.getJSONObject("status").getString("name") : "N/A";
+                    String assignee = fields.optJSONObject("assignee") != null ? fields.getJSONObject("assignee").getString("displayName") : "Unassigned";
+                    rows.add(new RunnerIssueRow(key, summary, status, assignee));
+                }
+
+                Platform.runLater(() -> {
+                    runnerTable.getItems().setAll(rows);
                     onLog("Found " + issues.length() + " issues.");
                     
-                    if (issues.length() > 0) {
-                        runnerTable.setRowSelectionInterval(0, issues.length() - 1);
+                    if (!rows.isEmpty()) {
+                        runnerTable.getSelectionModel().selectAll();
                     }
                     
                     updateRunnerInputs();
@@ -453,36 +504,33 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
     }
 
     private void runWorkflowOnSelected() {
-        int[] selectedRows = runnerTable.getSelectedRows();
-        if (selectedRows.length == 0) {
-            JOptionPane.showMessageDialog(this, "Please select one or more issues from the table first.");
+        List<RunnerIssueRow> selectedRows = runnerTable.getSelectionModel().getSelectedItems();
+        if (selectedRows.isEmpty()) {
+            showAlert(Alert.AlertType.WARNING, "No Selection", "Please select one or more issues from the table first.");
             return;
         }
 
-        String recipeName = (String) runnerRecipeCombo.getSelectedItem();
+        String recipeName = runnerRecipeCombo.getSelectionModel().getSelectedItem();
         if (recipeName == null) return;
 
         Map<String, String> promptValues = new HashMap<>();
         for (String label : promptFields.keySet()) {
-            JComponent comp = promptFields.get(label);
+            Node comp = promptFields.get(label);
             String val = "";
-            if (comp instanceof JTextField) {
-                val = ((JTextField) comp).getText();
+            if (comp instanceof TextField) {
+                val = ((TextField) comp).getText();
             } else if (comp instanceof AutocompleteTextField) {
                 val = ((AutocompleteTextField) comp).getText();
-            } else if (comp instanceof JComboBox) {
-                Object selected = ((JComboBox<?>) comp).getSelectedItem();
+            } else if (comp instanceof ComboBox) {
+                Object selected = ((ComboBox<?>) comp).getSelectionModel().getSelectedItem();
                 if (selected instanceof ConfigOption) {
                     val = ((ConfigOption) selected).value;
                 } else if (selected != null) {
                     val = selected.toString();
                 }
-            } else if (comp instanceof JScrollPane) {
-                Component view = ((JScrollPane) comp).getViewport().getView();
-                if (view instanceof JList) {
-                    List<String> selectedValues = ((JList<String>) view).getSelectedValuesList();
-                    val = String.join(",", selectedValues);
-                }
+            } else if (comp instanceof ListView) {
+                List<String> selectedValues = ((ListView<String>) comp).getSelectionModel().getSelectedItems();
+                val = String.join(",", selectedValues);
             } else if (comp instanceof PromptChoicePanel) {
                 val = ((PromptChoicePanel) comp).getValue();
             } else if (comp instanceof AssetOptionsPromptPanel) {
@@ -492,14 +540,16 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
         }
 
         List<JSONObject> issuesToProcess = new ArrayList<>();
-        for (int row : selectedRows) {
-            int modelRow = runnerTable.convertRowIndexToModel(row);
-            issuesToProcess.add(currentSearchIssues.get(modelRow));
+        for (RunnerIssueRow row : selectedRows) {
+            int idx = runnerTable.getItems().indexOf(row);
+            if (idx >= 0 && idx < currentSearchIssues.size()) {
+                issuesToProcess.add(currentSearchIssues.get(idx));
+            }
         }
 
         runnerLog.setText("");
-        runBtn.setEnabled(false);
-        exportReportBtn.setEnabled(false);
+        runBtn.setDisable(true);
+        exportReportBtn.setDisable(true);
         
         ExecutionService.submit(() -> {
             try {
@@ -528,14 +578,15 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
 
     private void exportToCsv() {
         if (lastResults == null || lastResults.isEmpty()) {
-            JOptionPane.showMessageDialog(this, "No results to export.");
+            showAlert(Alert.AlertType.WARNING, "No Results", "No results to export.");
             return;
         }
 
-        JFileChooser fileChooser = new JFileChooser();
-        fileChooser.setSelectedFile(new File("workflow_report_" + System.currentTimeMillis() + ".csv"));
-        if (fileChooser.showSaveDialog(this) == JFileChooser.APPROVE_OPTION) {
-            File file = fileChooser.getSelectedFile();
+        FileChooser fileChooser = new FileChooser();
+        fileChooser.setInitialFileName("workflow_report_" + System.currentTimeMillis() + ".csv");
+        fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("CSV files (*.csv)", "*.csv"));
+        File file = fileChooser.showSaveDialog(mainFrame.getPrimaryStage());
+        if (file != null) {
             try (PrintWriter pw = new PrintWriter(new FileWriter(file))) {
                 pw.println("Issue Key,Status,Duration (ms),Log,Errors");
                 for (WorkflowEngine.ExecutionResult res : lastResults) {
@@ -547,18 +598,18 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
                     sb.append("\"").append(String.join("; ", res.errors).replace("\"", "'")).append("\"");
                     pw.println(sb.toString());
                 }
-                JOptionPane.showMessageDialog(this, "Report exported to " + file.getAbsolutePath());
+                showAlert(Alert.AlertType.INFORMATION, "Export Success", "Report exported to " + file.getAbsolutePath());
             } catch (IOException e) {
-                JOptionPane.showMessageDialog(this, "Export Error: " + e.getMessage());
+                showAlert(Alert.AlertType.ERROR, "Export Error", "Export Error: " + e.getMessage());
             }
         }
     }
 
     private void updateRunnerInputs() {
-        String recipeName = (String) runnerRecipeCombo.getSelectedItem();
+        String recipeName = runnerRecipeCombo.getSelectionModel().getSelectedItem();
         if (recipeName == null) return;
         
-        runnerInputsPanel.removeAll();
+        runnerInputsPanel.getChildren().clear();
         promptFields.clear();
         
         try {
@@ -572,9 +623,10 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
                 if (runnerJqlField.getText().isEmpty()) runnerJqlField.setText(recipe.getJqlQuery());
                 
                 JSONObject contextIssue = null;
-                int selected = runnerTable.getSelectedRow();
-                if (selected >= 0 && selected < currentSearchIssues.size()) {
-                    contextIssue = currentSearchIssues.get(runnerTable.convertRowIndexToModel(selected));
+                RunnerIssueRow selected = runnerTable.getSelectionModel().getSelectedItem();
+                int idx = selected != null ? runnerTable.getItems().indexOf(selected) : -1;
+                if (idx >= 0 && idx < currentSearchIssues.size()) {
+                    contextIssue = currentSearchIssues.get(idx);
                 } else if (!currentSearchIssues.isEmpty()) {
                     contextIssue = currentSearchIssues.get(0);
                 }
@@ -607,29 +659,21 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
         } catch (Exception e) {
             e.printStackTrace();
         }
-        
-        runnerInputsPanel.revalidate();
-        runnerInputsPanel.repaint();
     }
 
-    private void addInputRow(String label, JComponent input, Set<String> labels) {
+    private void addInputRow(String label, Node input, Set<String> labels) {
         String cleanLabel = label.replaceAll("\\[.*?\\]", "").trim();
         if (labels.contains(cleanLabel)) return;
         labels.add(cleanLabel);
 
-        GridBagConstraints gbc = new GridBagConstraints();
-        int rowCount = runnerInputsPanel.getComponentCount() / 2;
+        int rowCount = runnerInputsPanel.getChildren().size() / 2;
         
-        gbc.gridy = rowCount;
-        gbc.insets = new Insets(2, 5, 2, 5);
-        gbc.anchor = GridBagConstraints.EAST;
-        runnerInputsPanel.add(new JLabel(cleanLabel + ":"), gbc);
-
-        gbc.gridx = 1;
-        gbc.weightx = 1.0;
-        gbc.fill = GridBagConstraints.HORIZONTAL;
-        gbc.anchor = GridBagConstraints.WEST;
-        runnerInputsPanel.add(input, gbc);
+        Label labelNode = new Label(cleanLabel + ":");
+        labelNode.setAlignment(Pos.CENTER_RIGHT);
+        
+        runnerInputsPanel.add(labelNode, 0, rowCount);
+        runnerInputsPanel.add(input, 1, rowCount);
+        GridPane.setHgrow(input, Priority.ALWAYS);
     }
 
     private void addDynamicPrompt(Set<String> labels, String label, String value, String fieldId, JSONObject contextIssue) {
@@ -637,7 +681,7 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
         String cleanLabel = label.replaceAll("\\[.*?\\]", "").trim();
         if (labels.contains(cleanLabel)) return;
 
-        JComponent input = createPromptInput(label, value, fieldId, contextIssue);
+        Node input = createPromptInput(label, value, fieldId, contextIssue);
         
         addInputRow(label, input, labels);
         promptFields.put(cleanLabel, input);
@@ -646,7 +690,6 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
     private JSONObject findFieldMeta(String fieldId, JSONObject contextIssue) {
         if (fieldId == null) return null;
 
-        // 1. Try Scoped Lookup (Project + IssueType)
         if (contextIssue != null && contextIssue.has("fields")) {
             JSONObject fields = contextIssue.getJSONObject("fields");
             JSONObject project = fields.optJSONObject("project");
@@ -671,20 +714,17 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
             }
         }
 
-        // 2. Fallback to Global/Flattened Lookup
         return cachedFullMeta.get(fieldId);
     }
 
-    private JComponent createPromptInput(String label, String staticOptions, String fieldId, JSONObject contextIssue) {
-        JComponent result = null;
+    private Node createPromptInput(String label, String staticOptions, String fieldId, JSONObject contextIssue) {
+        Node result = null;
         String effectiveFieldId = fieldId;
 
-        // Collect UNIQUE allowed values from ALL projects in the cache for this fieldId
         Set<String> mergedOptions = new TreeSet<>();
         boolean isArray = false;
         
         if (fieldId != null) {
-            // 1. Scan Scoped Metadata (createmeta:PROJ:TYPE)
             for (String key : cachedFullMeta.keySet()) {
                 if (key.startsWith("createmeta:")) {
                     JSONObject scopedMeta = cachedFullMeta.get(key);
@@ -709,7 +749,6 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
                 }
             }
 
-            // 2. Fallback/Include Global/Flattened Lookup
             JSONObject globalMeta = cachedFullMeta.get(fieldId);
             if (globalMeta != null) {
                 if (globalMeta.has("allowedValues")) {
@@ -728,14 +767,16 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
         if (!mergedOptions.isEmpty()) {
             List<String> options = new ArrayList<>(mergedOptions);
             if (isArray) {
-                JList<String> list = new JList<>(new Vector<>(options));
-                list.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
-                list.setVisibleRowCount(Math.min(options.size(), 4));
-                result = new JScrollPane(list);
+                ListView<String> list = new ListView<>();
+                list.getItems().addAll(options);
+                list.getSelectionModel().setSelectionMode(SelectionMode.MULTIPLE);
+                list.setPrefHeight(Math.min(options.size() * 24 + 4, 100));
+                result = list;
             } else {
-                AutocompleteTextField atf = new AutocompleteTextField(20);
+                AutocompleteTextField atf = new AutocompleteTextField();
+                atf.setPrefWidth(200);
                 atf.setSuggestions(options);
-                atf.setAutocompleteEnabled(true); // Always on for metadata-based prompts
+                atf.setAutocompleteEnabled(true);
                 String resolvedValue = staticOptions;
                 if (contextIssue != null && staticOptions != null && staticOptions.contains("{{")) {
                     resolvedValue = TokenEngine.replaceTokens(staticOptions, contextIssue);
@@ -746,7 +787,6 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
         }
         
         if (result == null) {
-            // Fallback to legacy tag-based system
             String tagSource = null;
             if (staticOptions != null && (staticOptions.contains("[config:") || staticOptions.contains("[choice:") || staticOptions.contains("[allowed:"))) tagSource = staticOptions;
             else if (label != null && (label.contains("[config:") || label.contains("[choice:") || label.contains("[allowed:"))) tagSource = label;
@@ -760,7 +800,6 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
                             String taggedFieldId = tagSource.substring(start, end).trim();
                             effectiveFieldId = taggedFieldId;
                             
-                            // Repeat merge logic for tagged field
                             Set<String> taggedOptions = new TreeSet<>();
                             boolean tIsArray = false;
                             for (String key : cachedFullMeta.keySet()) {
@@ -799,12 +838,14 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
                             if (!taggedOptions.isEmpty()) {
                                 List<String> options = new ArrayList<>(taggedOptions);
                                 if (tIsArray) {
-                                    JList<String> list = new JList<>(new Vector<>(options));
-                                    list.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
-                                    list.setVisibleRowCount(Math.min(options.size(), 4));
-                                    result = new JScrollPane(list);
+                                    ListView<String> list = new ListView<>();
+                                    list.getItems().addAll(options);
+                                    list.getSelectionModel().setSelectionMode(SelectionMode.MULTIPLE);
+                                    list.setPrefHeight(Math.min(options.size() * 24 + 4, 100));
+                                    result = list;
                                 } else {
-                                    AutocompleteTextField atf = new AutocompleteTextField(20);
+                                    AutocompleteTextField atf = new AutocompleteTextField();
+                                    atf.setPrefWidth(200);
                                     atf.setSuggestions(options);
                                     atf.setAutocompleteEnabled(mainFrame.getJiraConfig().isAutocompleteEnabled());
                                     result = atf;
@@ -834,18 +875,24 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
                             
                             if (key.equals("teams")) {
                                 String subKey = parts.length > 1 ? parts[1] : "lead";
-                                Vector<ConfigOption> options = new Vector<>();
+                                List<ConfigOption> options = new ArrayList<>();
                                 String[] teamKeys = mainFrame.getJiraConfig().getWorkflowTeamKeys();
                                 for (String tKey : teamKeys) {
                                     String name = mainFrame.getJiraConfig().getTeamProperty(tKey, "name");
                                     String val = mainFrame.getJiraConfig().getTeamProperty(tKey, subKey);
                                     if (name != null && val != null) options.add(new ConfigOption(name, val, tKey));
                                 }
-                                result = new JComboBox<>(options);
+                                ComboBox<ConfigOption> combo = new ComboBox<>();
+                                combo.getItems().addAll(options);
+                                combo.setPrefWidth(200);
+                                if (!options.isEmpty()) combo.getSelectionModel().select(0);
+                                result = combo;
                             } else if (key.equals("fy_summary")) {
-                                Vector<String> options = new Vector<>();
-                                options.add(mainFrame.getJiraConfig().getWorkflowFySummaryIssue());
-                                result = new JComboBox<>(options);
+                                ComboBox<String> combo = new ComboBox<>();
+                                combo.getItems().add(mainFrame.getJiraConfig().getWorkflowFySummaryIssue());
+                                combo.getSelectionModel().select(0);
+                                combo.setPrefWidth(200);
+                                result = combo;
                             } else {
                                 String val = mainFrame.getJiraConfig().getProperty(key);
                                 if (val != null) {
@@ -856,11 +903,17 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
                                                 opts[i] = TokenEngine.replaceTokens(opts[i], contextIssue);
                                             }
                                         }
-                                        result = new JComboBox<>(opts);
+                                        ComboBox<String> combo = new ComboBox<>();
+                                        combo.getItems().addAll(opts);
+                                        combo.getSelectionModel().select(0);
+                                        combo.setPrefWidth(200);
+                                        result = combo;
                                     } else {
                                         String resolved = val;
                                         if (contextIssue != null) resolved = TokenEngine.replaceTokens(val, contextIssue);
-                                        result = new JTextField(resolved);
+                                        TextField tf = new TextField(resolved);
+                                        tf.setPrefWidth(200);
+                                        result = tf;
                                     }
                                 }
                             }
@@ -879,7 +932,11 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
                     opts[i] = TokenEngine.replaceTokens(opts[i], contextIssue);
                 }
             }
-            result = new JComboBox<>(opts);
+            ComboBox<String> combo = new ComboBox<>();
+            combo.getItems().addAll(opts);
+            combo.getSelectionModel().select(0);
+            combo.setPrefWidth(200);
+            result = combo;
         }
         
         if (result == null) {
@@ -887,33 +944,32 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
             if (contextIssue != null && staticOptions != null && staticOptions.contains("{{")) {
                 resolvedValue = TokenEngine.replaceTokens(staticOptions, contextIssue);
             }
-            result = new JTextField(resolvedValue != null ? resolvedValue : "");
+            TextField tf = new TextField(resolvedValue != null ? resolvedValue : "");
+            tf.setPrefWidth(200);
+            result = tf;
         }
 
         // Apply Debug Tooltip
-        StringBuilder debug = new StringBuilder("<html><b>Runner Debug Info:</b><br>");
-        debug.append("Field ID: ").append(effectiveFieldId != null ? effectiveFieldId : "None").append("<br>");
+        StringBuilder debug = new StringBuilder("Runner Debug Info:\n");
+        debug.append("Field ID: ").append(effectiveFieldId != null ? effectiveFieldId : "None").append("\n");
         JSONObject dMeta = findFieldMeta(effectiveFieldId, contextIssue);
         if (effectiveFieldId != null && dMeta != null) {
-            debug.append("Name: ").append(dMeta.optString("name", "N/A")).append("<br>");
-            debug.append("Has allowedValues: ").append(dMeta.has("allowedValues")).append("<br>");
+            debug.append("Name: ").append(dMeta.optString("name", "N/A")).append("\n");
+            debug.append("Has allowedValues: ").append(dMeta.has("allowedValues")).append("\n");
             if (dMeta.has("allowedValues")) {
-                debug.append("Count: ").append(dMeta.getJSONArray("allowedValues").length()).append("<br>");
+                debug.append("Count: ").append(dMeta.getJSONArray("allowedValues").length()).append("\n");
             }
-            debug.append("Schema Type: ").append(dMeta.has("schema") ? dMeta.getJSONObject("schema").optString("type") : "N/A").append("<br>");
+            debug.append("Schema Type: ").append(dMeta.has("schema") ? dMeta.getJSONObject("schema").optString("type") : "N/A").append("\n");
         } else if (effectiveFieldId != null) {
-            debug.append("<font color='red'>Not found in metadata cache.</font>");
+            debug.append("Not found in metadata cache.");
         }
-        debug.append("</html>");
         
-        result.setToolTipText(debug.toString());
+        Tooltip tooltip = new Tooltip(debug.toString());
+        if (result instanceof Control) {
+            ((Control) result).setTooltip(tooltip);
+        }
         if (result instanceof AutocompleteTextField) {
-            ((AutocompleteTextField) result).getTextField().setToolTipText(debug.toString());
-        } else if (result instanceof JScrollPane) {
-            Component view = ((JScrollPane) result).getViewport().getView();
-            if (view instanceof JComponent) ((JComponent) view).setToolTipText(debug.toString());
-        } else if (result instanceof PromptChoicePanel) {
-            // Choice panel is a complex component, tooltip on container is fine
+            ((AutocompleteTextField) result).getTextField().setTooltip(tooltip);
         }
 
         return result;
@@ -950,14 +1006,15 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
         @Override public String toString() { return label; }
     }
 
-    private static class PromptChoicePanel extends JPanel {
-        private final JRadioButton tokenRadio;
-        private final JRadioButton manualRadio;
-        private final JTextField manualField;
+    private static class PromptChoicePanel extends HBox {
+        private final RadioButton tokenRadio;
+        private final RadioButton manualRadio;
+        private final TextField manualField;
         private final String tokenValue;
 
         PromptChoicePanel(String tokenName, String resolvedValue) {
-            setLayout(new FlowLayout(FlowLayout.LEFT, 5, 0));
+            setSpacing(10);
+            setAlignment(Pos.CENTER_LEFT);
             this.tokenValue = resolvedValue;
             
             String displayText = resolvedValue;
@@ -967,27 +1024,25 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
                 displayText = resolvedValue + " (" + tokenName + ")";
             }
             
-            tokenRadio = new JRadioButton(displayText, true);
-            manualRadio = new JRadioButton("Manual:", false);
-            manualField = new JTextField(15);
-            manualField.setEnabled(false);
+            tokenRadio = new RadioButton(displayText);
+            tokenRadio.setSelected(true);
+            manualRadio = new RadioButton("Manual:");
+            manualField = new TextField();
+            manualField.setPrefWidth(150);
+            manualField.setDisable(true);
 
-            ButtonGroup group = new ButtonGroup();
-            group.add(tokenRadio);
-            group.add(manualRadio);
+            ToggleGroup group = new ToggleGroup();
+            tokenRadio.setToggleGroup(group);
+            manualRadio.setToggleGroup(group);
 
-            add(tokenRadio);
-            add(manualRadio);
-            add(manualField);
+            getChildren().addAll(tokenRadio, manualRadio, manualField);
 
-            manualRadio.addActionListener(e -> { manualField.setEnabled(true); manualField.requestFocus(); });
-            tokenRadio.addActionListener(e -> manualField.setEnabled(false));
+            manualRadio.setOnAction(e -> { manualField.setDisable(false); manualField.requestFocus(); });
+            tokenRadio.setOnAction(e -> manualField.setDisable(true));
             
-            manualField.addMouseListener(new java.awt.event.MouseAdapter() {
-                public void mouseClicked(java.awt.event.MouseEvent e) {
-                    manualRadio.setSelected(true);
-                    manualField.setEnabled(true);
-                }
+            manualField.setOnMouseClicked(e -> {
+                manualRadio.setSelected(true);
+                manualField.setDisable(false);
             });
         }
 
@@ -996,14 +1051,18 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
         }
     }
 
-    private static class AssetOptionsPromptPanel extends JPanel {
-        private final JCheckBox att, links, sub;
+    private static class AssetOptionsPromptPanel extends HBox {
+        private final CheckBox att, links, sub;
         AssetOptionsPromptPanel(boolean a, boolean l, boolean s) {
-            setLayout(new FlowLayout(FlowLayout.LEFT, 5, 0));
-            att = new JCheckBox("Attachments", a);
-            links = new JCheckBox("Links", l);
-            sub = new JCheckBox("Sub-tasks", s);
-            add(att); add(links); add(sub);
+            setSpacing(10);
+            setAlignment(Pos.CENTER_LEFT);
+            att = new CheckBox("Attachments");
+            att.setSelected(a);
+            links = new CheckBox("Links");
+            links.setSelected(l);
+            sub = new CheckBox("Sub-tasks");
+            sub.setSelected(s);
+            getChildren().addAll(att, links, sub);
         }
         public String getValue() {
             return att.isSelected() + "," + links.isSelected() + "," + sub.isSelected();
@@ -1012,9 +1071,9 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
 
     private void filterTokens() {
         String filter = tokenSearchField.getText().toLowerCase();
-        tokenListModel.clear();
+        tokenList.getItems().clear();
         for (String t : allTokens) {
-            if (t.toLowerCase().contains(filter)) tokenListModel.addElement(t);
+            if (t.toLowerCase().contains(filter)) tokenList.getItems().add(t);
         }
     }
 
@@ -1043,12 +1102,15 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
             msg = "Deep Sync will CLEAN and REBUILD metadata for ONLY these projects: " + targetProjects;
         }
             
-        int choice = JOptionPane.showConfirmDialog(this, 
-            msg + "\n\nContinue?", "Rebuild Global Metadata Cache", JOptionPane.YES_NO_OPTION);
+        Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
+        alert.setTitle("Rebuild Global Metadata Cache");
+        alert.setHeaderText(null);
+        alert.setContentText(msg + "\n\nContinue?");
+        Optional<ButtonType> result = alert.showAndWait();
         
-        if (choice != JOptionPane.YES_OPTION) return;
+        if (!result.isPresent() || result.get() != ButtonType.OK) return;
 
-        fetchMetaBtn.setEnabled(false);
+        fetchMetaBtn.setDisable(true);
         fetchMetaBtn.setText("Syncing...");
         syncProgress.setVisible(true);
 
@@ -1110,9 +1172,9 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
                     }
                 } catch (Exception e) { onLog("  ! Global Field Sync Error: " + e.getMessage()); }
 
-                SwingUtilities.invokeLater(() -> {
+                Platform.runLater(() -> {
                     updateTokensFromCache();
-                    for (Component c : stepsContainer.getComponents()) {
+                    for (Node c : stepsContainer.getChildren()) {
                         if (c instanceof StepEditorPanel) {
                             StepEditorPanel sep = (StepEditorPanel) c;
                             sep.refreshMetadata(cachedFieldOptions, cachedFullMeta);
@@ -1120,18 +1182,18 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
                         }
                     }
                     onLog("--- Deep Sync Complete ---");
-                    fetchMetaBtn.setEnabled(true);
+                    fetchMetaBtn.setDisable(false);
                     fetchMetaBtn.setText("Fetch Metadata");
                     syncProgress.setVisible(false);
-                    JOptionPane.showMessageDialog(this, "Metadata Sync Complete!\nTotal Fields: " + cachedFullMeta.size());
+                    showAlert(Alert.AlertType.INFORMATION, "Sync Complete", "Metadata Sync Complete!\nTotal Fields: " + cachedFullMeta.size());
                 });
             } catch (Exception ex) {
                 onLog("CRITICAL METADATA ERROR: " + ex.getMessage());
-                SwingUtilities.invokeLater(() -> {
-                    fetchMetaBtn.setEnabled(true);
+                Platform.runLater(() -> {
+                    fetchMetaBtn.setDisable(false);
                     fetchMetaBtn.setText("Fetch Metadata");
                     syncProgress.setVisible(false);
-                    JOptionPane.showMessageDialog(this, "Metadata error: " + ex.getMessage());
+                    showAlert(Alert.AlertType.ERROR, "Sync Error", "Metadata error: " + ex.getMessage());
                 });
             }
         });
@@ -1144,38 +1206,24 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
 
     private void addStepUI(WorkflowStep step) {
         StepEditorPanel panel = new StepEditorPanel(step, cachedFieldOptions, cachedFullMeta, () -> {
-            stepsContainer.remove(getStepPanel(step));
-            stepsContainer.revalidate();
-            stepsContainer.repaint();
+            stepsContainer.getChildren().remove(getStepPanel(step));
         }, new StepEditorPanel.StepActionListener() {
             @Override
             public void onMoveUp(StepEditorPanel p) {
-                int idx = getComponentIndex(p);
+                int idx = stepsContainer.getChildren().indexOf(p);
                 if (idx > 0) {
-                    stepsContainer.remove(p);
-                    stepsContainer.add(p, idx - 1);
-                    stepsContainer.revalidate();
-                    stepsContainer.repaint();
+                    stepsContainer.getChildren().remove(p);
+                    stepsContainer.getChildren().add(idx - 1, p);
                 }
             }
 
             @Override
             public void onMoveDown(StepEditorPanel p) {
-                int idx = getComponentIndex(p);
-                if (idx >= 0 && idx < stepsContainer.getComponentCount() - 1) {
-                    stepsContainer.remove(p);
-                    stepsContainer.add(p, idx + 1);
-                    stepsContainer.revalidate();
-                    stepsContainer.repaint();
+                int idx = stepsContainer.getChildren().indexOf(p);
+                if (idx >= 0 && idx < stepsContainer.getChildren().size() - 1) {
+                    stepsContainer.getChildren().remove(p);
+                    stepsContainer.getChildren().add(idx + 1, p);
                 }
-            }
-            
-            private int getComponentIndex(Component c) {
-                Component[] comps = stepsContainer.getComponents();
-                for (int i = 0; i < comps.length; i++) {
-                    if (comps[i] == c) return i;
-                }
-                return -1;
             }
         }, new StepEditorPanel.StepMetadataListener() {
             @Override
@@ -1189,19 +1237,64 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
             }
         });
         panel.updateLinkTypes(cachedLinkTypes);
-        stepsContainer.add(panel);
-        if (mainFrame.getThemeManager() != null) {
-            mainFrame.getThemeManager().applyTheme(panel);
-        }
-        stepsContainer.revalidate();
-        stepsContainer.repaint();
+
+        // Drag-and-drop to rearrange steps
+        panel.getHeader().setOnMouseEntered(e -> {
+            panel.getHeader().setCursor(javafx.scene.Cursor.MOVE);
+        });
+
+        panel.getHeader().setOnDragDetected(e -> {
+            // Ignore drags initiated on interactive input controls
+            Node target = (Node) e.getTarget();
+            while (target != null && target != panel.getHeader()) {
+                if (target instanceof Button || target instanceof TextInputControl || target instanceof ComboBoxBase || target instanceof CheckBox) {
+                    return;
+                }
+                target = target.getParent();
+            }
+            
+            Dragboard db = panel.getHeader().startDragAndDrop(TransferMode.MOVE);
+            ClipboardContent content = new ClipboardContent();
+            content.putString("dragged_step");
+            db.setContent(content);
+            activeDraggedPanel = panel;
+            panel.setOpacity(0.5);
+            panel.setStyle("-fx-border-color: #3b82f6; -fx-border-style: dashed; -fx-border-width: 2px; -fx-background-color: rgba(59, 130, 246, 0.08); -fx-padding: 5px; -fx-background-radius: 4px; -fx-border-radius: 4px;");
+            e.consume();
+        });
+
+        panel.setOnDragOver(e -> {
+            if (e.getDragboard().hasString() && "dragged_step".equals(e.getDragboard().getString())) {
+                if (activeDraggedPanel != null && activeDraggedPanel != panel) {
+                    int activeIdx = stepsContainer.getChildren().indexOf(activeDraggedPanel);
+                    int targetIdx = stepsContainer.getChildren().indexOf(panel);
+                    if (activeIdx >= 0 && targetIdx >= 0) {
+                        stepsContainer.getChildren().remove(activeDraggedPanel);
+                        stepsContainer.getChildren().add(targetIdx, activeDraggedPanel);
+                    }
+                }
+                e.acceptTransferModes(TransferMode.MOVE);
+            }
+            e.consume();
+        });
+
+        panel.getHeader().setOnDragDone(e -> {
+            if (activeDraggedPanel != null) {
+                activeDraggedPanel.setOpacity(1.0);
+                activeDraggedPanel.setStyle("-fx-border-color: gray; -fx-border-width: 1px; -fx-padding: 5px;");
+                activeDraggedPanel = null;
+            }
+            e.consume();
+        });
+
+        stepsContainer.getChildren().add(panel);
     }
 
     private void fetchCreateMetadata(CreateStep step) {
         String pKey = step.getProjectKey();
         String iType = step.getIssueType();
         if (pKey == null || pKey.isEmpty() || iType == null || iType.isEmpty()) {
-            JOptionPane.showMessageDialog(this, "Please provide both Project Key and Issue Type.");
+            showAlert(Alert.AlertType.WARNING, "Missing Data", "Please provide both Project Key and Issue Type.");
             return;
         }
 
@@ -1225,7 +1318,7 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
                 MetadataCacheService helper = mainFrame.getMetadataService();
                 Map<String, JSONObject> meta = helper.getCreateMetadata(pKey, iType);
                 if (meta.isEmpty()) {
-                    SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(this, "No metadata found for " + pKey + " / " + iType));
+                    Platform.runLater(() -> showAlert(Alert.AlertType.INFORMATION, "No Metadata", "No metadata found for " + pKey + " / " + iType));
                     return;
                 }
 
@@ -1234,16 +1327,16 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
                 }
                 mainFrame.getMetadataService().updateDiskCache(meta);
 
-                SwingUtilities.invokeLater(() -> applyCreateMetadata(step, meta));
+                Platform.runLater(() -> applyCreateMetadata(step, meta));
             } catch (Exception ex) {
-                SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(this, "Create Meta Error: " + ex.getMessage()));
+                Platform.runLater(() -> showAlert(Alert.AlertType.ERROR, "Metadata Error", "Create Meta Error: " + ex.getMessage()));
             }
         });
     }
 
     private void applyCreateMetadata(CreateStep step, Map<String, JSONObject> meta) {
         updateTokensFromCache();
-        Component cp = getStepPanel(step);
+        Node cp = getStepPanel(step);
         if (cp instanceof StepEditorPanel) {
             StepEditorPanel sep = (StepEditorPanel) cp;
             sep.refreshMetadata(cachedFieldOptions, cachedFullMeta);
@@ -1259,7 +1352,7 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
                     }
                 }
             }
-            JOptionPane.showMessageDialog(this, "Fetched " + meta.size() + " fields. Added " + addedCount + " required fields.");
+            showAlert(Alert.AlertType.INFORMATION, "Metadata Applied", "Fetched " + meta.size() + " fields. Added " + addedCount + " required fields.");
         }
     }
 
@@ -1268,7 +1361,7 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
         String targetStatus = step.getTargetStatus();
         
         if (filterText.isEmpty()) {
-            JOptionPane.showMessageDialog(this, "Please provide a Context Issue Key (for live API) or Project Key (for cache) in the Filter field.");
+            showAlert(Alert.AlertType.WARNING, "Context Missing", "Please provide a Context Issue Key (for live API) or Project Key (for cache) in the Filter field.");
             return;
         }
 
@@ -1292,7 +1385,7 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
                     }
                 }
             }
-            JOptionPane.showMessageDialog(this, "No cached transition metadata found for '" + targetStatus + "' in projects: " + filterText);
+            showAlert(Alert.AlertType.WARNING, "No Metadata", "No cached transition metadata found for '" + targetStatus + "' in projects: " + filterText);
         }
     }
 
@@ -1309,7 +1402,7 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
                 }
                 
                 if (match == null) {
-                    SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(this, "Transition '" + step.getTargetStatus() + "' not found on issue " + issueKey));
+                    Platform.runLater(() -> showAlert(Alert.AlertType.WARNING, "Not Found", "Transition '" + step.getTargetStatus() + "' not found on issue " + issueKey));
                     return;
                 }
                 
@@ -1326,23 +1419,23 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
                 }
                 mainFrame.getMetadataService().updateDiskCache(meta);
                 
-                SwingUtilities.invokeLater(() -> applyTransitionMetadata(step, meta));
+                Platform.runLater(() -> applyTransitionMetadata(step, meta));
             } catch (Exception ex) {
-                SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(this, "Transition Meta Error: " + ex.getMessage()));
+                Platform.runLater(() -> showAlert(Alert.AlertType.ERROR, "Transition Error", "Transition Meta Error: " + ex.getMessage()));
             }
         });
     }
 
     private void applyTransitionMetadata(TransitionStep step, Map<String, JSONObject> meta) {
-        Component cp = getStepPanel(step);
+        Node cp = getStepPanel(step);
         if (cp instanceof StepEditorPanel) {
             ((StepEditorPanel) cp).refreshMetadata(cachedFieldOptions, cachedFullMeta);
         }
-        JOptionPane.showMessageDialog(this, "Fetched " + meta.size() + " fields for transition '" + step.getTargetStatus() + "'");
+        showAlert(Alert.AlertType.INFORMATION, "Metadata Applied", "Fetched " + meta.size() + " fields for transition '" + step.getTargetStatus() + "'");
     }
 
-    private Component getStepPanel(WorkflowStep step) {
-        for (Component c : stepsContainer.getComponents()) {
+    private Node getStepPanel(WorkflowStep step) {
+        for (Node c : stepsContainer.getChildren()) {
             if (c instanceof StepEditorPanel && ((StepEditorPanel)c).getStep() == step) return c;
         }
         return null;
@@ -1361,7 +1454,7 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
             if (recipe != null) {
                 recipeNameField.setText(recipe.getRecipeName());
                 jqlField.setText(recipe.getJqlQuery());
-                stepsContainer.removeAll();
+                stepsContainer.getChildren().clear();
                 
                 if (recipe.getMetadataSnapshot() != null) {
                     JSONObject snap = recipe.getMetadataSnapshot();
@@ -1374,8 +1467,6 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
                 for (WorkflowStep step : recipe.getSteps()) {
                     addStepUI(step);
                 }
-                stepsContainer.revalidate();
-                stepsContainer.repaint();
             }
         } catch (Exception e) {
             e.printStackTrace();
@@ -1389,11 +1480,14 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
             names.addAll(Arrays.asList(configRecipes));
         }
 
-        recipeListModel.clear();
-        runnerRecipeCombo.removeAllItems();
+        recipeList.getItems().clear();
+        runnerRecipeCombo.getItems().clear();
         for (String name : names) {
-            recipeListModel.addElement(name);
-            runnerRecipeCombo.addItem(name);
+            recipeList.getItems().add(name);
+            runnerRecipeCombo.getItems().add(name);
+        }
+        if (!names.isEmpty()) {
+            runnerRecipeCombo.getSelectionModel().select(0);
         }
         updateRunnerInputs();
     }
@@ -1404,7 +1498,7 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
         WorkflowRecipe recipe = new WorkflowRecipe();
         recipe.setRecipeName(name);
         recipe.setJqlQuery(jqlField.getText());
-        for (Component c : stepsContainer.getComponents()) {
+        for (Node c : stepsContainer.getChildren()) {
             if (c instanceof StepEditorPanel) {
                 ((StepEditorPanel) c).saveToStep();
                 recipe.addStep(((StepEditorPanel) c).getStep());
@@ -1414,26 +1508,30 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
         try {
             workflowManager.saveWorkflow(recipe);
             refreshRecipeList();
-            JOptionPane.showMessageDialog(this, "Recipe saved!");
+            showAlert(Alert.AlertType.INFORMATION, "Saved", "Recipe saved!");
         } catch (IOException e) {
-            JOptionPane.showMessageDialog(this, "Error saving: " + e.getMessage());
+            showAlert(Alert.AlertType.ERROR, "Save Error", "Error saving: " + e.getMessage());
         }
     }
 
     private void clearEditor() {
-        recipeNameField.setText(""); jqlField.setText(""); stepsContainer.removeAll();
-        stepsContainer.revalidate(); stepsContainer.repaint(); recipeList.clearSelection();
+        recipeNameField.setText("");
+        jqlField.setText("");
+        stepsContainer.getChildren().clear();
+        recipeList.getSelectionModel().clearSelection();
     }
 
     private void deleteRecipe() {
-        String selected = recipeList.getSelectedValue();
+        String selected = recipeList.getSelectionModel().getSelectedItem();
         if (selected == null) return;
         workflowManager.deleteWorkflow(selected);
-        refreshRecipeList(); clearEditor();
+        refreshRecipeList();
+        clearEditor();
     }
 
     private void updateTokensFromCache() {
-        cachedFieldOptions.clear(); cachedLinkTypes.clear();
+        cachedFieldOptions.clear();
+        cachedLinkTypes.clear();
         List<String> tokens = new ArrayList<>();
         tokens.add("Current Issue Key ({{issue.key}})"); tokens.add("Current Summary ({{issue.fields.summary}})");
         tokens.add("Current Parent Key ({{issue.fields.parent.key}})"); tokens.add("Current Timestamp ({{now}})");
@@ -1452,8 +1550,21 @@ public class WorkflowOrchestratorPanel extends JPanel implements WorkflowProgres
             cachedFieldOptions.put(name + " (" + key + ")", key);
             tokens.add(name + " ({{issue.fields." + key + "}})");
         }
-        Collections.sort(tokens); Collections.sort(cachedLinkTypes);
-        allTokens.clear(); allTokens.addAll(tokens); filterTokens();
+        Collections.sort(tokens);
+        Collections.sort(cachedLinkTypes);
+        allTokens.clear();
+        allTokens.addAll(tokens);
+        filterTokens();
         cachedFieldOptions.put("teams_selection (Virtual)", "teams_selection");
+    }
+
+    private void showAlert(Alert.AlertType type, String title, String content) {
+        Platform.runLater(() -> {
+            Alert alert = new Alert(type);
+            alert.setTitle(title);
+            alert.setHeaderText(null);
+            alert.setContentText(content);
+            alert.showAndWait();
+        });
     }
 }

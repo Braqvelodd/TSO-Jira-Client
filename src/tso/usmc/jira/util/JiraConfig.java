@@ -21,9 +21,11 @@ import javax.swing.JOptionPane;
  */
 public class JiraConfig {
     private static final String CURRENT_CONFIG_VERSION = "1.4";
+    private static final String CURRENT_CONSTANTS_VERSION = "1.5";
     private final Properties properties = new Properties();
     private final File configFile;
     private final File templateFile;
+    private final File constantsFile;
     private final List<ConfigChangeListener> listeners = new ArrayList<>();
     private final Object lock = new Object();
     private long lastReloadTime = 0;
@@ -39,14 +41,17 @@ public class JiraConfig {
         File configDir = new File(userHome, ".JiraApiClient"); // Using a hidden folder is a common convention.
         this.configFile = new File(configDir, "JiraConfig.ini");
         this.templateFile = new File(configDir, "jiratemplate.ini");
+        this.constantsFile = new File(configDir, "constants.ini");
 
         // 2. Ensure the configuration files exist on the file system.
         ensureConfigFileExists();
         ensureTemplateFileExists();
+        ensureConstantsFileExists();
         loadProperties();
         
         // 3. Check for version mismatch and upgrade if needed
         upgradeConfigIfNeeded();
+        upgradeConstantsIfNeeded();
 
         startFileWatcher();
     }
@@ -151,6 +156,118 @@ public class JiraConfig {
             }
         }
     }
+
+    private void upgradeConstantsIfNeeded() {
+        String existingVersion = getProperty("constants_version");
+        if (existingVersion == null || !existingVersion.equals(CURRENT_CONSTANTS_VERSION)) {
+            System.out.println("Constants version mismatch (Existing: " + existingVersion + ", Target: " + CURRENT_CONSTANTS_VERSION + "). Upgrading...");
+            performConstantsUpgrade(existingVersion);
+        }
+    }
+
+    private void performConstantsUpgrade(String oldVersion) {
+        synchronized (lock) {
+            try {
+                // 1. Read existing lines
+                List<String> existingLines = Files.readAllLines(constantsFile.toPath());
+                
+                // 2. Load default constants lines from resources
+                List<String> defaultLines = new ArrayList<>();
+                try (InputStream in = JiraConfig.class.getResourceAsStream("/constants.ini")) {
+                    if (in != null) {
+                        java.util.Scanner scanner = new java.util.Scanner(in).useDelimiter("\\n");
+                        while (scanner.hasNext()) {
+                            defaultLines.add(scanner.next().replace("\r", ""));
+                        }
+                    }
+                }
+
+                if (defaultLines.isEmpty()) {
+                    System.err.println("Could not load default constants for comparison.");
+                    return;
+                }
+
+                // 3. Map existing keys (both active and commented out)
+                Map<String, String> existingKeyMap = new LinkedHashMap<>(); // key -> full line
+                for (String line : existingLines) {
+                    String trimmed = line.trim();
+                    if (trimmed.isEmpty() || trimmed.startsWith("# ") || trimmed.startsWith("[")) continue; // Skip general comments and sections
+                    
+                    if (trimmed.startsWith("#")) {
+                        // Check if it's a commented out property: # key = value
+                        String content = trimmed.substring(1).trim();
+                        if (content.contains("=")) {
+                            String key = content.split("=", 2)[0].trim();
+                            if (!existingKeyMap.containsKey(key)) {
+                                existingKeyMap.put(key, line);
+                            }
+                        }
+                    } else if (trimmed.contains("=")) {
+                        String key = trimmed.split("=", 2)[0].trim();
+                        existingKeyMap.put(key, line);
+                    }
+                }
+
+                // 4. Identify missing variables from default constants
+                List<String> toAdd = new ArrayList<>();
+                String currentSection = "";
+                for (String defLine : defaultLines) {
+                    String trimmedDef = defLine.trim();
+                    if (trimmedDef.startsWith("[") && trimmedDef.endsWith("]")) {
+                        currentSection = trimmedDef.substring(1, trimmedDef.length() - 1).trim();
+                        // Add section headers if not present in file
+                        boolean sectionExists = existingLines.stream().anyMatch(l -> l.trim().equals(trimmedDef));
+                        if (!sectionExists) {
+                            toAdd.add("");
+                            toAdd.add(trimmedDef);
+                        }
+                        continue;
+                    }
+                    if (trimmedDef.isEmpty() || (trimmedDef.startsWith("#") && !trimmedDef.substring(1).trim().contains("="))) {
+                        continue; 
+                    }
+
+                    String key;
+                    if (trimmedDef.startsWith("#")) {
+                        key = trimmedDef.substring(1).trim().split("=", 2)[0].trim();
+                    } else if (trimmedDef.contains("=")) {
+                        key = trimmedDef.split("=", 2)[0].trim();
+                    } else {
+                        continue;
+                    }
+
+                    if (!existingKeyMap.containsKey(key) && !key.equals("constants_version")) {
+                        toAdd.add(defLine);
+                    }
+                }
+
+                // 5. Update version and write back
+                boolean versionUpdated = false;
+                for (int i = 0; i < existingLines.size(); i++) {
+                    if (existingLines.get(i).trim().startsWith("constants_version")) {
+                        existingLines.set(i, "constants_version = " + CURRENT_CONSTANTS_VERSION);
+                        versionUpdated = true;
+                        break;
+                    }
+                }
+                if (!versionUpdated) {
+                    existingLines.add(0, "constants_version = " + CURRENT_CONSTANTS_VERSION);
+                }
+
+                if (!toAdd.isEmpty()) {
+                    existingLines.add("");
+                    existingLines.add("# Added missing variables from default constants during upgrade to version " + CURRENT_CONSTANTS_VERSION);
+                    existingLines.addAll(toAdd);
+                }
+
+                Files.write(constantsFile.toPath(), existingLines);
+                loadProperties(); 
+                System.out.println("Upgrade to version " + CURRENT_CONSTANTS_VERSION + " complete. Added " + toAdd.size() + " missing variables.");
+            } catch (IOException e) {
+                System.err.println("Failed to upgrade constants file: " + e.getMessage());
+            }
+        }
+    }
     private void ensureConfigFileExists() {
         if (!configFile.exists()) {
             try {
@@ -218,6 +335,34 @@ public class JiraConfig {
             }
         }
     }
+    private void ensureConstantsFileExists() {
+        if (!constantsFile.exists()) {
+            try {
+                File parentDir = constantsFile.getParentFile();
+                if (!parentDir.exists()) {
+                    if (!parentDir.mkdirs()) {
+                        throw new IOException("Could not create parent directory: " + parentDir.getAbsolutePath());
+                    }
+                }
+
+                try (InputStream in = JiraConfig.class.getResourceAsStream("/constants.ini");
+                     OutputStream out = new FileOutputStream(constantsFile)) {
+
+                    if (in == null) {
+                        throw new IOException("'constants.ini' not found in JAR resources.");
+                    }
+
+                    byte[] buffer = new byte[1024];
+                    int length;
+                    while ((length = in.read(buffer)) > 0) {
+                        out.write(buffer, 0, length);
+                    }
+                }
+            } catch (IOException ex) {
+                 System.err.println("Could not create the constants file: " + ex.getMessage());
+            }
+        }
+    }
     // NEW: Centralized method for loading properties
     private void loadProperties() {
         synchronized (lock) {
@@ -243,6 +388,34 @@ public class JiraConfig {
                     System.out.println("Templates reloaded from " + templateFile.getName());
                 } catch (IOException ex) {
                     System.err.println("Error reloading templates: " + ex.getMessage());
+                }
+            }
+
+            if (this.constantsFile != null && this.constantsFile.exists()) {
+                try {
+                    List<String> lines = Files.readAllLines(this.constantsFile.toPath());
+                    String currentSection = "";
+                    for (String line : lines) {
+                        line = line.trim();
+                        if (line.isEmpty() || line.startsWith("#") || line.startsWith(";")) {
+                            continue;
+                        }
+                        if (line.startsWith("[") && line.endsWith("]")) {
+                            currentSection = line.substring(1, line.length() - 1).trim();
+                        } else if (line.contains("=")) {
+                            String[] parts = line.split("=", 2);
+                            String key = parts[0].trim();
+                            String value = parts[1].trim();
+                            String fullKey = (currentSection.isEmpty() || 
+                                              currentSection.equals("Environment") || 
+                                              currentSection.equals("Reconciliation") || 
+                                              currentSection.equals("Teams")) ? key : currentSection + "." + key;
+                            properties.setProperty(fullKey, value);
+                        }
+                    }
+                    System.out.println("Constants reloaded from " + constantsFile.getName());
+                } catch (IOException ex) {
+                    System.err.println("Error reloading constants: " + ex.getMessage());
                 }
             }
         }
@@ -383,8 +556,10 @@ public class JiraConfig {
                 while ((key = watchService.take()) != null) {
                     for (WatchEvent<?> event : key.pollEvents()) {
                         String fileName = event.context().toString();
-                        // Check if the modified file is our config file or template file
-                        if (fileName.equals(this.configFile.getName()) || fileName.equals(this.templateFile.getName())) {
+                        // Check if the modified file is our config file, template file, or constants file
+                        if (fileName.equals(this.configFile.getName()) || 
+                            fileName.equals(this.templateFile.getName()) || 
+                            (this.constantsFile != null && fileName.equals(this.constantsFile.getName()))) {
                             // File has been modified, trigger reload
                             reload();
                         }
@@ -789,6 +964,74 @@ public class JiraConfig {
                 System.err.println("Failed to create default CSS file: " + e.getMessage());
             }
         }
+    }
+
+    public File getConstantsFile() {
+        return this.constantsFile;
+    }
+
+    public List<String> getCiTypes() {
+        String prefixes = getProperty("CI_Types.prefixes");
+        if (prefixes == null || prefixes.trim().isEmpty()) {
+            return java.util.Arrays.asList("COB", "PROC", "JCL", "SYS", "ASM", "COPY", "DMGR", "DCLG", "CMAP");
+        }
+        List<String> list = new ArrayList<>();
+        for (String p : prefixes.split(",")) {
+            list.add(p.trim().toUpperCase());
+        }
+        return list;
+    }
+
+    public String getCustomFieldId(String key, String defaultValue) {
+        String val = getProperty("Custom_Fields." + key);
+        if (val == null || val.trim().isEmpty()) {
+            return defaultValue;
+        }
+        return val.trim();
+    }
+
+    public String getCloneProjectKey() {
+        String val = getProperty("Defaults.clone_project_key");
+        if (val == null || val.trim().isEmpty()) {
+            return "TFS";
+        }
+        return val.trim().toUpperCase();
+    }
+
+    public List<String> getSubtaskTypes() {
+        String types = getProperty("Defaults.subtask_types");
+        if (types == null || types.trim().isEmpty()) {
+            return java.util.Arrays.asList("Sub-task", "ST-PCU", "ST-Database", "ST-Interface");
+        }
+        List<String> list = new ArrayList<>();
+        for (String t : types.split(",")) {
+            list.add(t.trim());
+        }
+        return list;
+    }
+
+    public String getJqlDisplayFields() {
+        String val = getProperty("Defaults.jql_display_fields");
+        if (val == null || val.trim().isEmpty()) {
+            return "key, summary, status, assignee, issuelinks";
+        }
+        return val.trim();
+    }
+
+    public String getJqlDefaultQuery() {
+        String val = getProperty("Defaults.jql_default_query");
+        if (val == null || val.trim().isEmpty()) {
+            return "issuetype = Bug AND status = 'To Do' ORDER BY created DESC";
+        }
+        return val.trim();
+    }
+
+    public String getReconciliationParentKeys() {
+        String val = getProperty("Defaults.reconciliation_parent_keys");
+        if (val == null || val.trim().isEmpty()) {
+            return "TFS-49439\nTFS-35035";
+        }
+        return val.replace(",", "\n").trim();
     }
 }
 

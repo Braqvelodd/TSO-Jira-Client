@@ -7,7 +7,7 @@ setlocal enabledelayedexpansion
 set "ROOT_DIR=%~dp0"
 if "%ROOT_DIR:~-1%"=="\" set "ROOT_DIR=%ROOT_DIR:~0,-1%"
 
-set ENV=WORK
+set ENV=HOME
 set EMBED_MODEL=NO
 
 if "%ENV%"=="WORK" (
@@ -55,7 +55,7 @@ cd ..
 
 :: Compile the Java files
 echo Compiling Java files...
-"%JDK_BIN%\javac" --release 8 -d bin -cp bin %SOURCES%
+"%JDK_BIN%\javac" --release 8 -d bin -cp "lib\json-20231013.jar;lib\jfxrt.jar;bin" %SOURCES%
 
 if %errorlevel% neq 0 (
     echo Java compilation failed!

@@ -1,0 +1,197 @@
+/* glass.css - Glassmorphic theme overriding JavaFX Modena colors */
+.root {
+    -fx-background: linear-gradient(to bottom right, #0a0f1d, #111827);
+    -fx-base: rgba(255, 255, 255, 0.08);
+    -fx-control-inner-background: rgba(15, 23, 42, 0.4);
+    -fx-control-inner-background-alt: rgba(15, 23, 42, 0.35);
+    -fx-accent: rgba(59, 130, 246, 0.8);
+    -fx-focus-color: rgba(59, 130, 246, 0.8);
+    -fx-text-base-color: #ffffff;
+    -fx-text-background-color: #ffffff;
+    -fx-font-family: "Segoe UI", Arial, sans-serif;
+    -fx-font-size: 13px;
+}
+
+/* Glass Panels and Cards */
+.connection-panel {
+    -fx-background-color: rgba(255, 255, 255, 0.07);
+    -fx-border-color: rgba(255, 255, 255, 0.12);
+    -fx-border-width: 1px;
+    -fx-border-radius: 12px;
+    -fx-background-radius: 12px;
+    -fx-padding: 12px;
+}
+
+.card {
+    -fx-background-color: rgba(255, 255, 255, 0.05);
+    -fx-border-color: rgba(255, 255, 255, 0.1);
+    -fx-border-width: 1px;
+    -fx-border-radius: 12px;
+    -fx-background-radius: 12px;
+    -fx-padding: 12px;
+}
+
+.card-title {
+    -fx-font-weight: bold;
+    -fx-text-fill: #60a5fa;
+    -fx-padding: 0 0 5px 0;
+}
+
+/* TabPane and Tabs */
+.tab-pane {
+    -fx-background-color: transparent;
+}
+
+.tab-header-area {
+    -fx-background-color: transparent;
+}
+
+.tab {
+    -fx-background-color: rgba(255, 255, 255, 0.05);
+    -fx-background-insets: 0 1 0 0;
+    -fx-background-radius: 8 8 0 0;
+    -fx-text-fill: #9ca3af;
+}
+
+.tab:hover {
+    -fx-background-color: rgba(255, 255, 255, 0.1);
+}
+
+.tab:selected {
+    -fx-background-color: rgba(255, 255, 255, 0.12);
+    -fx-text-fill: #ffffff;
+}
+
+/* Text inputs */
+.text-input {
+    -fx-background-color: rgba(15, 23, 42, 0.45);
+    -fx-text-fill: #ffffff;
+    -fx-border-color: rgba(255, 255, 255, 0.12);
+    -fx-border-width: 1px;
+    -fx-border-radius: 6px;
+    -fx-background-radius: 6px;
+}
+
+.text-input:focused {
+    -fx-border-color: rgba(59, 130, 246, 0.6);
+}
+
+/* Button enhancements */
+.button {
+    -fx-background-color: rgba(59, 130, 246, 0.25);
+    -fx-border-color: rgba(255, 255, 255, 0.1);
+    -fx-border-width: 1px;
+    -fx-background-radius: 8px;
+    -fx-border-radius: 8px;
+    -fx-padding: 6px 12px;
+    -fx-text-fill: #ffffff;
+}
+
+.button:hover {
+    -fx-background-color: rgba(59, 130, 246, 0.45);
+    -fx-border-color: rgba(255, 255, 255, 0.2);
+    -fx-effect: dropshadow(three-pass-box, rgba(59, 130, 246, 0.4), 8, 0, 0, 0);
+}
+
+.button:pressed {
+    -fx-background-color: rgba(59, 130, 246, 0.6);
+}
+
+/* Tables and Lists */
+.table-view, .list-view {
+    -fx-background-color: rgba(15, 23, 42, 0.35);
+    -fx-border-color: rgba(255, 255, 255, 0.1);
+    -fx-border-width: 1px;
+    -fx-border-radius: 8px;
+}
+
+.table-view .column-header, .table-view .column-header-background {
+    -fx-background-color: rgba(255, 255, 255, 0.05);
+}
+
+.table-view .column-header .label {
+    -fx-text-fill: #ffffff;
+}
+
+/* Status Bar */
+.status-bar {
+    -fx-background-color: rgba(255, 255, 255, 0.03);
+    -fx-border-color: rgba(255, 255, 255, 0.08);
+    -fx-border-width: 1px 0 0 0;
+    -fx-padding: 6px;
+}
+
+.status-text {
+    -fx-text-fill: #9ca3af;
+}
+
+/* ScrollBars */
+.scroll-bar:vertical, .scroll-bar:horizontal {
+    -fx-background-color: transparent;
+}
+.scroll-bar .thumb {
+    -fx-background-color: rgba(255, 255, 255, 0.15);
+    -fx-background-radius: 4px;
+}
+.scroll-bar .thumb:hover {
+    -fx-background-color: rgba(255, 255, 255, 0.25);
+}
+
+.step-header {
+    -fx-background-color: rgba(255, 255, 255, 0.08);
+}
+
+/* Badges */
+.badge {
+    -fx-padding: 2px 6px;
+    -fx-background-radius: 4px;
+    -fx-font-size: 11px;
+    -fx-font-weight: bold;
+    -fx-text-fill: white;
+}
+.badge-create {
+    -fx-background-color: rgba(16, 185, 129, 0.7);
+}
+.badge-update {
+    -fx-background-color: rgba(245, 158, 11, 0.7);
+}
+.badge-transition {
+    -fx-background-color: rgba(239, 68, 68, 0.7);
+}
+.badge-link {
+    -fx-background-color: rgba(59, 130, 246, 0.7);
+}
+.badge-asset {
+    -fx-background-color: rgba(139, 92, 246, 0.7);
+}
+.badge-worklog {
+    -fx-background-color: rgba(236, 72, 153, 0.7);
+}
+
+/* List Action Buttons (Up/Down/Delete) */
+.list-action-btn {
+    -fx-padding: 0;
+    -fx-font-weight: bold;
+    -fx-background-color: rgba(255, 255, 255, 0.03);
+    -fx-border-color: rgba(255, 255, 255, 0.1);
+    -fx-border-width: 1px;
+    -fx-border-radius: 6px;
+    -fx-background-radius: 6px;
+}
+.list-action-btn:hover {
+    -fx-background-color: rgba(255, 255, 255, 0.1);
+    -fx-effect: dropshadow(three-pass-box, rgba(59, 130, 246, 0.3), 4, 0, 0, 0);
+}
+.action-btn-up, .action-btn-down {
+    -fx-text-fill: rgba(255, 255, 255, 0.6);
+}
+.action-btn-up:hover, .action-btn-down:hover {
+    -fx-text-fill: #60a5fa;
+}
+.action-btn-delete {
+    -fx-text-fill: rgba(239, 68, 68, 0.8);
+}
+.action-btn-delete:hover {
+    -fx-background-color: rgba(239, 68, 68, 0.2);
+    -fx-border-color: rgba(239, 68, 68, 0.5);
+}

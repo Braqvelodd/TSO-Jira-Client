@@ -5,18 +5,23 @@ import tso.usmc.jira.service.JqlAutocompleteService;
 import tso.usmc.jira.util.JsonUtils;
 import tso.usmc.jira.util.ExecutionService;
 
-import javax.swing.*;
-import javax.swing.table.DefaultTableCellRenderer;
-import javax.swing.table.DefaultTableModel;
-import java.awt.*;
+import javafx.application.Platform;
+import javafx.collections.FXCollections;
+import javafx.collections.ObservableList;
+import javafx.geometry.Insets;
+import javafx.scene.control.*;
+import javafx.scene.layout.*;
+import javafx.beans.property.SimpleStringProperty;
+
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import org.json.JSONArray;
 import org.json.JSONObject;
-import java.awt.event.MouseAdapter;
-import java.awt.event.MouseEvent;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
 
-public class JqlRunnerPanel extends JPanel implements tso.usmc.jira.util.ConfigChangeListener {
+public class JqlRunnerPanel extends BorderPane implements tso.usmc.jira.util.ConfigChangeListener {
 
     private final JiraApiClientGui mainFrame;
     private final tso.usmc.jira.util.JiraConfig jiraConfig;
@@ -24,21 +29,14 @@ public class JqlRunnerPanel extends JPanel implements tso.usmc.jira.util.ConfigC
 
     // UI Components
     private final JqlAutocompleteTextArea jqlArea;
-    private final JiraFieldAutocompleteTextField fieldsField = new JiraFieldAutocompleteTextField("key, summary, status, assignee, issuelinks");
-    private final JButton executeBtn = new JButton("Execute JQL");
-    private final JButton workflowsBtn = new JButton("Workflows \u25BE"); // Down arrow
-    private final JComboBox<String> filterCombo = new JComboBox<>();
-    private final JButton saveFilterBtn = new JButton("Save Filter");
-    private final JLabel statusLabel = new JLabel("Enter a JQL query and click Execute.");
+    private final JiraFieldAutocompleteTextField fieldsField;
+    private final Button executeBtn = new Button("Execute JQL");
+    private final MenuButton workflowsBtn = new MenuButton("Workflows");
+    private final ComboBox<String> filterCombo = new ComboBox<>();
+    private final Button saveFilterBtn = new Button("Save Filter");
+    private final Label statusLabel = new Label("Enter a JQL query and click Execute.");
 
-    private final DefaultTableModel tableModel = new DefaultTableModel() {
-        @Override
-        public boolean isCellEditable(int row, int column) {
-            return false;
-        }
-    };
-    private final JTable resultsTable = new JTable(tableModel);
-    private String selectedIssueKey;
+    private final TableView<ObservableList<String>> resultsTable = new TableView<>();
     private boolean isRefreshingFilters = false;
 
     public JqlRunnerPanel(JiraApiClientGui mainFrame) {
@@ -46,98 +44,106 @@ public class JqlRunnerPanel extends JPanel implements tso.usmc.jira.util.ConfigC
         this.jiraConfig = mainFrame.getJiraConfig();
         this.jiraConfig.addConfigChangeListener(this);
         
+        this.fieldsField = new JiraFieldAutocompleteTextField(this.jiraConfig.getJqlDisplayFields());
         this.jqlArea = new JqlAutocompleteTextArea(null);
-        this.jqlArea.setText("issuetype = Bug AND status = 'To Do' ORDER BY created DESC");
+        this.jqlArea.setText(this.jiraConfig.getJqlDefaultQuery());
+        this.jqlArea.setPrefRowCount(4);
         
-        java.awt.event.FocusAdapter focusHandler = new java.awt.event.FocusAdapter() {
-            @Override
-            public void focusGained(java.awt.event.FocusEvent e) {
-                ensureAutocompleteServiceInitialized();
-            }
-        };
-        this.jqlArea.addFocusListener(focusHandler);
-        this.fieldsField.addFocusListener(focusHandler);
+        // Listeners for focus initialization of autocomplete
+        this.jqlArea.focusedProperty().addListener((obs, oldV, newV) -> {
+            if (newV) ensureAutocompleteServiceInitialized();
+        });
+        this.fieldsField.focusedProperty().addListener((obs, oldV, newV) -> {
+            if (newV) ensureAutocompleteServiceInitialized();
+        });
 
-        // Try initial load
         ensureAutocompleteServiceInitialized();
 
-        setLayout(new BorderLayout(10, 10));
-        setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+        setPadding(new Insets(10));
 
         // --- TOP: Input Configuration Panel ---
-        JPanel configPanel = new JPanel(new BorderLayout(10, 10));
+        VBox configPanel = new VBox(10);
         
-        JPanel filterPanel = new JPanel(new BorderLayout(5, 5));
-        filterPanel.add(new JLabel("Saved Filters:"), BorderLayout.WEST);
-        filterPanel.add(filterCombo, BorderLayout.CENTER);
-        filterPanel.add(saveFilterBtn, BorderLayout.EAST);
-        configPanel.add(filterPanel, BorderLayout.NORTH);
+        HBox filterPanel = new HBox(10);
+        filterPanel.getChildren().addAll(new Label("Saved Filters:"), filterCombo, saveFilterBtn);
+        filterCombo.setMaxWidth(Double.MAX_VALUE);
+        HBox.setHgrow(filterCombo, Priority.ALWAYS);
+        
+        VBox jqlWrapper = new VBox(5);
+        jqlWrapper.getStyleClass().add("card");
+        Label jqlTitle = new Label("JQL Query");
+        jqlTitle.getStyleClass().add("card-title");
+        jqlWrapper.getChildren().addAll(jqlTitle, jqlArea);
 
-        JScrollPane jqlScroll = new JScrollPane(jqlArea);
-        jqlArea.setFont(new Font("Monospaced", Font.PLAIN, 12));
-        jqlScroll.setBorder(BorderFactory.createTitledBorder("JQL Query"));
-        jqlScroll.setPreferredSize(new Dimension(0, 100));
-        configPanel.add(jqlScroll, BorderLayout.CENTER);
-
-        JPanel fieldsPanel = new JPanel(new BorderLayout(5, 5));
-        fieldsPanel.add(new JLabel("Fields to display:"), BorderLayout.WEST);
-        fieldsPanel.add(fieldsField, BorderLayout.CENTER);
+        HBox fieldsPanel = new HBox(10);
+        fieldsPanel.getChildren().addAll(new Label("Fields to display:"), fieldsField);
+        HBox.setHgrow(fieldsField, Priority.ALWAYS);
         
-        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 5, 0));
-        buttonPanel.add(workflowsBtn);
-        buttonPanel.add(executeBtn);
-        fieldsPanel.add(buttonPanel, BorderLayout.EAST);
+        HBox buttonPanel = new HBox(5);
+        buttonPanel.getChildren().addAll(workflowsBtn, executeBtn);
+        fieldsPanel.getChildren().add(buttonPanel);
         
-        configPanel.add(fieldsPanel, BorderLayout.SOUTH);
+        configPanel.getChildren().addAll(filterPanel, jqlWrapper, fieldsPanel);
+        setTop(configPanel);
         
         // --- CENTER: Results Table ---
-        resultsTable.setFillsViewportHeight(true);
-        resultsTable.setAutoCreateRowSorter(true); 
+        resultsTable.getSelectionModel().setSelectionMode(SelectionMode.MULTIPLE);
+        resultsTable.getSelectionModel().setCellSelectionEnabled(true);
         
-        // --- NEW: Enable selection of individual cells ---
-        resultsTable.setCellSelectionEnabled(true);
+        VBox tableWrapper = new VBox(5);
+        tableWrapper.getStyleClass().add("card");
+        Label tableTitle = new Label("Results");
+        tableTitle.getStyleClass().add("card-title");
+        tableWrapper.getChildren().addAll(tableTitle, resultsTable);
+        VBox.setVgrow(resultsTable, Priority.ALWAYS);
+        VBox.setVgrow(tableWrapper, Priority.ALWAYS);
         
-        JScrollPane tableScroll = new JScrollPane(resultsTable);
-        tableScroll.setBorder(BorderFactory.createTitledBorder("Results"));
+        setCenter(tableWrapper);
 
         // --- BOTTOM: Status Bar ---
-        JPanel statusPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
-        statusPanel.setBorder(BorderFactory.createEtchedBorder());
-        statusPanel.add(statusLabel);
-
-        // --- Layout Assembly ---
-        add(configPanel, BorderLayout.NORTH);
-        add(tableScroll, BorderLayout.CENTER);
-        add(statusPanel, BorderLayout.SOUTH);
+        HBox statusPanel = new HBox();
+        statusPanel.getStyleClass().add("status-bar");
+        statusLabel.getStyleClass().add("status-text");
+        statusPanel.getChildren().add(statusLabel);
+        setBottom(statusPanel);
 
         // --- Action Listeners ---
-        executeBtn.addActionListener(e -> executeJql());
-        workflowsBtn.addActionListener(e -> showWorkflowsMenu());
-        saveFilterBtn.addActionListener(e -> saveCurrentFilter());
-        filterCombo.addActionListener(e -> applySelectedFilter());
+        executeBtn.setOnAction(e -> executeJql());
+        saveFilterBtn.setOnAction(e -> saveCurrentFilter());
+        filterCombo.setOnAction(e -> applySelectedFilter());
 
         setupContextMenu();
+        setupRowDoubleClick();
         refreshFilters();
+        
+        // Populate workflows menu on click/showing
+        workflowsBtn.showingProperty().addListener((obs, oldVal, newVal) -> {
+            if (newVal) {
+                populateWorkflowsMenu();
+            }
+        });
     }
 
     @Override
     public void onConfigChanged() {
-        SwingUtilities.invokeLater(this::refreshFilters);
+        Platform.runLater(this::refreshFilters);
     }
 
     private void refreshFilters() {
         isRefreshingFilters = true;
-        String currentSelection = (String) filterCombo.getSelectedItem();
-        filterCombo.removeAllItems();
-        filterCombo.addItem("-- Select a saved filter --");
+        String currentSelection = filterCombo.getSelectionModel().getSelectedItem();
+        filterCombo.getItems().clear();
+        filterCombo.getItems().add("-- Select a saved filter --");
         
         String[] filterKeys = jiraConfig.getJqlFilterKeys();
         for (String key : filterKeys) {
-            filterCombo.addItem(key);
+            filterCombo.getItems().add(key);
         }
         
         if (currentSelection != null) {
-            filterCombo.setSelectedItem(currentSelection);
+            filterCombo.getSelectionModel().select(currentSelection);
+        } else {
+            filterCombo.getSelectionModel().select(0);
         }
         isRefreshingFilters = false;
     }
@@ -161,7 +167,7 @@ public class JqlRunnerPanel extends JPanel implements tso.usmc.jira.util.ConfigC
     private void applySelectedFilter() {
         if (isRefreshingFilters) return;
         
-        String selected = (String) filterCombo.getSelectedItem();
+        String selected = filterCombo.getSelectionModel().getSelectedItem();
         if (selected == null || selected.startsWith("--")) return;
         
         String filterData = jiraConfig.getJqlFilter(selected);
@@ -173,238 +179,179 @@ public class JqlRunnerPanel extends JPanel implements tso.usmc.jira.util.ConfigC
     }
 
     private void saveCurrentFilter() {
-        String name = JOptionPane.showInputDialog(this, "Enter a name for this filter:", "Save JQL Filter", JOptionPane.QUESTION_MESSAGE);
-        if (name == null || name.trim().isEmpty()) return;
+        TextInputDialog dialog = new TextInputDialog("");
+        dialog.setTitle("Save JQL Filter");
+        dialog.setHeaderText("Enter a name for this filter:");
+        dialog.setContentText("Name:");
+
+        Optional<String> result = dialog.showAndWait();
+        if (!result.isPresent() || result.get().trim().isEmpty()) return;
+        String name = result.get().trim();
         
         String fields = fieldsField.getText().trim();
         String jql = jqlArea.getText().trim();
         
         if (jql.isEmpty()) {
-            JOptionPane.showMessageDialog(this, "JQL query cannot be empty.", "Error", JOptionPane.ERROR_MESSAGE);
+            showAlert(Alert.AlertType.ERROR, "Error", "JQL query cannot be empty.");
             return;
         }
         
         jiraConfig.saveJqlFilter(name, fields, jql);
-        JOptionPane.showMessageDialog(this, "Filter '" + name + "' saved successfully.", "Success", JOptionPane.INFORMATION_MESSAGE);
+        showAlert(Alert.AlertType.INFORMATION, "Success", "Filter '" + name + "' saved successfully.");
     }
 
-    // NEW: Method to set up the right-click context menu on the results table
+    private void setupRowDoubleClick() {
+        resultsTable.setRowFactory(tv -> {
+            TableRow<ObservableList<String>> row = new TableRow<>();
+            row.setOnMouseClicked(event -> {
+                if (event.getClickCount() == 2 && (!row.isEmpty())) {
+                    ObservableList<String> rowData = row.getItem();
+                    int keyCol = findKeyColumnIndex();
+                    if (keyCol != -1 && keyCol < rowData.size()) {
+                        String key = rowData.get(keyCol);
+                        if (key != null && !key.isEmpty()) {
+                            tso.usmc.jira.util.JiraUtils.browseIssue(mainFrame.getBaseUrl(), key);
+                        }
+                    }
+                }
+            });
+            return row;
+        });
+    }
+
+    private int findKeyColumnIndex() {
+        for (int i = 0; i < resultsTable.getColumns().size(); i++) {
+            if ("key".equalsIgnoreCase(resultsTable.getColumns().get(i).getText())) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
     private void setupContextMenu() {
-        // Add a mouse listener to the table to detect right-clicks and double-clicks
-        resultsTable.addMouseListener(new MouseAdapter() {
-            @Override
-            public void mouseClicked(MouseEvent e) {
-                if (e.getClickCount() == 2) {
-                    JTable source = (JTable) e.getSource();
-                    int row = source.rowAtPoint(e.getPoint());
-                    int col = source.columnAtPoint(e.getPoint());
-                    
-                    if (row >= 0 && col >= 0) {
-                        int modelRow = source.convertRowIndexToModel(row);
-                        
-                        // Find 'key' column index
-                        int keyCol = -1;
-                        for (int i = 0; i < tableModel.getColumnCount(); i++) {
-                            if ("key".equalsIgnoreCase(tableModel.getColumnName(i))) {
-                                keyCol = i;
-                                break;
-                            }
-                        }
-                        
-                        if (keyCol != -1) {
-                            Object val = tableModel.getValueAt(modelRow, keyCol);
-                            if (val != null) {
-                                tso.usmc.jira.util.JiraUtils.browseIssue(mainFrame.getBaseUrl(), val.toString());
-                            }
-                        }
-                    }
+        ContextMenu contextMenu = new ContextMenu();
+        resultsTable.setContextMenu(contextMenu);
+
+        resultsTable.setOnContextMenuRequested(event -> {
+            contextMenu.getItems().clear();
+            ObservableList<ObservableList<String>> selectedItems = resultsTable.getSelectionModel().getSelectedItems();
+            if (selectedItems.isEmpty()) return;
+
+            int keyCol = findKeyColumnIndex();
+            if (keyCol == -1) return;
+
+            List<String> keys = new ArrayList<>();
+            for (ObservableList<String> row : selectedItems) {
+                if (row != null && keyCol < row.size()) {
+                    keys.add(row.get(keyCol));
                 }
             }
+            if (keys.isEmpty()) return;
+            String selectedIssueKey = String.join(",", keys);
 
-            @Override
-            public void mouseReleased(MouseEvent e) {
-                if (e.isPopupTrigger()) {
-                    showPopup(e);
-                }
-            }
-
-            @Override
-            public void mousePressed(MouseEvent e) {
-                if (e.isPopupTrigger()) {
-                    showPopup(e);
-                }
-            }
-
-            private void showPopup(MouseEvent e) {
-                JTable source = (JTable) e.getSource();
-                int row = source.rowAtPoint(e.getPoint());
-
-                if (row >= 0 && row < source.getRowCount()) {
-                    // Select row if not already selected, else keep current selection
-                    if (!source.isRowSelected(row)) {
-                        source.setRowSelectionInterval(row, row);
+            if (jiraConfig.isTabEnabled("TaskBuilder")) {
+                MenuItem openInTB = new MenuItem("Create Sub-Task in TaskBuilder");
+                openInTB.setOnAction(al -> {
+                    mainFrame.showPanel("Task Builder");
+                    if (mainFrame.getTaskBuilderPanel() != null) {
+                        mainFrame.getTaskBuilderPanel().setParentTicket(selectedIssueKey);
                     }
-                    
-                    int keyColumnIndex = -1;
-                    for (int i = 0; i < tableModel.getColumnCount(); i++) {
-                        if ("key".equalsIgnoreCase(tableModel.getColumnName(i))) {
-                            keyColumnIndex = i;
-                            break;
-                        }
-                    }
+                });
+                contextMenu.getItems().add(openInTB);
+                contextMenu.getItems().add(new SeparatorMenuItem());
 
-                    if (keyColumnIndex != -1) {
-                        int[] selectedRows = source.getSelectedRows();
-                        java.util.List<String> keys = new java.util.ArrayList<>();
-                        for (int r : selectedRows) {
-                            keys.add((String) source.getModel().getValueAt(source.convertRowIndexToModel(r), keyColumnIndex));
-                        }
-                        selectedIssueKey = String.join(",", keys);
-                        
-                        // BUILD DYNAMIC MENU
-                        final JPopupMenu contextMenu = new JPopupMenu();
-                        
-                        if (jiraConfig.isTabEnabled("TaskBuilder")) {
-                            JMenuItem openInTB = new JMenuItem("Create Sub-Task in TaskBuilder");
-                            openInTB.addActionListener(al -> {
+                // Add templates from config
+                String[] templateKeys = jiraConfig.getTemplateKeys();
+                for (String tKey : templateKeys) {
+                    String label = jiraConfig.getTemplateLabel(tKey);
+                    String text = jiraConfig.getTemplateText(tKey);
+                    if (label != null && text != null) {
+                        if ("release_mgmt".equals(tKey)) {
+                            MenuItem item = new MenuItem(label);
+                            item.setOnAction(al -> {
                                 mainFrame.showPanel("Task Builder");
-                                if (mainFrame.getTaskBuilderPanel() != null) {
-                                    mainFrame.getTaskBuilderPanel().setParentTicket(selectedIssueKey);
+                                TaskBuilderPanel tbp = mainFrame.getTaskBuilderPanel();
+                                if (tbp != null) {
+                                    tbp.setParentTicket(""); // Clear default parent field
+                                    
+                                    String[] lines = text.split("\n");
+                                    StringBuilder defs = new StringBuilder();
+                                    StringBuilder content = new StringBuilder();
+                                    String sep = "******************************************************************";
+                                    
+                                    for (String l : lines) {
+                                        if (l.startsWith("DEFAULT_")) {
+                                            defs.append(l).append("\n");
+                                        } else if (l.startsWith("******")) {
+                                            sep = l;
+                                        } else {
+                                            content.append(l).append("\n");
+                                        }
+                                    }
+                                    
+                                    StringBuilder finalSb = new StringBuilder(defs);
+                                    if (defs.length() > 0) finalSb.append("\n");
+                                    
+                                    for (String key : keys) {
+                                        finalSb.append(content);
+                                        finalSb.append("parent: ").append(key).append("\n");
+                                        finalSb.append(sep).append("\n\n");
+                                    }
+                                    tbp.setInputAreaText(finalSb.toString().trim());
                                 }
                             });
-                            contextMenu.add(openInTB);
-                            contextMenu.addSeparator();
+                            contextMenu.getItems().add(item);
 
-                            // Add templates from config
-                            String[] templateKeys = jiraConfig.getTemplateKeys();
-                            for (String tKey : templateKeys) {
-                                String label = jiraConfig.getTemplateLabel(tKey);
-                                String text = jiraConfig.getTemplateText(tKey);
-                                if (label != null && text != null) {
-                                    if ("release_mgmt".equals(tKey)) {
-                                        JMenuItem item = new JMenuItem(label);
-                                        item.addActionListener(al -> {
-                                            mainFrame.showPanel("Task Builder");
-                                            TaskBuilderPanel tbp = mainFrame.getTaskBuilderPanel();
-                                            if (tbp != null) {
-                                                tbp.setParentTicket(""); // Clear default parent field
-                                                
-                                                String[] lines = text.split("\n");
-                                                StringBuilder defs = new StringBuilder();
-                                                StringBuilder content = new StringBuilder();
-                                                String sep = "******************************************************************";
-                                                
-                                                for (String l : lines) {
-                                                    if (l.startsWith("DEFAULT_")) {
-                                                        defs.append(l).append("\n");
-                                                    } else if (l.startsWith("******")) {
-                                                        sep = l;
-                                                    } else {
-                                                        content.append(l).append("\n");
-                                                    }
-                                                }
-                                                
-                                                StringBuilder finalSb = new StringBuilder(defs);
-                                                if (defs.length() > 0) finalSb.append("\n");
-                                                
-                                                for (String key : keys) {
-                                                    finalSb.append(content);
-                                                    finalSb.append("parent: ").append(key).append("\n");
-                                                    finalSb.append(sep).append("\n\n");
-                                                }
-                                                tbp.setInputAreaText(finalSb.toString().trim());
-                                            }
-                                        });
-                                        contextMenu.add(item);
-
-                                        // New context option to build release management with CIs
-                                        JMenuItem itemWithCIs = new JMenuItem(label + " with CIs");
-                                        itemWithCIs.addActionListener(al -> buildReleaseMgmtWithCIs(keys));
-                                        contextMenu.add(itemWithCIs);
-                                    } else {
-                                        JMenuItem item = new JMenuItem(label);
-                                        item.addActionListener(al -> {
-                                            mainFrame.showPanel("Task Builder");
-                                            TaskBuilderPanel tbp = mainFrame.getTaskBuilderPanel();
-                                            if (tbp != null) {
-                                                tbp.setInputAreaText("PARENT_TICKET:" + selectedIssueKey + "\n" + text);
-                                            }
-                                        });
-                                        contextMenu.add(item);
-                                    }
+                            MenuItem itemWithCIs = new MenuItem(label + " with CIs");
+                            itemWithCIs.setOnAction(al -> buildReleaseMgmtWithCIs(keys));
+                            contextMenu.getItems().add(itemWithCIs);
+                        } else {
+                            MenuItem item = new MenuItem(label);
+                            item.setOnAction(al -> {
+                                mainFrame.showPanel("Task Builder");
+                                TaskBuilderPanel tbp = mainFrame.getTaskBuilderPanel();
+                                if (tbp != null) {
+                                    tbp.setInputAreaText("PARENT_TICKET:" + selectedIssueKey + "\n" + text);
                                 }
-                            }
-                        }
-
-                        // ORCHESTRATOR WORKFLOWS
-                        if (jiraConfig.isTabEnabled("WorkflowOrchestrator")) {
-                            contextMenu.addSeparator();
-                            JMenu workflowMenu = new JMenu("Run Workflow");
-                            tso.usmc.jira.workflow.WorkflowManager wm = new tso.usmc.jira.workflow.WorkflowManager();
-                            java.util.List<String> recipes = wm.listWorkflows();
-                            
-                            for (String rName : recipes) {
-                                try {
-                                    tso.usmc.jira.workflow.WorkflowRecipe recipe = wm.loadWorkflow(rName);
-                                    if (recipe != null && (recipe.getJqlQuery() == null || recipe.getJqlQuery().trim().isEmpty())) {
-                                        JMenuItem item = new JMenuItem(rName);
-                                        item.addActionListener(al -> {
-                                            boolean hasPrompts = false;
-                                            for (tso.usmc.jira.workflow.WorkflowStep step : recipe.getSteps()) {
-                                                if (step instanceof tso.usmc.jira.workflow.CreateStep) {
-                                                    tso.usmc.jira.workflow.CreateStep cs = (tso.usmc.jira.workflow.CreateStep) step;
-                                                    String pk = cs.getProjectKey();
-                                                    String it = cs.getIssueType();
-                                                    if ((pk != null && (pk.contains(",") || pk.contains("[config:") || pk.contains("[choice:"))) ||
-                                                        (it != null && (it.contains(",") || it.contains("[config:") || it.contains("[choice:")))) {
-                                                        hasPrompts = true; break;
-                                                    }
-                                                }
-                                                if (step instanceof tso.usmc.jira.workflow.WorklogStep) {
-                                                    tso.usmc.jira.workflow.WorklogStep ws = (tso.usmc.jira.workflow.WorklogStep) step;
-                                                    String ts = ws.getTimeSpent();
-                                                    String c = ws.getComment();
-                                                    String s = ws.getStarted();
-                                                    if ((ts != null && (ts.contains(",") || ts.contains("[config:") || ts.contains("[choice:"))) ||
-                                                        (c != null && (c.contains(",") || c.contains("[config:") || c.contains("[choice:"))) ||
-                                                        (s != null && (s.contains(",") || s.contains("[config:") || s.contains("[choice:")))) {
-                                                        hasPrompts = true; break;
-                                                    }
-                                                }
-                                                for (tso.usmc.jira.workflow.FieldAction fa : step.getFieldActions().values()) {
-                                                    if (fa.getMode() == tso.usmc.jira.workflow.FieldAction.MappingMode.PROMPT) {
-                                                        hasPrompts = true; break;
-                                                    }
-                                                }
-                                                if (hasPrompts) break;
-                                            }
-
-                                            if (hasPrompts) {
-                                                mainFrame.showPanel("Workflow Orchestrator");
-                                                WorkflowOrchestratorPanel wop = mainFrame.getWorkflowOrchestratorPanel();
-                                                if (wop != null) {
-                                                    wop.setRunnerIssueKey(rName, selectedIssueKey);
-                                                }
-                                            } else {
-                                                WorkflowOrchestratorPanel wop = mainFrame.getWorkflowOrchestratorPanel();
-                                                if (wop != null) {
-                                                    wop.runWorkflowDirectly(rName, selectedIssueKey);
-                                                }
-                                            }
-                                        });
-                                        workflowMenu.add(item);
-                                    }
-                                } catch (Exception ignored) {}
-                            }
-                            if (workflowMenu.getItemCount() > 0) {
-                                contextMenu.add(workflowMenu);
-                            }
-                        }
-
-                        if (contextMenu.getComponentCount() > 0) {
-                            contextMenu.show(e.getComponent(), e.getX(), e.getY());
+                            });
+                            contextMenu.getItems().add(item);
                         }
                     }
+                }
+            }
+
+            // ORCHESTRATOR WORKFLOWS
+            if (jiraConfig.isTabEnabled("WorkflowOrchestrator")) {
+                contextMenu.getItems().add(new SeparatorMenuItem());
+                Menu workflowMenu = new Menu("Run Workflow");
+                tso.usmc.jira.workflow.WorkflowManager wm = new tso.usmc.jira.workflow.WorkflowManager();
+                List<String> recipes = wm.listWorkflows();
+                
+                for (String rName : recipes) {
+                    try {
+                        tso.usmc.jira.workflow.WorkflowRecipe recipe = wm.loadWorkflow(rName);
+                        if (recipe != null && (recipe.getJqlQuery() == null || recipe.getJqlQuery().trim().isEmpty())) {
+                            MenuItem item = new MenuItem(rName);
+                            item.setOnAction(al -> {
+                                if (hasPrompts(recipe)) {
+                                    mainFrame.showPanel("Workflow Orchestrator");
+                                    WorkflowOrchestratorPanel wop = mainFrame.getWorkflowOrchestratorPanel();
+                                    if (wop != null) {
+                                        wop.setRunnerIssueKey(rName, selectedIssueKey);
+                                    }
+                                } else {
+                                    WorkflowOrchestratorPanel wop = mainFrame.getWorkflowOrchestratorPanel();
+                                    if (wop != null) {
+                                        wop.runWorkflowDirectly(rName, selectedIssueKey);
+                                    }
+                                }
+                            });
+                            workflowMenu.getItems().add(item);
+                        }
+                    } catch (Exception ignored) {}
+                }
+                if (!workflowMenu.getItems().isEmpty()) {
+                    contextMenu.getItems().add(workflowMenu);
                 }
             }
         });
@@ -413,13 +360,13 @@ public class JqlRunnerPanel extends JPanel implements tso.usmc.jira.util.ConfigC
     private void executeJql() {
         String jql = jqlArea.getText().trim();
         if (jql.isEmpty()) {
-            JOptionPane.showMessageDialog(this, "JQL query cannot be empty.", "Input Error", JOptionPane.ERROR_MESSAGE);
+            showAlert(Alert.AlertType.ERROR, "Input Error", "JQL query cannot be empty.");
             return;
         }
 
         statusLabel.setText("Executing query...");
-        tableModel.setRowCount(0);
-        tableModel.setColumnCount(0);
+        resultsTable.getColumns().clear();
+        resultsTable.getItems().clear();
 
         ExecutionService.submit(() -> {
             try {
@@ -443,23 +390,38 @@ public class JqlRunnerPanel extends JPanel implements tso.usmc.jira.util.ConfigC
                 JSONArray issues = responseJson.getJSONArray("issues");
                 
                 if (issues.length() == 0) {
-                    SwingUtilities.invokeLater(() -> statusLabel.setText("Query executed successfully. No issues found."));
+                    Platform.runLater(() -> statusLabel.setText("Query executed successfully. No issues found."));
                     return;
                 }
 
-                String[] columns = fieldsText.isEmpty() ? JSONObject.getNames(issues.getJSONObject(0).getJSONObject("fields")) : fieldsText.split("\\s*,\\s*");
+                String[] columns = fieldsText.isEmpty() 
+                    ? JSONObject.getNames(issues.getJSONObject(0).getJSONObject("fields")) 
+                    : fieldsText.split("\\s*,\\s*");
                 
-                SwingUtilities.invokeLater(() -> {
-                    tableModel.setColumnIdentifiers(columns);
+                Platform.runLater(() -> {
+                    // Rebuild columns
+                    for (int i = 0; i < columns.length; i++) {
+                        final int colIndex = i;
+                        TableColumn<ObservableList<String>, String> column = new TableColumn<>(columns[i]);
+                        column.setCellValueFactory(cellData -> {
+                            ObservableList<String> row = cellData.getValue();
+                            if (row != null && colIndex < row.size()) {
+                                return new SimpleStringProperty(row.get(colIndex));
+                            }
+                            return new SimpleStringProperty("");
+                        });
+                        resultsTable.getColumns().add(column);
+                    }
 
+                    // Populate rows
                     for (int i = 0; i < issues.length(); i++) {
                         JSONObject issue = issues.getJSONObject(i);
-                        Object[] row = new Object[columns.length];
+                        ObservableList<String> rowValues = FXCollections.observableArrayList();
 
                         for (int j = 0; j < columns.length; j++) {
-                            row[j] = getFieldValue(issue, columns[j]);
+                            rowValues.add(getFieldValue(issue, columns[j]));
                         }
-                        tableModel.addRow(row);
+                        resultsTable.getItems().add(rowValues);
                     }
                     statusLabel.setText("Success! Found " + issues.length() + " issues. (Max 500 displayed)");
                 });
@@ -467,8 +429,10 @@ public class JqlRunnerPanel extends JPanel implements tso.usmc.jira.util.ConfigC
             } catch (Exception ex) {
                 StringWriter sw = new StringWriter();
                 ex.printStackTrace(new PrintWriter(sw));
-                JOptionPane.showMessageDialog(this, "API Error:\n" + ex.getMessage() + "\n\n" + sw.toString(), "Execution Error", JOptionPane.ERROR_MESSAGE);
-                SwingUtilities.invokeLater(() -> statusLabel.setText("Error executing JQL."));
+                Platform.runLater(() -> {
+                    showAlert(Alert.AlertType.ERROR, "Execution Error", "API Error:\n" + ex.getMessage() + "\n\n" + sw.toString());
+                    statusLabel.setText("Error executing JQL.");
+                });
             }
         });
     }
@@ -557,7 +521,7 @@ public class JqlRunnerPanel extends JPanel implements tso.usmc.jira.util.ConfigC
             try {
                 String text = jiraConfig.getTemplateText("release_mgmt");
                 if (text == null) {
-                    SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(this, "Release management template not found.", "Error", JOptionPane.ERROR_MESSAGE));
+                    Platform.runLater(() -> showAlert(Alert.AlertType.ERROR, "Error", "Release management template not found."));
                     return;
                 }
                 
@@ -595,7 +559,7 @@ public class JqlRunnerPanel extends JPanel implements tso.usmc.jira.util.ConfigC
                     finalSb.append(sep).append("\n\n");
                 }
                 
-                SwingUtilities.invokeLater(() -> {
+                Platform.runLater(() -> {
                     mainFrame.showPanel("Task Builder");
                     TaskBuilderPanel tbp = mainFrame.getTaskBuilderPanel();
                     if (tbp != null) {
@@ -607,8 +571,8 @@ public class JqlRunnerPanel extends JPanel implements tso.usmc.jira.util.ConfigC
                 
             } catch (Exception ex) {
                 ex.printStackTrace();
-                SwingUtilities.invokeLater(() -> {
-                    JOptionPane.showMessageDialog(this, "Error building release management with CIs: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+                Platform.runLater(() -> {
+                    showAlert(Alert.AlertType.ERROR, "Error", "Error building release management with CIs: " + ex.getMessage());
                     statusLabel.setText("Error building release management.");
                 });
             }
@@ -618,20 +582,17 @@ public class JqlRunnerPanel extends JPanel implements tso.usmc.jira.util.ConfigC
     private java.util.Set<String> fetchCIsForTicket(String key) throws Exception {
         java.util.Set<String> ciSet = new java.util.TreeSet<>();
         
-        // 1. Fetch issue key details
         String url = mainFrame.getBaseUrl() + "/rest/api/2/issue/" + key + "?expand=names";
         String response = mainFrame.getService().executeRequest(url, "GET", null);
         JSONObject issueJson = new JSONObject(response);
         JSONObject fields = issueJson.optJSONObject("fields");
         if (fields == null) return ciSet;
         
-        // Check if it's an Epic
         String epicKey = null;
         JSONObject issueTypeObj = fields.optJSONObject("issuetype");
         if (issueTypeObj != null && "Epic".equalsIgnoreCase(issueTypeObj.optString("name"))) {
             epicKey = key;
         } else {
-            // Find Epic Link field from names
             JSONObject namesObj = issueJson.optJSONObject("names");
             if (namesObj != null) {
                 for (String fieldId : namesObj.keySet()) {
@@ -649,7 +610,6 @@ public class JqlRunnerPanel extends JPanel implements tso.usmc.jira.util.ConfigC
         java.util.List<String> keysToQuery = new java.util.ArrayList<>();
         if (epicKey != null) {
             epicKey = epicKey.trim();
-            // Fetch all issues in the Epic
             String searchUrl = mainFrame.getBaseUrl() + "/rest/api/2/search?jql=" + 
                               java.net.URLEncoder.encode("\"Epic Link\" = " + epicKey, "UTF-8") + 
                               "&fields=key&maxResults=500";
@@ -667,11 +627,9 @@ public class JqlRunnerPanel extends JPanel implements tso.usmc.jira.util.ConfigC
             }
             keysToQuery.add(epicKey);
         } else {
-            // Fallback: Selected ticket itself
             keysToQuery.add(key);
         }
         
-        // 2. Query all sub-tasks under the keysToQuery
         if (!keysToQuery.isEmpty()) {
             String jql = "parent in (" + String.join(",", keysToQuery) + ")";
             String searchUrl = mainFrame.getBaseUrl() + "/rest/api/2/search?jql=" + 
@@ -682,7 +640,8 @@ public class JqlRunnerPanel extends JPanel implements tso.usmc.jira.util.ConfigC
             JSONArray subTasksArray = searchJson.optJSONArray("issues");
             
             if (subTasksArray != null) {
-                java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("^(COB|PROC|JCL|ASM|COPY|SYS|DMGR|DCLG|CMAP)[ \\t]+(.+)$", java.util.regex.Pattern.CASE_INSENSITIVE);
+                String ciPattern = String.join("|", jiraConfig.getCiTypes());
+                java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("^(" + ciPattern + ")[ \\t]+(.+)$", java.util.regex.Pattern.CASE_INSENSITIVE);
                 for (int i = 0; i < subTasksArray.length(); i++) {
                     JSONObject subTask = subTasksArray.getJSONObject(i);
                     JSONObject subTaskFields = subTask.optJSONObject("fields");
@@ -702,34 +661,33 @@ public class JqlRunnerPanel extends JPanel implements tso.usmc.jira.util.ConfigC
         return ciSet;
     }
 
-    private void showWorkflowsMenu() {
-        // Get selected keys
-        int keyColumnIndex = -1;
-        for (int i = 0; i < tableModel.getColumnCount(); i++) {
-            if ("key".equalsIgnoreCase(tableModel.getColumnName(i))) {
-                keyColumnIndex = i;
-                break;
-            }
-        }
+    private void populateWorkflowsMenu() {
+        workflowsBtn.getItems().clear();
 
+        int keyColumnIndex = findKeyColumnIndex();
         if (keyColumnIndex == -1) {
-            JOptionPane.showMessageDialog(this, "The results table must have a 'key' column to run workflows.", "Missing Column", JOptionPane.WARNING_MESSAGE);
+            MenuItem item = new MenuItem("Error: No 'key' column");
+            item.setDisable(true);
+            workflowsBtn.getItems().add(item);
             return;
         }
 
-        int[] selectedRows = resultsTable.getSelectedRows();
-        if (selectedRows.length == 0) {
-            JOptionPane.showMessageDialog(this, "Please select one or more issues from the table first.", "No Selection", JOptionPane.WARNING_MESSAGE);
+        ObservableList<ObservableList<String>> selectedRows = resultsTable.getSelectionModel().getSelectedItems();
+        if (selectedRows.isEmpty()) {
+            MenuItem item = new MenuItem("Select issues in table first");
+            item.setDisable(true);
+            workflowsBtn.getItems().add(item);
             return;
         }
 
         java.util.List<String> keys = new java.util.ArrayList<>();
-        for (int r : selectedRows) {
-            keys.add((String) resultsTable.getModel().getValueAt(resultsTable.convertRowIndexToModel(r), keyColumnIndex));
+        for (ObservableList<String> r : selectedRows) {
+            if (r != null && keyColumnIndex < r.size()) {
+                keys.add(r.get(keyColumnIndex));
+            }
         }
         String issueKeys = String.join(",", keys);
 
-        final JPopupMenu menu = new JPopupMenu();
         tso.usmc.jira.workflow.WorkflowManager wm = new tso.usmc.jira.workflow.WorkflowManager();
         java.util.List<String> recipes = wm.listWorkflows();
 
@@ -737,8 +695,8 @@ public class JqlRunnerPanel extends JPanel implements tso.usmc.jira.util.ConfigC
             try {
                 tso.usmc.jira.workflow.WorkflowRecipe recipe = wm.loadWorkflow(rName);
                 if (recipe != null && (recipe.getJqlQuery() == null || recipe.getJqlQuery().trim().isEmpty())) {
-                    JMenuItem item = new JMenuItem(rName);
-                    item.addActionListener(al -> {
+                    MenuItem item = new MenuItem(rName);
+                    item.setOnAction(al -> {
                         if (hasPrompts(recipe)) {
                             mainFrame.showPanel("Workflow Orchestrator");
                             WorkflowOrchestratorPanel wop = mainFrame.getWorkflowOrchestratorPanel();
@@ -752,18 +710,16 @@ public class JqlRunnerPanel extends JPanel implements tso.usmc.jira.util.ConfigC
                             }
                         }
                     });
-                    menu.add(item);
+                    workflowsBtn.getItems().add(item);
                 }
             } catch (Exception ignored) {}
         }
 
-        if (menu.getComponentCount() == 0) {
-            JMenuItem empty = new JMenuItem("No workflows available");
-            empty.setEnabled(false);
-            menu.add(empty);
+        if (workflowsBtn.getItems().isEmpty()) {
+            MenuItem empty = new MenuItem("No workflows available");
+            empty.setDisable(true);
+            workflowsBtn.getItems().add(empty);
         }
-
-        menu.show(workflowsBtn, 0, workflowsBtn.getHeight());
     }
 
     private boolean hasPrompts(tso.usmc.jira.workflow.WorkflowRecipe recipe) {
@@ -798,5 +754,13 @@ public class JqlRunnerPanel extends JPanel implements tso.usmc.jira.util.ConfigC
             }
         }
         return false;
+    }
+
+    private void showAlert(Alert.AlertType type, String title, String content) {
+        Alert alert = new Alert(type);
+        alert.setTitle(title);
+        alert.setHeaderText(null);
+        alert.setContentText(content);
+        alert.showAndWait();
     }
 }

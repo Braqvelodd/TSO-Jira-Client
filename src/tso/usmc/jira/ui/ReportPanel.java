@@ -4,8 +4,13 @@ import tso.usmc.jira.app.JiraApiClientGui;
 import tso.usmc.jira.service.JiraApiService;
 import tso.usmc.jira.util.JsonUtils;
 import tso.usmc.jira.util.ExecutionService;
-import javax.swing.*;
-import java.awt.*;
+
+import javafx.application.Platform;
+import javafx.geometry.Insets;
+import javafx.scene.control.*;
+import javafx.scene.layout.*;
+
+import java.awt.Desktop;
 import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileWriter;
@@ -24,11 +29,9 @@ import java.util.stream.Collectors;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
-public class ReportPanel extends JPanel {
+public class ReportPanel extends BorderPane {
 
-    private static final List<String> ISPW_PREFIXES = Arrays.asList(
-            "COB", "PROC", "JCL", "SYS", "ASM", "COPY", "DMGR", "DCLG", "CMAP"
-    );
+
     
     // Helper classes
     private static class SubtaskInfo {
@@ -44,54 +47,65 @@ public class ReportPanel extends JPanel {
     }
 
     private final JiraApiClientGui mainFrame;
-    private final JTextArea inputKeysArea = new JTextArea();
-    private final JTextArea errorArea = new JTextArea();
-    private final JButton allSubtasksBtn = new JButton("Report: All Sub-tasks");
-    private final JButton filteredSubtasksBtn = new JButton("Report: ISPW types");
-    private final JButton fullJsonBtn = new JButton("Report: Full Pretty JSON");
+    private final TextArea inputKeysArea = new TextArea();
+    private final TextArea errorArea = new TextArea();
+    private final Button allSubtasksBtn = new Button("Report: All Sub-tasks");
+    private final Button filteredSubtasksBtn = new Button("Report: ISPW types");
+    private final Button fullJsonBtn = new Button("Report: Full Pretty JSON");
 
     public ReportPanel(JiraApiClientGui mainFrame) {
         this.mainFrame = mainFrame;
-        setLayout(new BorderLayout());
+        setPadding(new Insets(10));
 
-        JPanel btnPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
-        allSubtasksBtn.addActionListener(e -> generateSubtaskDetailReport(false));
-        filteredSubtasksBtn.addActionListener(e -> generateSubtaskDetailReport(true));
-        fullJsonBtn.addActionListener(e -> generateFullJsonReport());
-        btnPanel.add(allSubtasksBtn);
-        btnPanel.add(filteredSubtasksBtn);
-        btnPanel.add(fullJsonBtn);
-        add(btnPanel, BorderLayout.NORTH);
+        HBox btnPanel = new HBox(10);
+        btnPanel.setPadding(new Insets(5, 0, 10, 0));
+        allSubtasksBtn.setOnAction(e -> generateSubtaskDetailReport(false));
+        filteredSubtasksBtn.setOnAction(e -> generateSubtaskDetailReport(true));
+        fullJsonBtn.setOnAction(e -> generateFullJsonReport());
+        btnPanel.getChildren().addAll(allSubtasksBtn, filteredSubtasksBtn, fullJsonBtn);
+        setTop(btnPanel);
 
-        JPanel centerPanel = new JPanel(new BorderLayout());
-        centerPanel.setBorder(BorderFactory.createTitledBorder("Enter Epic or Parent Issue Keys (one per line):"));
-        centerPanel.add(new JScrollPane(inputKeysArea), BorderLayout.CENTER);
-        add(centerPanel, BorderLayout.CENTER);
+        VBox centerPanel = new VBox(5);
+        centerPanel.getStyleClass().add("card");
+        centerPanel.setPadding(new Insets(10));
+        Label inputTitle = new Label("Enter Epic or Parent Issue Keys (one per line):");
+        inputTitle.getStyleClass().add("card-title");
+        inputKeysArea.setPrefRowCount(15);
+        inputKeysArea.setMinHeight(250);
+        VBox.setVgrow(inputKeysArea, Priority.ALWAYS);
+        centerPanel.getChildren().addAll(inputTitle, inputKeysArea);
+        setCenter(centerPanel);
 
-        JPanel bottomPanel = new JPanel(new BorderLayout());
-        bottomPanel.setPreferredSize(new Dimension(0, 250));
-        bottomPanel.setBorder(BorderFactory.createTitledBorder("Status / Error Log:"));
+        VBox bottomPanel = new VBox(5);
+        bottomPanel.getStyleClass().add("card");
+        bottomPanel.setPadding(new Insets(10));
+        bottomPanel.setPrefHeight(250);
+        Label statusTitle = new Label("Status / Error Log:");
+        statusTitle.getStyleClass().add("card-title");
         errorArea.setEditable(false);
-        errorArea.setForeground(Color.RED);
-        bottomPanel.add(new JScrollPane(errorArea), BorderLayout.CENTER);
-        add(bottomPanel, BorderLayout.SOUTH);
+        errorArea.setStyle("-fx-text-fill: red; -fx-font-family: monospace;");
+        errorArea.setPrefHeight(Double.MAX_VALUE);
+        VBox.setVgrow(errorArea, Priority.ALWAYS);
+        bottomPanel.getChildren().addAll(statusTitle, errorArea);
+        BorderPane.setMargin(bottomPanel, new Insets(10, 0, 0, 0));
+        setBottom(bottomPanel);
     }
 
     private void setButtonsEnabled(boolean enabled) {
-        allSubtasksBtn.setEnabled(enabled);
-        filteredSubtasksBtn.setEnabled(enabled);
-        fullJsonBtn.setEnabled(enabled);
+        allSubtasksBtn.setDisable(!enabled);
+        filteredSubtasksBtn.setDisable(!enabled);
+        fullJsonBtn.setDisable(!enabled);
     }
 
     private void generateSubtaskDetailReport(boolean filterIspwTypes) {
         String[] topLevelKeys = inputKeysArea.getText().trim().toUpperCase().split("\\s+");
         if (topLevelKeys.length == 0 || (topLevelKeys.length == 1 && topLevelKeys[0].isEmpty())) {
-            JOptionPane.showMessageDialog(this, "Please enter at least one issue key.");
+            showAlert(Alert.AlertType.WARNING, "Warning", "Please enter at least one issue key.");
             return;
         }
 
         errorArea.setText("Starting report generation...");
-        errorArea.setForeground(Color.BLUE);
+        errorArea.setStyle("-fx-text-fill: -fx-accent; -fx-font-family: monospace;");
         setButtonsEnabled(false);
         final StringBuilder reportContent = new StringBuilder();
 
@@ -104,20 +118,20 @@ public class ReportPanel extends JPanel {
                 reportContent.append("JIRA SUB-TASK DETAIL REPORT GENERATED: ").append(new java.util.Date()).append("\n");
                 reportContent.append("====================================================\n\n");
 
-                SwingUtilities.invokeLater(() -> errorArea.setText("Step 1: Fetching summaries for top-level keys..."));
+                Platform.runLater(() -> errorArea.setText("Step 1: Fetching summaries for top-level keys..."));
                 Map<String, String> topLevelSummaries = fetchIssueSummaries(service, baseUrl, topLevelKeys);
 
-                SwingUtilities.invokeLater(() -> errorArea.append("\nStep 2: Fetching all stories within epics (with pagination)..."));
+                Platform.runLater(() -> errorArea.appendText("\nStep 2: Fetching all stories within epics (with pagination)..."));
                 List<StoryInfo> storiesInEpics = fetchStoriesInEpics(service, baseUrl, topLevelKeys);
                 Map<String, StoryInfo> storyMap = storiesInEpics.stream().collect(Collectors.toMap(s -> s.key, s -> s));
 
                 Set<String> allPotentialParentKeys = new HashSet<>(Arrays.asList(topLevelKeys));
                 allPotentialParentKeys.addAll(storyMap.keySet());
                 
-                SwingUtilities.invokeLater(() -> errorArea.append("\nStep 3: Fetching all sub-tasks (with pagination)..."));
+                Platform.runLater(() -> errorArea.appendText("\nStep 3: Fetching all sub-tasks (with pagination)..."));
                 Map<String, List<SubtaskInfo>> subtasksByParent = fetchSubtasksOf(service, baseUrl, allPotentialParentKeys, filterIspwTypes);
 
-                SwingUtilities.invokeLater(() -> errorArea.append("\nStep 4: Assembling final report..."));
+                Platform.runLater(() -> errorArea.appendText("\nStep 4: Assembling final report..."));
                 for (String topKey : topLevelKeys) {
                     reportContent.append("PARENT/EPIC: ").append(topKey)
                                  .append(" (").append(topLevelSummaries.getOrDefault(topKey, "Unknown Summary")).append(")\n");
@@ -156,12 +170,12 @@ public class ReportPanel extends JPanel {
             } catch (Exception ex) {
                 StringWriter sw = new StringWriter();
                 ex.printStackTrace(new PrintWriter(sw));
-                SwingUtilities.invokeLater(() -> {
-                    errorArea.setForeground(Color.RED);
+                Platform.runLater(() -> {
+                    errorArea.setStyle("-fx-text-fill: red; -fx-font-family: monospace;");
                     errorArea.setText("FATAL ERROR: Report generation failed.\n\n" + sw.toString());
                 });
             } finally {
-                SwingUtilities.invokeLater(() -> setButtonsEnabled(true));
+                Platform.runLater(() -> setButtonsEnabled(true));
                 if (reportGeneratedSuccessfully) {
                     saveAndOpenFile(reportContent.toString());
                 }
@@ -185,7 +199,7 @@ public class ReportPanel extends JPanel {
     }
     
     private List<StoryInfo> fetchStoriesInEpics(JiraApiService service, String baseUrl, String[] epicKeys) throws Exception {
-        final String EPIC_LINK_FIELD_ID = "customfield_13056";
+        final String EPIC_LINK_FIELD_ID = mainFrame.getJiraConfig().getCustomFieldId("epic_link", "customfield_13056");
         List<StoryInfo> stories = new ArrayList<>();
         if (epicKeys.length == 0) return stories;
         
@@ -253,7 +267,7 @@ public class ReportPanel extends JPanel {
                     JSONObject issue = issues.getJSONObject(j);
                     JSONObject fields = issue.getJSONObject("fields");
                     String summary = fields.getString("summary").trim().replace('\t', ' ');
-                    boolean passesFilter = !filter || ISPW_PREFIXES.stream().anyMatch(summary::startsWith);
+                    boolean passesFilter = !filter || mainFrame.getJiraConfig().getCiTypes().stream().anyMatch(summary::startsWith);
                     
                     if (passesFilter) {
                         SubtaskInfo subtask = new SubtaskInfo();
@@ -275,12 +289,12 @@ public class ReportPanel extends JPanel {
     private void generateFullJsonReport() {
         String[] keys = inputKeysArea.getText().trim().toUpperCase().split("\\s+");
         if (keys.length == 0 || (keys.length == 1 && keys[0].isEmpty())) {
-            JOptionPane.showMessageDialog(this, "Please enter at least one issue key.");
+            showAlert(Alert.AlertType.WARNING, "Warning", "Please enter at least one issue key.");
             return;
         }
 
         errorArea.setText("Starting JSON report generation...");
-        errorArea.setForeground(Color.BLUE);
+        errorArea.setStyle("-fx-text-fill: -fx-accent; -fx-font-family: monospace;");
         setButtonsEnabled(false);
         final StringBuilder reportContent = new StringBuilder();
 
@@ -297,7 +311,7 @@ public class ReportPanel extends JPanel {
                     String key = keys[i];
                     final int current = i + 1;
                     final int total = keys.length;
-                    SwingUtilities.invokeLater(() -> errorArea.setText("Fetching JSON for " + key + " (" + current + " of " + total + ")..."));
+                    Platform.runLater(() -> errorArea.setText("Fetching JSON for " + key + " (" + current + " of " + total + ")..."));
                     
                     String endpoint = "/rest/api/2/issue/" + key + "?fields=*all&expand=renderedFields";
                     String response = service.executeRequest(baseUrl + endpoint, "GET", null);
@@ -311,12 +325,12 @@ public class ReportPanel extends JPanel {
             } catch (Exception ex) {
                 StringWriter sw = new StringWriter();
                 ex.printStackTrace(new PrintWriter(sw));
-                SwingUtilities.invokeLater(() -> {
-                    errorArea.setForeground(Color.RED);
+                Platform.runLater(() -> {
+                    errorArea.setStyle("-fx-text-fill: red; -fx-font-family: monospace;");
                     errorArea.setText("FATAL ERROR: JSON report failed.\n\n" + sw.toString());
                 });
             } finally {
-                SwingUtilities.invokeLater(() -> setButtonsEnabled(true));
+                Platform.runLater(() -> setButtonsEnabled(true));
                 if (reportGeneratedSuccessfully) {
                     saveAndOpenFile(reportContent.toString());
                 }
@@ -334,10 +348,18 @@ public class ReportPanel extends JPanel {
                 Desktop.getDesktop().open(tempFile);
             }
         } catch (IOException e) {
-            SwingUtilities.invokeLater(() -> {
-                errorArea.setForeground(Color.RED);
+            Platform.runLater(() -> {
+                errorArea.setStyle("-fx-text-fill: red; -fx-font-family: monospace;");
                 errorArea.setText("ERROR: Could not save or open the report file.\n" + e.getMessage());
             });
         }
+    }
+
+    private void showAlert(Alert.AlertType type, String title, String content) {
+        Alert alert = new Alert(type);
+        alert.setTitle(title);
+        alert.setHeaderText(null);
+        alert.setContentText(content);
+        alert.showAndWait();
     }
 }

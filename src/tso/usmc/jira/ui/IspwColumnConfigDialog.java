@@ -1,155 +1,176 @@
 package tso.usmc.jira.ui;
 
 import tso.usmc.jira.util.JiraConfig;
-import javax.swing.*;
-import java.awt.*;
-import java.awt.event.MouseAdapter;
-import java.awt.event.MouseEvent;
+import javafx.application.Platform;
+import javafx.geometry.Insets;
+import javafx.scene.canvas.Canvas;
+import javafx.scene.canvas.GraphicsContext;
+import javafx.scene.control.*;
+import javafx.scene.input.MouseButton;
+import javafx.scene.layout.*;
+import javafx.scene.paint.Color;
+import javafx.scene.text.Font;
+import javafx.scene.text.Text;
+import javafx.stage.Window;
+
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-public class IspwColumnConfigDialog extends JDialog {
+public class IspwColumnConfigDialog extends Dialog<Void> {
     private final String sampleText;
     private final JiraConfig config;
     private final List<Integer> splitPoints = new ArrayList<>();
-    private final JPanel previewPanel;
+    private final Canvas canvas;
     
-    // UI mapping fields
-    private final JTextField typeStart = new JTextField(3);
-    private final JTextField typeEnd = new JTextField(3);
-    private final JTextField nameStart = new JTextField(3);
-    private final JTextField nameEnd = new JTextField(3);
-    private final JTextField srStart = new JTextField(3);
-    private final JTextField srEnd = new JTextField(3);
-    private final JTextField userStart = new JTextField(3);
-    private final JTextField userEnd = new JTextField(3);
-    private final JTextField actionStart = new JTextField(3);
-    private final JTextField actionEnd = new JTextField(3);
-    private final JTextField minLen = new JTextField(3);
+    private final TextField typeStart = new TextField();
+    private final TextField typeEnd = new TextField();
+    private final TextField nameStart = new TextField();
+    private final TextField nameEnd = new TextField();
+    private final TextField srStart = new TextField();
+    private final TextField srEnd = new TextField();
+    private final TextField userStart = new TextField();
+    private final TextField userEnd = new TextField();
+    private final TextField actionStart = new TextField();
+    private final TextField actionEnd = new TextField();
+    private final TextField minLen = new TextField();
 
-    public IspwColumnConfigDialog(Frame owner, String text, JiraConfig config) {
-        super(owner, "Configure ISPW Columns (Fixed Width)", true);
+    public IspwColumnConfigDialog(Window owner, String text, JiraConfig config) {
         this.sampleText = text;
         this.config = config;
         
-        setLayout(new BorderLayout());
-        setSize(900, 700);
-        setLocationRelativeTo(owner);
+        setTitle("Configure ISPW Columns (Fixed Width)");
+        initOwner(owner);
 
         // Header Instructions
-        JPanel header = new JPanel(new BorderLayout());
-        header.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
-        header.add(new JLabel("<html><b>Instructions:</b> Click on the preview to add/remove red split lines. " +
-                "Use the numbers to fill the mapping fields below. Values are saved to your JiraConfig.ini.</html>"), BorderLayout.NORTH);
-        add(header, BorderLayout.NORTH);
+        Label headerLabel = new Label("Instructions: Left-click on the preview to add/remove red split lines. " +
+                "Right-click to quickly map fields. Use the numbers to fill the mapping fields below. Values are saved to your JiraConfig.ini.");
+        headerLabel.setWrapText(true);
+        headerLabel.setPadding(new Insets(10));
 
-        // Preview Area
-        previewPanel = new JPanel() {
-            @Override
-            protected void paintComponent(Graphics g) {
-                super.paintComponent(g);
-                g.setFont(new Font("Monospaced", Font.PLAIN, 12));
-                FontMetrics fm = g.getFontMetrics();
-                int charW = fm.charWidth('W');
-                int lineHeight = fm.getHeight();
-                
-                String[] lines = sampleText.split("\n");
-                int displayLines = Math.min(lines.length, 25);
-                
-                // Draw ruler
-                g.setColor(Color.LIGHT_GRAY);
-                for (int i = 0; i < 150; i += 10) {
-                    int x = 10 + (i * charW);
-                    g.drawLine(x, 0, x, 5);
-                    g.drawString(String.valueOf(i), x - 5, 15);
-                }
-
-                // Draw text
-                g.setColor(Color.BLACK);
-                for (int i = 0; i < displayLines; i++) {
-                    g.drawString(lines[i], 10, 45 + (i * lineHeight));
-                }
-
-                // Draw vertical split lines
-                g.setColor(Color.RED);
-                for (int split : splitPoints) {
-                    int x = 10 + (split * charW);
-                    g.drawLine(x, 20, x, 45 + (displayLines * lineHeight));
-                    g.drawString(String.valueOf(split), x - 5, 35);
-                }
-            }
-        };
-        previewPanel.setBackground(Color.WHITE);
-        previewPanel.setPreferredSize(new Dimension(1500, 500));
+        // Preview Area Canvas
+        canvas = new Canvas(1500, 500);
+        canvas.setStyle("-fx-background-color: white;");
         
-        previewPanel.addMouseListener(new MouseAdapter() {
-            @Override
-            public void mousePressed(MouseEvent e) {
-                FontMetrics fm = previewPanel.getFontMetrics(new Font("Monospaced", Font.PLAIN, 12));
-                int charW = fm.charWidth('W');
-                int col = (e.getX() - 10 + (charW / 2)) / charW;
-                if (col < 0) col = 0;
+        // Mouse click handler
+        canvas.setOnMousePressed(e -> {
+            double charW = getCharWidth();
+            int col = (int) ((e.getX() - 10 + (charW / 2)) / charW);
+            if (col < 0) col = 0;
 
-                if (SwingUtilities.isRightMouseButton(e)) {
-                    showColumnContextMenu(e.getComponent(), e.getX(), e.getY(), col);
+            if (e.getButton() == MouseButton.SECONDARY) {
+                showColumnContextMenu(canvas, e.getScreenX(), e.getScreenY(), col);
+            } else {
+                if (splitPoints.contains(col)) {
+                    splitPoints.remove(Integer.valueOf(col));
                 } else {
-                    if (splitPoints.contains(col)) {
-                        splitPoints.remove(Integer.valueOf(col));
-                    } else {
-                        splitPoints.add(col);
-                        Collections.sort(splitPoints);
-                    }
-                    previewPanel.repaint();
+                    splitPoints.add(col);
+                    Collections.sort(splitPoints);
                 }
+                draw();
             }
         });
 
-        add(new JScrollPane(previewPanel), BorderLayout.CENTER);
+        ScrollPane scrollPane = new ScrollPane(canvas);
+        scrollPane.setPrefViewportHeight(350);
+        scrollPane.setPrefViewportWidth(850);
 
         // Mapping Panel
-        JPanel mappingPanel = new JPanel(new GridBagLayout());
-        mappingPanel.setBorder(BorderFactory.createTitledBorder("Column Mappings (Character Offsets)"));
-        GridBagConstraints gbc = new GridBagConstraints();
-        gbc.insets = new Insets(5, 5, 5, 5);
-        gbc.anchor = GridBagConstraints.WEST;
+        GridPane mappingPanel = new GridPane();
+        mappingPanel.getStyleClass().add("card");
+        mappingPanel.setHgap(10);
+        mappingPanel.setVgap(5);
+        mappingPanel.setPadding(new Insets(10));
 
-        addMappingRow(mappingPanel, gbc, 0, "CI Type Bounds:", typeStart, typeEnd);
-        addMappingRow(mappingPanel, gbc, 1, "CI Name Bounds:", nameStart, nameEnd);
-        addMappingRow(mappingPanel, gbc, 2, "SR Number Bounds:", srStart, srEnd);
-        addMappingRow(mappingPanel, gbc, 3, "User ID Bounds:", userStart, userEnd);
-        addMappingRow(mappingPanel, gbc, 4, "Action Bounds:", actionStart, actionEnd);
+        addMappingRow(mappingPanel, 0, "CI Type Bounds:", typeStart, typeEnd);
+        addMappingRow(mappingPanel, 1, "CI Name Bounds:", nameStart, nameEnd);
+        addMappingRow(mappingPanel, 2, "SR Number Bounds:", srStart, srEnd);
+        addMappingRow(mappingPanel, 3, "User ID Bounds:", userStart, userEnd);
+        addMappingRow(mappingPanel, 4, "Action Bounds:", actionStart, actionEnd);
         
-        gbc.gridy = 5; gbc.gridx = 0;
-        mappingPanel.add(new JLabel("Min Line Length:"), gbc);
-        gbc.gridx = 1; mappingPanel.add(minLen, gbc);
+        mappingPanel.add(new Label("Min Line Length:"), 0, 5);
+        minLen.setPrefWidth(50);
+        mappingPanel.add(minLen, 1, 5);
 
-        add(mappingPanel, BorderLayout.SOUTH);
-        
-        // Initialize with current config
+        // Layout Assembly
+        VBox root = new VBox(10);
+        root.setPadding(new Insets(10));
+        root.getChildren().addAll(headerLabel, scrollPane, mappingPanel);
+
+        // Save & Cancel buttons
+        ButtonType saveButtonType = new ButtonType("Save & Apply", ButtonBar.ButtonData.OK_DONE);
+        ButtonType cancelButtonType = new ButtonType("Cancel", ButtonBar.ButtonData.CANCEL_CLOSE);
+        getDialogPane().getButtonTypes().addAll(saveButtonType, cancelButtonType);
+        getDialogPane().setContent(root);
+
+        // Custom action for Save button
+        final Button saveBtn = (Button) getDialogPane().lookupButton(saveButtonType);
+        saveBtn.addEventFilter(javafx.event.ActionEvent.ACTION, e -> {
+            if (!saveConfig()) {
+                e.consume(); // prevent dialog closure if save failed
+            }
+        });
+
+        // Initialize and draw
         loadCurrentConfig();
-
-        // Footer Buttons
-        JPanel footer = new JPanel(new FlowLayout(FlowLayout.RIGHT));
-        JButton saveBtn = new JButton("Save & Apply");
-        JButton cancelBtn = new JButton("Cancel");
-        
-        saveBtn.addActionListener(e -> saveConfig());
-        cancelBtn.addActionListener(e -> dispose());
-        
-        footer.add(saveBtn);
-        footer.add(cancelBtn);
-        
-        JPanel bottomContainer = new JPanel(new BorderLayout());
-        bottomContainer.add(mappingPanel, BorderLayout.CENTER);
-        bottomContainer.add(footer, BorderLayout.SOUTH);
-        add(bottomContainer, BorderLayout.SOUTH);
+        draw();
     }
 
-    private void showColumnContextMenu(Component invoker, int x, int y, int clickedCol) {
-        // Find the range [start, end] based on existing split points
+    private double getCharWidth() {
+        Text textNode = new Text("W");
+        textNode.setFont(Font.font("Courier New", 12));
+        return textNode.getLayoutBounds().getWidth();
+    }
+
+    private double getLineHeight() {
+        Text textNode = new Text("W");
+        textNode.setFont(Font.font("Courier New", 12));
+        return textNode.getLayoutBounds().getHeight();
+    }
+
+    private void draw() {
+        GraphicsContext gc = canvas.getGraphicsContext2D();
+        gc.clearRect(0, 0, canvas.getWidth(), canvas.getHeight());
+        
+        // Fill white background
+        gc.setFill(Color.WHITE);
+        gc.fillRect(0, 0, canvas.getWidth(), canvas.getHeight());
+        
+        gc.setFont(Font.font("Courier New", 12));
+        double charW = getCharWidth();
+        double lineHeight = getLineHeight();
+        
+        String[] lines = sampleText.split("\n");
+        int displayLines = Math.min(lines.length, 25);
+        
+        // Draw ruler
+        gc.setStroke(Color.LIGHTGRAY);
+        gc.setFill(Color.GRAY);
+        for (int i = 0; i < 150; i += 10) {
+            double x = 10 + (i * charW);
+            gc.strokeLine(x, 0, x, 5);
+            gc.fillText(String.valueOf(i), x - 5, 15);
+        }
+
+        // Draw text
+        gc.setFill(Color.BLACK);
+        for (int i = 0; i < displayLines; i++) {
+            gc.fillText(lines[i], 10, 45 + (i * lineHeight));
+        }
+
+        // Draw vertical split lines
+        gc.setStroke(Color.RED);
+        gc.setFill(Color.RED);
+        for (int split : splitPoints) {
+            double x = 10 + (split * charW);
+            gc.strokeLine(x, 20, x, 45 + (displayLines * lineHeight));
+            gc.fillText(String.valueOf(split), x - 5, 35);
+        }
+    }
+
+    private void showColumnContextMenu(Canvas invoker, double screenX, double screenY, int clickedCol) {
         int start = 0;
         int end = clickedCol;
         
@@ -165,41 +186,52 @@ public class IspwColumnConfigDialog extends JDialog {
             }
             if (i == sorted.size() - 1) {
                 start = sorted.get(i);
-                end = clickedCol + 5; // Default some width if clicking past last marker
+                end = clickedCol + 5;
             }
         }
 
         final int finalStart = start;
         final int finalEnd = end;
 
-        JPopupMenu menu = new JPopupMenu();
-        menu.add(createMenuItem("Set as CI Type (" + start + " to " + end + ")", () -> {
+        ContextMenu menu = new ContextMenu();
+        
+        MenuItem typeItem = new MenuItem("Set as CI Type (" + start + " to " + end + ")");
+        typeItem.setOnAction(e -> {
             typeStart.setText(String.valueOf(finalStart));
             typeEnd.setText(String.valueOf(finalEnd));
             updateMinLineLength();
-        }));
-        menu.add(createMenuItem("Set as CI Name (" + start + " to " + end + ")", () -> {
+        });
+
+        MenuItem nameItem = new MenuItem("Set as CI Name (" + start + " to " + end + ")");
+        nameItem.setOnAction(e -> {
             nameStart.setText(String.valueOf(finalStart));
             nameEnd.setText(String.valueOf(finalEnd));
             updateMinLineLength();
-        }));
-        menu.add(createMenuItem("Set as SR Number (" + start + " to " + end + ")", () -> {
+        });
+
+        MenuItem srItem = new MenuItem("Set as SR Number (" + start + " to " + end + ")");
+        srItem.setOnAction(e -> {
             srStart.setText(String.valueOf(finalStart));
             srEnd.setText(String.valueOf(finalEnd));
             updateMinLineLength();
-        }));
-        menu.add(createMenuItem("Set as User ID (" + start + " to " + end + ")", () -> {
+        });
+
+        MenuItem userItem = new MenuItem("Set as User ID (" + start + " to " + end + ")");
+        userItem.setOnAction(e -> {
             userStart.setText(String.valueOf(finalStart));
             userEnd.setText(String.valueOf(finalEnd));
             updateMinLineLength();
-        }));
-        menu.add(createMenuItem("Set as Action (" + start + " to " + end + ")", () -> {
+        });
+
+        MenuItem actionItem = new MenuItem("Set as Action (" + start + " to " + end + ")");
+        actionItem.setOnAction(e -> {
             actionStart.setText(String.valueOf(finalStart));
             actionEnd.setText(String.valueOf(finalEnd));
             updateMinLineLength();
-        }));
+        });
 
-        menu.show(invoker, x, y);
+        menu.getItems().addAll(typeItem, nameItem, srItem, userItem, actionItem);
+        menu.show(invoker, screenX, screenY);
     }
 
     private void updateMinLineLength() {
@@ -214,18 +246,13 @@ public class IspwColumnConfigDialog extends JDialog {
         }
     }
 
-    private JMenuItem createMenuItem(String label, Runnable action) {
-        JMenuItem item = new JMenuItem(label);
-        item.addActionListener(e -> action.run());
-        return item;
-    }
-
-    private void addMappingRow(JPanel p, GridBagConstraints gbc, int row, String label, JTextField start, JTextField end) {
-        gbc.gridy = row;
-        gbc.gridx = 0; p.add(new JLabel(label), gbc);
-        gbc.gridx = 1; p.add(start, gbc);
-        gbc.gridx = 2; p.add(new JLabel("to"), gbc);
-        gbc.gridx = 3; p.add(end, gbc);
+    private void addMappingRow(GridPane p, int row, String label, TextField start, TextField end) {
+        p.add(new Label(label), 0, row);
+        start.setPrefWidth(50);
+        p.add(start, 1, row);
+        p.add(new Label("to"), 2, row);
+        end.setPrefWidth(50);
+        p.add(end, 3, row);
     }
 
     private void loadCurrentConfig() {
@@ -260,14 +287,13 @@ public class IspwColumnConfigDialog extends JDialog {
         addSplitPoint(action[1]);
         
         Collections.sort(splitPoints);
-        previewPanel.repaint();
     }
     
     private void addSplitPoint(int p) {
         if (!splitPoints.contains(p)) splitPoints.add(p);
     }
 
-    private void saveConfig() {
+    private boolean saveConfig() {
         try {
             Map<String, String> props = new HashMap<>();
             props.put("recon.ispw.ci_type.bounds", typeStart.getText().trim() + "," + typeEnd.getText().trim());
@@ -279,10 +305,19 @@ public class IspwColumnConfigDialog extends JDialog {
             
             config.saveProperties(props);
             
-            JOptionPane.showMessageDialog(this, "Settings saved successfully and applied to the Reconciliation panel.");
-            dispose();
+            Alert alert = new Alert(Alert.AlertType.INFORMATION);
+            alert.setTitle("Success");
+            alert.setHeaderText(null);
+            alert.setContentText("Settings saved successfully and applied to the Reconciliation panel.");
+            alert.showAndWait();
+            return true;
         } catch (Exception ex) {
-            JOptionPane.showMessageDialog(this, "Error saving settings: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+            Alert alert = new Alert(Alert.AlertType.ERROR);
+            alert.setTitle("Error");
+            alert.setHeaderText(null);
+            alert.setContentText("Error saving settings: " + ex.getMessage());
+            alert.showAndWait();
+            return false;
         }
     }
 }

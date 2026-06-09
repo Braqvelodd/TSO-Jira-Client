@@ -111,4 +111,24 @@ public class JiraIssueService {
         }
         return null;
     }
+
+    /**
+     * Updates an issue using a raw JSON body (supports update block).
+     */
+    public void updateIssueRaw(String issueKey, JSONObject body) throws Exception {
+        String url = baseUrl + "/rest/api/2/issue/" + issueKey;
+        apiService.executeRequest(url, "PUT", body.toString());
+    }
+
+    /**
+     * Logs work on an issue.
+     */
+    public void logWork(String issueKey, String timeSpent, String comment) throws Exception {
+        String url = baseUrl + "/rest/api/2/issue/" + issueKey + "/worklog";
+        JSONObject body = new JSONObject().put("timeSpent", timeSpent);
+        if (comment != null && !comment.trim().isEmpty()) {
+            body.put("comment", comment);
+        }
+        apiService.executeRequest(url, "POST", body.toString());
+    }
 }

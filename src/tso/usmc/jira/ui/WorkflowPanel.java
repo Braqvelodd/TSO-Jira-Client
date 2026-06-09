@@ -3,154 +3,233 @@ package tso.usmc.jira.ui;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
-import javax.net.ssl.HttpsURLConnection;
-import javax.swing.*;
-import javax.swing.table.DefaultTableModel;
-import java.awt.*;
-import java.io.File;
-import java.io.FileOutputStream;
-import java.io.InputStream;
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
+import javafx.application.Platform;
+import javafx.beans.property.SimpleStringProperty;
+import javafx.geometry.Insets;
+import javafx.geometry.Orientation;
+import javafx.geometry.Pos;
+import javafx.scene.control.*;
+import javafx.scene.layout.*;
+import javafx.scene.web.WebView;
 import tso.usmc.jira.app.JiraApiClientGui;
 import tso.usmc.jira.util.JiraConfig;
 import tso.usmc.jira.util.JiraUtils;
+import tso.usmc.jira.util.ExecutionService;
 import tso.usmc.jira.ui.AssigneeOption;
+
+import java.io.File;
+import java.net.URLEncoder;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * A self-contained panel to automate the 5-step issue processing workflow.
- * It now includes its own local response pane for displaying logs.
+ * It utilizes JavaFX controls and displays log reports in a WebView.
  */
-public class WorkflowPanel extends JPanel implements tso.usmc.jira.util.ConfigChangeListener {
+public class WorkflowPanel extends BorderPane implements tso.usmc.jira.util.ConfigChangeListener {
 
     private final JiraApiClientGui mainFrame;
     private final JiraConfig jiraConfig;
     private boolean isUpdating = false;
 
     // --- UI Components ---
-    private final JButton refreshButton = new JButton("Refresh Issue List");
-    private final DefaultTableModel tableModel=new DefaultTableModel(new String[]{"Key","Summary","Status"},0){@Override public boolean isCellEditable(int row,int column){return false;}};
-    private final JTable resultsTable = new JTable(tableModel);
-    private final JLabel statusLabel = new JLabel("Enter a JQL query and click Execute.");
+    private final Button refreshButton = new Button("Refresh Issue List");
+    private final TableView<WorkflowIssueRow> resultsTable = new TableView<>();
+    private final Label statusLabel = new Label("Enter a JQL query and click Execute.");
 
     // Options Panel Components
-    private final JComboBox<String> issueTypeComboBox = new JComboBox<>(
-            new String[] { "Utility/Extract", "FCR", "PTR", "Table Update" });
-    private final JComboBox<AssigneeOption> assigneeComboBox = new JComboBox<>();
-    private final JComboBox<String> maintenanceTypeComboBox = new JComboBox<>(
-            new String[] { "Maintenance", "Enhancement", "Fallout" });
-    private final JTextField fySummaryIssueField = new JTextField();
-    private final JRadioButton useOriginalDueDateRadio = new JRadioButton("Use Original Due Date", true);
-    private final JRadioButton useManualDueDateRadio = new JRadioButton("Manual Due Date:");
-    private final JTextField manualDueDateField = new JTextField(10);
-    private final JButton processButton = new JButton("Process Selected Issue");
+    private final ComboBox<String> issueTypeComboBox = new ComboBox<>();
+    private final ComboBox<AssigneeOption> assigneeComboBox = new ComboBox<>();
+    private final ComboBox<String> maintenanceTypeComboBox = new ComboBox<>();
+    private final TextField fySummaryIssueField = new TextField();
+    private final RadioButton useOriginalDueDateRadio = new RadioButton("Use Original Due Date");
+    private final RadioButton useManualDueDateRadio = new RadioButton("Manual Due Date:");
+    private final TextField manualDueDateField = new TextField();
+    private final Button processButton = new Button("Process Selected Issue");
 
-    // ** NEW: Local response pane for this panel only **
-    private final JEditorPane localResponsePane = new JEditorPane();
+    // Local response pane for this panel only
+    private final WebView localResponsePane = new WebView();
+
+    public static class WorkflowIssueRow {
+        private final SimpleStringProperty key;
+        private final SimpleStringProperty summary;
+        private final SimpleStringProperty status;
+
+        public WorkflowIssueRow(String key, String summary, String status) {
+            this.key = new SimpleStringProperty(key);
+            this.summary = new SimpleStringProperty(summary);
+            this.status = new SimpleStringProperty(status);
+        }
+
+        public String getKey() { return key.get(); }
+        public SimpleStringProperty keyProperty() { return key; }
+
+        public String getSummary() { return summary.get(); }
+        public SimpleStringProperty summaryProperty() { return summary; }
+
+        public String getStatus() { return status.get(); }
+        public SimpleStringProperty statusProperty() { return status; }
+    }
 
     public WorkflowPanel(JiraApiClientGui mainFrame, JiraConfig jiraConfig) {
         this.mainFrame = mainFrame;
         this.jiraConfig = jiraConfig;
         this.jiraConfig.addConfigChangeListener(this);
-        
+
+        // Configure ComboBoxes and Fields
+        issueTypeComboBox.getItems().addAll("Utility/Extract", "FCR", "PTR", "Table Update");
+        issueTypeComboBox.getSelectionModel().select(0);
+
+        maintenanceTypeComboBox.getItems().addAll("Maintenance", "Enhancement", "Fallout");
+        maintenanceTypeComboBox.getSelectionModel().select(0);
+
         fySummaryIssueField.setText(jiraConfig.getWorkflowFySummaryIssue());
+
         populateAssigneeOptions();
-        assigneeComboBox.setRenderer(new DefaultListCellRenderer() {
+        
+        assigneeComboBox.setCellFactory(lv -> new ListCell<AssigneeOption>() {
             @Override
-            public Component getListCellRendererComponent(JList<?> list, Object value, int index, boolean isSelected,
-                    boolean cellHasFocus) {
-                super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
-                if (value instanceof AssigneeOption) {
-                    setText(((AssigneeOption) value).getDisplayName());
-                }
-                return this;
-            }
-        });
-        // Use a border layout for the entire panel
-        setLayout(new BorderLayout());
-
-        // --- Top Content Panel (Controls and Table) ---
-        JPanel topContentPanel = new JPanel(new BorderLayout(10, 10));
-        topContentPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
-
-        // Panel for the refresh button
-        JPanel topButtonPanel = new JPanel(new BorderLayout());
-        topButtonPanel.add(refreshButton, BorderLayout.WEST);
-
-        // Table setup
-        resultsTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
-        resultsTable.addMouseListener(new java.awt.event.MouseAdapter() {
-            @Override
-            public void mouseClicked(java.awt.event.MouseEvent e) {
-                if (e.getClickCount() == 2) {
-                    int row = resultsTable.rowAtPoint(e.getPoint());
-                    if (row >= 0) {
-                        String key = (String) tableModel.getValueAt(resultsTable.convertRowIndexToModel(row), 0);
-                        tso.usmc.jira.util.JiraUtils.browseIssue(mainFrame.getBaseUrl(), key);
-                    }
+            protected void updateItem(AssigneeOption item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || item == null) {
+                    setText(null);
+                } else {
+                    setText(item.getDisplayName());
                 }
             }
         });
-        JScrollPane tableScrollPane = new JScrollPane(resultsTable);
+        assigneeComboBox.setButtonCell(new ListCell<AssigneeOption>() {
+            @Override
+            protected void updateItem(AssigneeOption item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || item == null) {
+                    setText(null);
+                } else {
+                    setText(item.getDisplayName());
+                }
+            }
+        });
 
-        // Panel for all the processing options
-        JPanel processPanel = new JPanel(new BorderLayout(10, 10));
-        processPanel.setBorder(BorderFactory.createTitledBorder("Processing Options"));
-        JPanel optionsGrid = new JPanel(new GridLayout(0, 2, 10, 10));
-        optionsGrid.add(new JLabel("New Issue Type:"));
-        optionsGrid.add(issueTypeComboBox);
-        optionsGrid.add(new JLabel("Assign To:"));
-        optionsGrid.add(assigneeComboBox);
-        optionsGrid.add(new JLabel("Maintenance Type:"));
-        optionsGrid.add(maintenanceTypeComboBox);
-        optionsGrid.add(new JLabel("FY Summary Issue:"));
-        optionsGrid.add(fySummaryIssueField);
-        JPanel dueDatePanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
-        ButtonGroup dueDateGroup = new ButtonGroup();
-        dueDateGroup.add(useOriginalDueDateRadio);
-        dueDateGroup.add(useManualDueDateRadio);
-        dueDatePanel.add(useOriginalDueDateRadio);
-        dueDatePanel.add(useManualDueDateRadio);
-        manualDueDateField.setEnabled(false);
-        dueDatePanel.add(manualDueDateField);
-        optionsGrid.add(new JLabel("Extended Due Date:"));
-        optionsGrid.add(dueDatePanel);
-        processPanel.add(optionsGrid, BorderLayout.CENTER);
-        processButton.setFont(processButton.getFont().deriveFont(Font.BOLD));
-        processPanel.add(processButton, BorderLayout.SOUTH);
-        // --- BOTTOM: Status Bar ---
-        JPanel statusPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
-        statusPanel.setBorder(BorderFactory.createEtchedBorder());
-        statusPanel.add(statusLabel);
+        // Set up table columns
+        TableColumn<WorkflowIssueRow, String> keyCol = new TableColumn<>("Key");
+        keyCol.setCellValueFactory(cellData -> cellData.getValue().keyProperty());
+        keyCol.setPrefWidth(120);
 
-        // Add components to the top content panel
-        topContentPanel.add(topButtonPanel, BorderLayout.NORTH);
-        topContentPanel.add(tableScrollPane, BorderLayout.CENTER);
-        topContentPanel.add(processPanel, BorderLayout.SOUTH);
+        TableColumn<WorkflowIssueRow, String> summaryCol = new TableColumn<>("Summary");
+        summaryCol.setCellValueFactory(cellData -> cellData.getValue().summaryProperty());
+        summaryCol.setPrefWidth(400);
 
-        // --- Bottom Content Panel (Local Log) ---
-        localResponsePane.setEditable(false);
-        localResponsePane.setContentType("text/html");
-        JScrollPane localLogScrollPane = new JScrollPane(localResponsePane);
-        localLogScrollPane.setMinimumSize(new Dimension(0, 300)); // Give it a minimum height
+        TableColumn<WorkflowIssueRow, String> statusCol = new TableColumn<>("Status");
+        statusCol.setCellValueFactory(cellData -> cellData.getValue().statusProperty());
+        statusCol.setPrefWidth(120);
 
-        // --- Split Pane to combine top and bottom ---
-        JSplitPane splitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT, topContentPanel, localLogScrollPane);
-        splitPane.setResizeWeight(0.65); // Give the top panel more space initially
+        resultsTable.getColumns().addAll(keyCol, summaryCol, statusCol);
+        resultsTable.getSelectionModel().setSelectionMode(SelectionMode.SINGLE);
+        
+        resultsTable.setRowFactory(tv -> {
+            TableRow<WorkflowIssueRow> row = new TableRow<>();
+            row.setOnMouseClicked(event -> {
+                if (event.getClickCount() == 2 && (!row.isEmpty())) {
+                    WorkflowIssueRow rowData = row.getItem();
+                    JiraUtils.browseIssue(mainFrame.getBaseUrl(), rowData.getKey());
+                }
+            });
+            return row;
+        });
 
-        // Add the split pane to this panel's main layout
-        add(splitPane, BorderLayout.CENTER);
-        add(statusPanel, BorderLayout.SOUTH);
+        // Due date toggles
+        ToggleGroup dueDateGroup = new ToggleGroup();
+        useOriginalDueDateRadio.setToggleGroup(dueDateGroup);
+        useOriginalDueDateRadio.setSelected(true);
+        useManualDueDateRadio.setToggleGroup(dueDateGroup);
 
-        // --- Action Listeners ---
-        refreshButton.addActionListener(e -> fetchIssues());
-        processButton.addActionListener(e -> startWorkflow());
-        useManualDueDateRadio.addActionListener(e -> manualDueDateField.setEnabled(true));
-        useOriginalDueDateRadio.addActionListener(e -> manualDueDateField.setEnabled(false));
+        manualDueDateField.setDisable(true);
+        manualDueDateField.setPrefWidth(100);
+
+        useManualDueDateRadio.setOnAction(e -> manualDueDateField.setDisable(false));
+        useOriginalDueDateRadio.setOnAction(e -> manualDueDateField.setDisable(true));
+
+        // Layout creation
+        setPadding(new Insets(10));
+
+        BorderPane topContentPanel = new BorderPane();
+        HBox topButtonPanel = new HBox();
+        topButtonPanel.getChildren().add(refreshButton);
+        topContentPanel.setTop(topButtonPanel);
+        BorderPane.setMargin(topButtonPanel, new Insets(0, 0, 10, 0));
+
+        resultsTable.setPrefHeight(200);
+        topContentPanel.setCenter(resultsTable);
+        BorderPane.setMargin(resultsTable, new Insets(0, 0, 10, 0));
+
+        // Options Grid
+        GridPane optionsGrid = new GridPane();
+        optionsGrid.setHgap(10);
+        optionsGrid.setVgap(10);
+        optionsGrid.setPadding(new Insets(10));
+
+        optionsGrid.add(new Label("New Issue Type:"), 0, 0);
+        optionsGrid.add(issueTypeComboBox, 1, 0);
+        issueTypeComboBox.setMaxWidth(Double.MAX_VALUE);
+
+        optionsGrid.add(new Label("Assign To:"), 0, 1);
+        optionsGrid.add(assigneeComboBox, 1, 1);
+        assigneeComboBox.setMaxWidth(Double.MAX_VALUE);
+
+        optionsGrid.add(new Label("Maintenance Type:"), 0, 2);
+        optionsGrid.add(maintenanceTypeComboBox, 1, 2);
+        maintenanceTypeComboBox.setMaxWidth(Double.MAX_VALUE);
+
+        optionsGrid.add(new Label("FY Summary Issue:"), 0, 3);
+        optionsGrid.add(fySummaryIssueField, 1, 3);
+        fySummaryIssueField.setMaxWidth(Double.MAX_VALUE);
+
+        HBox dueDatePanel = new HBox(10);
+        dueDatePanel.setAlignment(Pos.CENTER_LEFT);
+        dueDatePanel.getChildren().addAll(useOriginalDueDateRadio, useManualDueDateRadio, manualDueDateField);
+        optionsGrid.add(new Label("Extended Due Date:"), 0, 4);
+        optionsGrid.add(dueDatePanel, 1, 4);
+
+        ColumnConstraints col1 = new ColumnConstraints();
+        col1.setMinWidth(150);
+        ColumnConstraints col2 = new ColumnConstraints();
+        col2.setHgrow(Priority.ALWAYS);
+        optionsGrid.getColumnConstraints().addAll(col1, col2);
+
+        TitledPane processPanel = new TitledPane("Processing Options", optionsGrid);
+        processPanel.setCollapsible(false);
+
+        VBox processBox = new VBox(10);
+        processBox.getChildren().addAll(processPanel, processButton);
+        processButton.setMaxWidth(Double.MAX_VALUE);
+        processButton.setStyle("-fx-font-weight: bold;");
+
+        topContentPanel.setBottom(processBox);
+
+        // Split Pane
+        localResponsePane.setMinHeight(250);
+        SplitPane splitPane = new SplitPane();
+        splitPane.setOrientation(Orientation.VERTICAL);
+        splitPane.getItems().addAll(topContentPanel, localResponsePane);
+        splitPane.setDividerPositions(0.5);
+
+        // Bottom Status Bar
+        HBox statusPanel = new HBox(10);
+        statusPanel.getStyleClass().add("status-bar");
+        statusLabel.getStyleClass().add("status-text");
+        statusPanel.getChildren().add(statusLabel);
+
+        setCenter(splitPane);
+        setBottom(statusPanel);
+        BorderPane.setMargin(splitPane, new Insets(0, 0, 10, 0));
+
+        // Actions
+        refreshButton.setOnAction(e -> fetchIssues());
+        processButton.setOnAction(e -> startWorkflow());
     }
 
     private void populateAssigneeOptions() {
-        assigneeComboBox.removeAllItems();
+        assigneeComboBox.getItems().clear();
 
         String[] teamKeys = jiraConfig.getWorkflowTeamKeys();
         for (String key : teamKeys) {
@@ -160,17 +239,19 @@ public class WorkflowPanel extends JPanel implements tso.usmc.jira.util.ConfigCh
             String id = jiraConfig.getTeamProperty(key, "id");
 
             if (name != null && lead != null) {
-                assigneeComboBox.addItem(new AssigneeOption(name, lead, component, id));
+                assigneeComboBox.getItems().add(new AssigneeOption(name, lead, component, id));
             } else {
-                // Fallback to old pipe-delimited format if hierarchical not found
                 String details = jiraConfig.getTeamDetails(key);
                 if (details != null) {
                     String[] parts = details.split("\\|");
                     if (parts.length == 4) {
-                        assigneeComboBox.addItem(new AssigneeOption(parts[0], parts[1], parts[2], parts[3]));
+                        assigneeComboBox.getItems().add(new AssigneeOption(parts[0], parts[1], parts[2], parts[3]));
                     }
                 }
             }
+        }
+        if (!assigneeComboBox.getItems().isEmpty()) {
+            assigneeComboBox.getSelectionModel().select(0);
         }
     }
 
@@ -179,58 +260,56 @@ public class WorkflowPanel extends JPanel implements tso.usmc.jira.util.ConfigCh
             return;
 
         isUpdating = true;
-        refreshButton.setEnabled(false);
-        processButton.setEnabled(false);
+        refreshButton.setDisable(true);
+        processButton.setDisable(true);
         statusLabel.setText("Fetching issues from Jira...");
-        tableModel.setRowCount(0);
+        resultsTable.getItems().clear();
 
-        SwingWorker<String, Void> worker = new SwingWorker<String, Void>() {
-            @Override
-            protected String doInBackground() throws Exception {
+        ExecutionService.submit(() -> {
+            try {
                 String jql = jiraConfig.getWorkflowJql();
                 String encodedJql = URLEncoder.encode(jql, "UTF-8");
                 String url = mainFrame.getBaseUrl() + "/rest/api/2/search?jql=" + encodedJql
                         + "&fields=summary,status,duedate";
-                return mainFrame.getService().executeRequest(url, "GET", null);
-            }
+                String response = mainFrame.getService().executeRequest(url, "GET", null);
 
-            @Override
-            protected void done() {
-                try {
-                    String response = get();
-                    JSONObject result = new JSONObject(response);
-                    JSONArray issues = result.getJSONArray("issues");
-                    for (int i = 0; i < issues.length(); i++) {
-                        JSONObject issue = issues.getJSONObject(i);
-                        String key = issue.getString("key");
-                        String summary = issue.getJSONObject("fields").getString("summary");
-                        String status = issue.getJSONObject("fields").getJSONObject("status").getString("name");
-                        tableModel.addRow(new Object[] { key, summary, status });
-                    }
-                    statusLabel.setText("Found " + issues.length() + " issues.");
-                } catch (Exception e) {
-                    statusLabel.setText("Error fetching issues.");
-                    // ** CHANGED: Use local response pane **
-                    localResponsePane.setText("<html><font color='red'><b>Failed to fetch issues:</b><br>"
-                            + e.getMessage() + "</font></html>");
-                    e.printStackTrace();
-                } finally {
-                    isUpdating = false;
-                    refreshButton.setEnabled(true);
-                    processButton.setEnabled(true);
+                JSONObject result = new JSONObject(response);
+                JSONArray issues = result.getJSONArray("issues");
+                List<WorkflowIssueRow> rows = new ArrayList<>();
+                for (int i = 0; i < issues.length(); i++) {
+                    JSONObject issue = issues.getJSONObject(i);
+                    String key = issue.getString("key");
+                    String summary = issue.getJSONObject("fields").getString("summary");
+                    String status = issue.getJSONObject("fields").getJSONObject("status").getString("name");
+                    rows.add(new WorkflowIssueRow(key, summary, status));
                 }
+
+                Platform.runLater(() -> {
+                    resultsTable.getItems().addAll(rows);
+                    statusLabel.setText("Found " + issues.length() + " issues.");
+                });
+            } catch (Exception e) {
+                Platform.runLater(() -> {
+                    statusLabel.setText("Error fetching issues.");
+                    localResponsePane.getEngine().loadContent("<html><font color='red'><b>Failed to fetch issues:</b><br>"
+                            + e.getMessage() + "</font></html>");
+                });
+                e.printStackTrace();
+            } finally {
+                Platform.runLater(() -> {
+                    isUpdating = false;
+                    refreshButton.setDisable(false);
+                    processButton.setDisable(false);
+                });
             }
-        };
-        worker.execute();
+        });
     }
 
     @Override
     public void onConfigChanged() {
-        SwingUtilities.invokeLater(() -> {
+        Platform.runLater(() -> {
             fySummaryIssueField.setText(jiraConfig.getWorkflowFySummaryIssue());
             populateAssigneeOptions();
-            // Optional: Auto-refresh issue list if JQL changed
-            // fetchIssues();
         });
     }
 
@@ -238,47 +317,51 @@ public class WorkflowPanel extends JPanel implements tso.usmc.jira.util.ConfigCh
         if (isUpdating)
             return;
 
-        int selectedRow = resultsTable.getSelectedRow();
-        if (selectedRow == -1) {
-            JOptionPane.showMessageDialog(mainFrame.getMainFrame(), "Please select an issue from the table to process.",
-                    "No Issue Selected", JOptionPane.WARNING_MESSAGE);
+        WorkflowIssueRow selectedRow = resultsTable.getSelectionModel().getSelectedItem();
+        if (selectedRow == null) {
+            Alert alert = new Alert(Alert.AlertType.WARNING);
+            alert.setTitle("No Issue Selected");
+            alert.setHeaderText(null);
+            alert.setContentText("Please select an issue from the table to process.");
+            alert.showAndWait();
             return;
         }
 
-        final String originalIssueKey = (String) tableModel.getValueAt(selectedRow, 0);
-        final String originalSummary = (String) tableModel.getValueAt(selectedRow, 1);
-        final String newIssueType = (String) issueTypeComboBox.getSelectedItem();
-        final AssigneeOption selectedAssignment = (AssigneeOption) assigneeComboBox.getSelectedItem();
-        final String maintenanceType = (String) maintenanceTypeComboBox.getSelectedItem();
+        final String originalIssueKey = selectedRow.getKey();
+        final String originalSummary = selectedRow.getSummary();
+        final String newIssueType = issueTypeComboBox.getSelectionModel().getSelectedItem();
+        final AssigneeOption selectedAssignment = assigneeComboBox.getSelectionModel().getSelectedItem();
+        final String maintenanceType = maintenanceTypeComboBox.getSelectionModel().getSelectedItem();
         final String fySummaryIssue = fySummaryIssueField.getText().trim();
-        // --- NEW: Capture Due Date Preferences ---
         final boolean useOriginalDueDate = useOriginalDueDateRadio.isSelected();
         final String manualDueDateValue = manualDueDateField.getText().trim();
 
-        // Basic validation for manual due date
         if (!useOriginalDueDate && manualDueDateValue.isEmpty()) {
-            JOptionPane.showMessageDialog(mainFrame.getMainFrame(),
-                    "Please enter a manual due date or select 'Use Original Due Date'.", "Manual Due Date Missing",
-                    JOptionPane.WARNING_MESSAGE);
+            Alert alert = new Alert(Alert.AlertType.WARNING);
+            alert.setTitle("Manual Due Date Missing");
+            alert.setHeaderText(null);
+            alert.setContentText("Please enter a manual due date or select 'Use Original Due Date'.");
+            alert.showAndWait();
             return;
         }
 
         isUpdating = true;
-        processButton.setEnabled(false);
-        refreshButton.setEnabled(false);
-        // ** CHANGED: Use local response pane **
-        localResponsePane.setText("");
+        processButton.setDisable(true);
+        refreshButton.setDisable(true);
+        localResponsePane.getEngine().loadContent("");
         statusLabel.setText("Processing " + originalIssueKey + "...");
 
-        ProcessIssueWorker worker = new ProcessIssueWorker(
-                originalIssueKey, originalSummary, newIssueType,
-                selectedAssignment,
-                maintenanceType, fySummaryIssue,
-                useOriginalDueDate, manualDueDateValue);
-        worker.execute();
+        ExecutionService.submit(() -> {
+            ProcessIssueTask task = new ProcessIssueTask(
+                    originalIssueKey, originalSummary, newIssueType,
+                    selectedAssignment,
+                    maintenanceType, fySummaryIssue,
+                    useOriginalDueDate, manualDueDateValue);
+            task.run();
+        });
     }
 
-    private class ProcessIssueWorker extends SwingWorker<String, Void> {
+    private class ProcessIssueTask {
         private final String originalIssueKey, originalSummary, newIssueType, maintenanceType, fySummaryIssue,
                 manualDueDate;
         private final AssigneeOption selectedAssignment;
@@ -287,7 +370,7 @@ public class WorkflowPanel extends JPanel implements tso.usmc.jira.util.ConfigCh
         private boolean workflowSucceeded = true;
         private String reporterNameToUpdate;
 
-        ProcessIssueWorker(String originalIssueKey, String originalSummary, String newIssueType,
+        ProcessIssueTask(String originalIssueKey, String originalSummary, String newIssueType,
                 AssigneeOption selectedAssignment, String maintenanceType, String fySummaryIssue,
                 boolean useOriginalDueDate, String manualDueDate) {
             this.originalIssueKey = originalIssueKey;
@@ -296,38 +379,26 @@ public class WorkflowPanel extends JPanel implements tso.usmc.jira.util.ConfigCh
             this.selectedAssignment = selectedAssignment;
             this.maintenanceType = maintenanceType;
             this.fySummaryIssue = fySummaryIssue;
-            this.report = new StringBuilder("<html><h2>Workflow Report for " + originalIssueKey
-                    + "</h2><table border='1' style='width:100%'><tr><th>Step</th><th>Action</th><th>Result</th></tr>");
-            // --- NEW: Set new member variables ---
             this.useOriginalDueDate = useOriginalDueDate;
             this.manualDueDate = manualDueDate;
+            this.report = new StringBuilder("<html><h2>Workflow Report for " + originalIssueKey
+                    + "</h2><table border='1' style='width:100%'><tr><th>Step</th><th>Action</th><th>Result</th></tr>");
         }
 
-        @Override
-        protected String doInBackground() throws Exception {
+        public void run() {
             try {
                 String originalIssueJson = mainFrame.getService().executeRequest(
                         mainFrame.getBaseUrl() + "/rest/api/2/issue/" + this.originalIssueKey
                                 + "?fields=summary,status,duedate,description,reporter,attachment,issuelinks",
                         "GET", null);
 
-                JSONObject debugJson = new JSONObject(originalIssueJson);
-                // addReportRow("DEBUG", "Full JSON Response from Jira", "<pre
-                // style='font-size:10px; word-wrap:break-word; white-space:pre-wrap;'>" +
-                // debugJson.toString(4) + "</pre>");
                 JSONObject sourceIssue = new JSONObject(originalIssueJson);
 
                 step1_UpdateOriginalIssue();
                 String newIssueKey = step2_3_5_CreateMovedClone(sourceIssue);
 
                 if (newIssueKey != null) {
-                    // This is the new, correct order of operations.
-                    // step3a_UpdateClonedIssue("TFS-63111", sourceIssue);
                     step3a_UpdateClonedIssue(newIssueKey, sourceIssue);
-
-                    // cloneAttachments("TFS-63111", sourceIssue);
-                    // cloneLinks("TFS-63111", sourceIssue);
-                    // step4_LinkIssues("TFS-63111");
                     cloneAttachments(newIssueKey, sourceIssue);
                     cloneLinks(newIssueKey, sourceIssue);
                     step4_LinkIssues(newIssueKey);
@@ -348,27 +419,18 @@ public class WorkflowPanel extends JPanel implements tso.usmc.jira.util.ConfigCh
                 if (workflowSucceeded) {
                     report.append("</table></html>");
                 }
-            }
-            return report.toString();
-        }
-
-        @Override
-        protected void done() {
-            try {
-                String finalReport = get();
-                localResponsePane.setText(finalReport);
-                if (workflowSucceeded) {
-                    statusLabel.setText("Workflow for " + originalIssueKey + " completed.");
-                } else {
-                    statusLabel.setText("Workflow for " + originalIssueKey + " failed. See report for details.");
-                }
-            } catch (Exception e) {
-                statusLabel.setText("An unexpected error occurred in the UI thread: " + e.getMessage());
-                e.printStackTrace();
-            } finally {
-                isUpdating = false;
-                processButton.setEnabled(true);
-                refreshButton.setEnabled(true);
+                final String finalReport = report.toString();
+                Platform.runLater(() -> {
+                    localResponsePane.getEngine().loadContent(finalReport);
+                    if (workflowSucceeded) {
+                        statusLabel.setText("Workflow for " + originalIssueKey + " completed.");
+                    } else {
+                        statusLabel.setText("Workflow for " + originalIssueKey + " failed. See report for details.");
+                    }
+                    isUpdating = false;
+                    processButton.setDisable(false);
+                    refreshButton.setDisable(false);
+                });
             }
         }
 
@@ -382,12 +444,10 @@ public class WorkflowPanel extends JPanel implements tso.usmc.jira.util.ConfigCh
                 fields.remove(field);
         }
 
-        // This method now correctly OMMITS the problematic fields.
         private String step2_3_5_CreateMovedClone(JSONObject sourceIssue) throws Exception {
             JSONObject fieldsForCreation = new JSONObject(sourceIssue.getJSONObject("fields").toString());
-            // JSONObject sourceFields = sourceIssue.getJSONObject("fields");
             String originalDescription = fieldsForCreation.optString("description", "");
-            this.reporterNameToUpdate = null; // Reset before use
+            this.reporterNameToUpdate = null;
             if (fieldsForCreation.has("reporter") && !fieldsForCreation.isNull("reporter")) {
                 this.reporterNameToUpdate = fieldsForCreation.getJSONObject("reporter").getString("name");
             } else {
@@ -396,16 +456,21 @@ public class WorkflowPanel extends JPanel implements tso.usmc.jira.util.ConfigCh
             }
             cleanJsonForCreation(fieldsForCreation);
 
-            fieldsForCreation.put("project", new JSONObject().put("key", "TFS"));
+            String projectKey = mainFrame.getJiraConfig().getCloneProjectKey();
+            fieldsForCreation.put("project", new JSONObject().put("key", projectKey));
             fieldsForCreation.put("summary", originalIssueKey + " - " + originalSummary);
             fieldsForCreation.put("issuetype", new JSONObject().put("name", newIssueType));
             fieldsForCreation.put("description", originalDescription);
 
-            // Problematic fields are no longer set here.
-            fieldsForCreation.put("customfield_10400", originalIssueKey);
-            fieldsForCreation.put("customfield_10522", new JSONObject().put("value", maintenanceType));
+            String srcIssueKeyField = mainFrame.getJiraConfig().getCustomFieldId("source_issue_key", "customfield_10400");
+            fieldsForCreation.put(srcIssueKeyField, originalIssueKey);
+
+            String maintTypeField = mainFrame.getJiraConfig().getCustomFieldId("maintenance_type", "customfield_10522");
+            fieldsForCreation.put(maintTypeField, new JSONObject().put("value", maintenanceType));
+
+            String epicLinkField = mainFrame.getJiraConfig().getCustomFieldId("epic_link", "customfield_13056");
             if (fySummaryIssue != null && !fySummaryIssue.isEmpty()) {
-                fieldsForCreation.put("customfield_13056", fySummaryIssue);
+                fieldsForCreation.put(epicLinkField, fySummaryIssue);
             }
             String createJsonBody = new JSONObject().put("fields", fieldsForCreation).toString();
             String response = mainFrame.getService().executeRequest(mainFrame.getBaseUrl() + "/rest/api/2/issue",
@@ -417,36 +482,35 @@ public class WorkflowPanel extends JPanel implements tso.usmc.jira.util.ConfigCh
 
         private void step3a_UpdateClonedIssue(String newIssueKey, JSONObject sourceIssue) throws Exception {
             JSONObject fieldsToUpdate = new JSONObject();
-            fieldsToUpdate.put("customfield_10523", new JSONArray().put(new JSONObject().put("value", "Design")));
-            fieldsToUpdate.put("customfield_10512", new JSONArray().put(new JSONObject().put("value", "Analysis")));
-            // --- Part 1: Set Assignee and Component/Team ---
+            String designPhaseField = mainFrame.getJiraConfig().getCustomFieldId("design_phase", "customfield_10523");
+            String analysisPhaseField = mainFrame.getJiraConfig().getCustomFieldId("analysis_phase", "customfield_10512");
+            fieldsToUpdate.put(designPhaseField, new JSONArray().put(new JSONObject().put("value", "Design")));
+            fieldsToUpdate.put(analysisPhaseField, new JSONArray().put(new JSONObject().put("value", "Analysis")));
+
             String assigneeId = selectedAssignment.getAssigneeJiraId();
             fieldsToUpdate.put("assignee", new JSONObject().put("name", assigneeId));
             addReportRow("3.1", "Set Assignee", "Assigning to: " + assigneeId);
 
-            // If it's a team assignment (i.e., not "Unassigned Backlog")
             if (selectedAssignment.getComponentName() != null) {
                 String componentName = selectedAssignment.getComponentName();
                 String teamId = selectedAssignment.getTeamId();
 
-                // Set the 'components' field (This is a standard Jira field)
                 JSONArray componentsArray = new JSONArray().put(new JSONObject().put("name", componentName));
                 fieldsToUpdate.put("components", componentsArray);
-
-                fieldsToUpdate.put("customfield_15350", teamId);
+                String teamField = mainFrame.getJiraConfig().getCustomFieldId("team_id", "customfield_15350");
+                fieldsToUpdate.put(teamField, teamId);
 
                 addReportRow("3.2", "Set Team & Component",
                         "Component: '" + componentName + "', Team: '" + componentName + "'");
             }
 
-            // --- Part 2: Set Original Reporter ---
             if (this.reporterNameToUpdate != null) {
+                String repNameField = mainFrame.getJiraConfig().getCustomFieldId("reporter_name", "customfield_10540");
                 fieldsToUpdate.put("reporter", new JSONObject().put("name", this.reporterNameToUpdate));
-                fieldsToUpdate.put("customfield_10540", new JSONObject().put("name", this.reporterNameToUpdate));
+                fieldsToUpdate.put(repNameField, new JSONObject().put("name", this.reporterNameToUpdate));
                 addReportRow("3.3", "Set Reporter Fields", "Original Reporter: " + this.reporterNameToUpdate);
             }
 
-            // --- Part 3: Set Due Date ---
             String finalDueDate = null;
             if (this.useOriginalDueDate) {
                 finalDueDate = sourceIssue.getJSONObject("fields").optString("duedate", null);
@@ -457,27 +521,21 @@ public class WorkflowPanel extends JPanel implements tso.usmc.jira.util.ConfigCh
                 addReportRow("3.4", "Due Date Choice", "Using manual due date: " + finalDueDate);
             }
             if (finalDueDate != null && !finalDueDate.isEmpty()) {
+                String dueDateField = mainFrame.getJiraConfig().getCustomFieldId("due_date", "customfield_10517");
                 fieldsToUpdate.put("duedate", finalDueDate);
-                fieldsToUpdate.put("customfield_10517", finalDueDate);
+                fieldsToUpdate.put(dueDateField, finalDueDate);
             }
 
-            // --- Part 4: Execute the Update Request ---
             String updateJsonBody = new JSONObject().put("fields", fieldsToUpdate).toString();
 
             try {
-                // This is the single API call that updates all the fields at once.
                 mainFrame.getService().executeRequest(mainFrame.getBaseUrl() + "/rest/api/2/issue/" + newIssueKey,
                         "PUT", updateJsonBody);
                 addReportRow("3.5", "Update All Fields", "<font color='green'>Success</font>");
             } catch (Exception e) {
-                // If this fails, the ENTIRE update failed. The error message is key.
                 addReportRow("3.5", "Update All Fields", "<font color='red'>Failed: " + e.getMessage() + "</font>");
-                // Also log the JSON we tried to send for debugging.
-                // addReportRow("DEBUG", "Failed JSON Payload", "<pre>" + new
-                // JSONObject(updateJsonBody).toString(4) + "</pre>");
             }
 
-            // --- Part 5: Transition Status (only for Unassigned) ---
             if (selectedAssignment.getComponentName() == null) {
                 try {
                     String transitionsJson = mainFrame.getService().executeRequest(
@@ -513,8 +571,9 @@ public class WorkflowPanel extends JPanel implements tso.usmc.jira.util.ConfigCh
                     .toString();
             mainFrame.getService().executeRequest(fullUrl + "/transitions", "POST", transitionJsonBody);
 
+            String resetField = mainFrame.getJiraConfig().getCustomFieldId("reset_field", "customfield_10519");
             String fieldUpdateJsonBody = new JSONObject()
-                    .put("fields", new JSONObject().put("customfield_10519", JSONObject.NULL)).toString();
+                    .put("fields", new JSONObject().put(resetField, JSONObject.NULL)).toString();
             mainFrame.getService().executeRequest(fullUrl, "PUT", fieldUpdateJsonBody);
             addReportRow("1", "Update Orginal ticket", "<font color='green'>Success</font>");
         }
@@ -604,12 +663,10 @@ public class WorkflowPanel extends JPanel implements tso.usmc.jira.util.ConfigCh
         }
 
         private void addReportRow(String step, String action, String result) {
-            SwingUtilities.invokeLater(() -> {
-                report.append("<tr><td>").append(step).append("</td><td>").append(action).append("</td><td>")
-                        .append(result).append("</td></tr>");
-                localResponsePane.setText(report.toString() + "</table></html>");
-            });
+            report.append("<tr><td>").append(step).append("</td><td>").append(action).append("</td><td>")
+                    .append(result).append("</td></tr>");
+            final String currentReport = report.toString() + "</table></html>";
+            Platform.runLater(() -> localResponsePane.getEngine().loadContent(currentReport));
         }
     }
-
 }

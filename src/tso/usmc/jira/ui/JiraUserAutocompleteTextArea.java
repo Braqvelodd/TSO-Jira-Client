@@ -1,27 +1,24 @@
 package tso.usmc.jira.ui;
 
 import tso.usmc.jira.service.JqlAutocompleteService;
-import javax.swing.*;
-import javax.swing.event.DocumentEvent;
-import javax.swing.event.DocumentListener;
-import javax.swing.text.BadLocationException;
-import java.awt.*;
-import java.awt.event.*;
+import javafx.application.Platform;
+import javafx.geometry.Bounds;
+import javafx.scene.control.*;
+import javafx.scene.input.KeyCode;
+import javafx.stage.Popup;
 import java.util.List;
 
-public class JiraUserAutocompleteTextArea extends JTextArea {
+public class JiraUserAutocompleteTextArea extends TextArea {
     private JqlAutocompleteService service;
-    private final JPopupMenu popup;
-    private final DefaultListModel<String> listModel;
-    private final JList<String> suggestionList;
+    private final Popup popup;
+    private final ListView<String> suggestionList;
     private boolean isUpdating = false;
     private boolean enabled = true;
 
     public JiraUserAutocompleteTextArea(JqlAutocompleteService service) {
         this.service = service;
-        this.listModel = new DefaultListModel<>();
-        this.suggestionList = new JList<>(listModel);
-        this.popup = new JPopupMenu();
+        this.suggestionList = new ListView<>();
+        this.popup = new Popup();
         
         setupUI();
         setupListeners();
@@ -36,77 +33,68 @@ public class JiraUserAutocompleteTextArea extends JTextArea {
     }
 
     private void setupUI() {
-        JScrollPane scroll = new JScrollPane(suggestionList);
-        scroll.setPreferredSize(new Dimension(250, 150));
-        popup.add(scroll);
-        popup.setFocusable(false);
+        popup.setAutoHide(true);
+        popup.getContent().add(suggestionList);
+        suggestionList.getSelectionModel().setSelectionMode(SelectionMode.SINGLE);
+        suggestionList.setPrefWidth(250);
+        suggestionList.setPrefHeight(150);
         
-        suggestionList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
-        suggestionList.addMouseListener(new MouseAdapter() {
-            @Override
-            public void mouseClicked(MouseEvent e) {
-                if (e.getClickCount() == 2) insertSelectedSuggestion();
-            }
+        suggestionList.setOnMouseClicked(e -> {
+            if (e.getClickCount() == 2) insertSelectedSuggestion();
         });
     }
 
     private void setupListeners() {
-        getDocument().addDocumentListener(new DocumentListener() {
-            @Override public void insertUpdate(DocumentEvent e) { updatePopup(); }
-            @Override public void removeUpdate(DocumentEvent e) { updatePopup(); }
-            @Override public void changedUpdate(DocumentEvent e) { updatePopup(); }
+        textProperty().addListener((observable, oldValue, newValue) -> {
+            updatePopup();
         });
 
-        addKeyListener(new KeyAdapter() {
-            @Override
-            public void keyPressed(KeyEvent e) {
-                if (popup.isVisible()) {
-                    switch (e.getKeyCode()) {
-                        case KeyEvent.VK_DOWN:
-                            int nextIdx = suggestionList.getSelectedIndex() + 1;
-                            if (nextIdx < listModel.size()) suggestionList.setSelectedIndex(nextIdx);
-                            e.consume();
-                            break;
-                        case KeyEvent.VK_UP:
-                            int prevIdx = suggestionList.getSelectedIndex() - 1;
-                            if (prevIdx >= 0) suggestionList.setSelectedIndex(prevIdx);
-                            e.consume();
-                            break;
-                        case KeyEvent.VK_ENTER:
-                        case KeyEvent.VK_TAB:
-                            insertSelectedSuggestion();
-                            e.consume();
-                            break;
-                        case KeyEvent.VK_ESCAPE:
-                            popup.setVisible(false);
-                            e.consume();
-                            break;
-                    }
+        setOnKeyPressed(e -> {
+            if (popup.isShowing()) {
+                if (e.getCode() == KeyCode.DOWN) {
+                    int index = suggestionList.getSelectionModel().getSelectedIndex();
+                    suggestionList.getSelectionModel().select(Math.min(suggestionList.getItems().size() - 1, index + 1));
+                    suggestionList.scrollTo(suggestionList.getSelectionModel().getSelectedIndex());
+                    e.consume();
+                } else if (e.getCode() == KeyCode.UP) {
+                    int index = suggestionList.getSelectionModel().getSelectedIndex();
+                    suggestionList.getSelectionModel().select(Math.max(0, index - 1));
+                    suggestionList.scrollTo(suggestionList.getSelectionModel().getSelectedIndex());
+                    e.consume();
+                } else if (e.getCode() == KeyCode.ENTER || e.getCode() == KeyCode.TAB) {
+                    insertSelectedSuggestion();
+                    e.consume();
+                } else if (e.getCode() == KeyCode.ESCAPE) {
+                    popup.hide();
+                    e.consume();
                 }
             }
         });
 
-        addFocusListener(new FocusAdapter() {
-            @Override public void focusLost(FocusEvent e) { popup.setVisible(false); }
+        focusedProperty().addListener((observable, oldValue, newValue) -> {
+            if (!newValue) popup.hide();
         });
     }
 
     private void updatePopup() {
         if (!enabled || isUpdating || service == null) return;
         
-        SwingUtilities.invokeLater(() -> {
+        Platform.runLater(() -> {
             try {
                 int pos = getCaretPosition();
                 String text = getText();
-                if (pos == 0) { popup.setVisible(false); return; }
+                if (pos == 0) { popup.hide(); return; }
                 
                 // Identify the current line and prefix
-                int lineStart = getLineStartOffset(getLineOfOffset(pos));
+                int lineStart = pos;
+                while (lineStart > 0 && text.charAt(lineStart - 1) != '\n') {
+                    lineStart--;
+                }
                 String line = text.substring(lineStart, pos);
                 
                 int colonIndex = line.indexOf(':');
                 if (colonIndex == -1) {
-                    popup.setVisible(false);
+                    popup.hide();
                     return;
                 }
                 
@@ -119,7 +107,7 @@ public class JiraUserAutocompleteTextArea extends JTextArea {
                 boolean isIssueTypeField = prefix.equals("issue-type") || prefix.equals("default_type");
                 
                 if (!isUserField && !isComponentField && !isTransitionField && !isIssueTypeField) {
-                    popup.setVisible(false);
+                    popup.hide();
                     return;
                 }
                 
@@ -131,13 +119,13 @@ public class JiraUserAutocompleteTextArea extends JTextArea {
                     userInput = value.trim();
                 }
                 
-                // Also support and strip '@' prefix if typed
+                // Strip '@' if typed
                 if (userInput.startsWith("@")) {
                     userInput = userInput.substring(1);
                 }
                 
                 if (userInput.length() < 1) {
-                    popup.setVisible(false);
+                    popup.hide();
                     return;
                 }
                 
@@ -157,32 +145,36 @@ public class JiraUserAutocompleteTextArea extends JTextArea {
                 }
                 
                 if (matches.isEmpty()) {
-                    popup.setVisible(false);
+                    popup.hide();
                 } else {
-                    listModel.clear();
-                    matches.stream().distinct().limit(20).forEach(listModel::addElement);
-                    suggestionList.setSelectedIndex(0);
+                    suggestionList.getItems().clear();
+                    matches.stream().distinct().limit(20).forEach(suggestionList.getItems()::add);
+                    suggestionList.getSelectionModel().select(0);
                     
-                    Rectangle rect = modelToView(pos);
-                    if (rect != null) {
-                        popup.show(this, rect.x, rect.y + rect.height);
+                    Bounds bounds = localToScreen(getBoundsInLocal());
+                    if (bounds != null) {
+                        popup.show(this, bounds.getMinX(), bounds.getMaxY());
                     }
                 }
-            } catch (BadLocationException e) {
-                popup.setVisible(false);
+            } catch (Exception e) {
+                popup.hide();
             }
         });
     }
 
     private void insertSelectedSuggestion() {
-        String selected = suggestionList.getSelectedValue();
+        String selected = suggestionList.getSelectionModel().getSelectedItem();
         if (selected == null) return;
         
         try {
             isUpdating = true;
             int pos = getCaretPosition();
             String text = getText();
-            int lineStart = getLineStartOffset(getLineOfOffset(pos));
+            
+            int lineStart = pos;
+            while (lineStart > 0 && text.charAt(lineStart - 1) != '\n') {
+                lineStart--;
+            }
             String line = text.substring(lineStart, pos);
             
             int colonIndex = line.indexOf(':');
@@ -199,17 +191,17 @@ public class JiraUserAutocompleteTextArea extends JTextArea {
                     replaceStartInLine++;
                 }
                 
-                // If they typed '@', skip/replace it as well
+                // If they typed '@', skip it
                 if (replaceStartInLine < line.length() && line.charAt(replaceStartInLine) == '@') {
                     replaceStartInLine++;
                 }
                 
                 int replaceStart = lineStart + replaceStartInLine;
-                replaceRange(selected, replaceStart, pos);
-                setCaretPosition(replaceStart + selected.length());
+                replaceText(replaceStart, pos, selected);
+                positionCaret(replaceStart + selected.length());
             }
-            popup.setVisible(false);
-        } catch (BadLocationException e) {
+            popup.hide();
+        } catch (Exception e) {
             e.printStackTrace();
         } finally {
             isUpdating = false;

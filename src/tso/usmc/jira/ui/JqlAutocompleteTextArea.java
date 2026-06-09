@@ -1,29 +1,26 @@
 package tso.usmc.jira.ui;
 
 import tso.usmc.jira.service.JqlAutocompleteService;
-import javax.swing.*;
-import javax.swing.event.DocumentEvent;
-import javax.swing.event.DocumentListener;
-import javax.swing.text.BadLocationException;
-import java.awt.*;
-import java.awt.event.*;
+import javafx.application.Platform;
+import javafx.geometry.Bounds;
+import javafx.scene.control.*;
+import javafx.scene.input.KeyCode;
+import javafx.stage.Popup;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
-public class JqlAutocompleteTextArea extends JTextArea {
+public class JqlAutocompleteTextArea extends TextArea {
     private JqlAutocompleteService service;
-    private final JPopupMenu popup;
-    private final DefaultListModel<String> listModel;
-    private final JList<String> suggestionList;
+    private final Popup popup;
+    private final ListView<String> suggestionList;
     private boolean isUpdating = false;
     private boolean enabled = true;
 
     public JqlAutocompleteTextArea(JqlAutocompleteService service) {
         this.service = service;
-        this.listModel = new DefaultListModel<>();
-        this.suggestionList = new JList<>(listModel);
-        this.popup = new JPopupMenu();
+        this.suggestionList = new ListView<>();
+        this.popup = new Popup();
         
         setupUI();
         setupListeners();
@@ -38,58 +35,46 @@ public class JqlAutocompleteTextArea extends JTextArea {
     }
 
     private void setupUI() {
-        JScrollPane scroll = new JScrollPane(suggestionList);
-        scroll.setPreferredSize(new Dimension(250, 150));
-        popup.add(scroll);
-        popup.setFocusable(false);
+        popup.setAutoHide(true);
+        popup.getContent().add(suggestionList);
+        suggestionList.getSelectionModel().setSelectionMode(SelectionMode.SINGLE);
+        suggestionList.setPrefWidth(250);
+        suggestionList.setPrefHeight(150);
         
-        suggestionList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
-        suggestionList.addMouseListener(new MouseAdapter() {
-            @Override
-            public void mouseClicked(MouseEvent e) {
-                if (e.getClickCount() == 2) insertSelectedSuggestion();
-            }
+        suggestionList.setOnMouseClicked(e -> {
+            if (e.getClickCount() == 2) insertSelectedSuggestion();
         });
     }
 
     private void setupListeners() {
-        getDocument().addDocumentListener(new DocumentListener() {
-            @Override public void insertUpdate(DocumentEvent e) { updatePopup(); }
-            @Override public void removeUpdate(DocumentEvent e) { updatePopup(); }
-            @Override public void changedUpdate(DocumentEvent e) { updatePopup(); }
+        textProperty().addListener((observable, oldValue, newValue) -> {
+            updatePopup();
         });
 
-        addKeyListener(new KeyAdapter() {
-            @Override
-            public void keyPressed(KeyEvent e) {
-                if (popup.isVisible()) {
-                    switch (e.getKeyCode()) {
-                        case KeyEvent.VK_DOWN:
-                            int nextIdx = suggestionList.getSelectedIndex() + 1;
-                            if (nextIdx < listModel.size()) suggestionList.setSelectedIndex(nextIdx);
-                            e.consume();
-                            break;
-                        case KeyEvent.VK_UP:
-                            int prevIdx = suggestionList.getSelectedIndex() - 1;
-                            if (prevIdx >= 0) suggestionList.setSelectedIndex(prevIdx);
-                            e.consume();
-                            break;
-                        case KeyEvent.VK_ENTER:
-                        case KeyEvent.VK_TAB:
-                            insertSelectedSuggestion();
-                            e.consume();
-                            break;
-                        case KeyEvent.VK_ESCAPE:
-                            popup.setVisible(false);
-                            e.consume();
-                            break;
-                    }
+        setOnKeyPressed(e -> {
+            if (popup.isShowing()) {
+                if (e.getCode() == KeyCode.DOWN) {
+                    int index = suggestionList.getSelectionModel().getSelectedIndex();
+                    suggestionList.getSelectionModel().select(Math.min(suggestionList.getItems().size() - 1, index + 1));
+                    suggestionList.scrollTo(suggestionList.getSelectionModel().getSelectedIndex());
+                    e.consume();
+                } else if (e.getCode() == KeyCode.UP) {
+                    int index = suggestionList.getSelectionModel().getSelectedIndex();
+                    suggestionList.getSelectionModel().select(Math.max(0, index - 1));
+                    suggestionList.scrollTo(suggestionList.getSelectionModel().getSelectedIndex());
+                    e.consume();
+                } else if (e.getCode() == KeyCode.ENTER || e.getCode() == KeyCode.TAB) {
+                    insertSelectedSuggestion();
+                    e.consume();
+                } else if (e.getCode() == KeyCode.ESCAPE) {
+                    popup.hide();
+                    e.consume();
                 }
             }
         });
 
-        addFocusListener(new FocusAdapter() {
-            @Override public void focusLost(FocusEvent e) { popup.setVisible(false); }
+        focusedProperty().addListener((observable, oldValue, newValue) -> {
+            if (!newValue) popup.hide();
         });
     }
 
@@ -100,11 +85,11 @@ public class JqlAutocompleteTextArea extends JTextArea {
             return;
         }
         
-        SwingUtilities.invokeLater(() -> {
+        Platform.runLater(() -> {
             try {
                 int pos = getCaretPosition();
                 String text = getText();
-                if (pos == 0) { popup.setVisible(false); return; }
+                if (pos == 0) { popup.hide(); return; }
                 
                 // Identify the "current word" under the caret
                 int start = pos;
@@ -114,7 +99,7 @@ public class JqlAutocompleteTextArea extends JTextArea {
                 String word = text.substring(start, pos);
                 
                 if (word.isEmpty() || word.trim().isEmpty()) {
-                    popup.setVisible(false);
+                    popup.hide();
                     return;
                 }
 
@@ -135,19 +120,19 @@ public class JqlAutocompleteTextArea extends JTextArea {
                 }
 
                 if (matches.isEmpty()) {
-                    popup.setVisible(false);
+                    popup.hide();
                 } else {
-                    listModel.clear();
-                    matches.stream().distinct().limit(20).forEach(listModel::addElement);
-                    suggestionList.setSelectedIndex(0);
+                    suggestionList.getItems().clear();
+                    matches.stream().distinct().limit(20).forEach(suggestionList.getItems()::add);
+                    suggestionList.getSelectionModel().select(0);
                     
-                    Rectangle rect = modelToView(start);
-                    if (rect != null) {
-                        popup.show(this, rect.x, rect.y + rect.height);
+                    Bounds bounds = localToScreen(getBoundsInLocal());
+                    if (bounds != null) {
+                        popup.show(this, bounds.getMinX(), bounds.getMaxY());
                     }
                 }
-            } catch (BadLocationException e) {
-                popup.setVisible(false);
+            } catch (Exception e) {
+                popup.hide();
             }
         });
     }
@@ -164,14 +149,13 @@ public class JqlAutocompleteTextArea extends JTextArea {
     }
 
     private String getPreviousField(String context) {
-        // Simple regex or split to find the last word before the operator
         String[] parts = context.split("[\\s=(),!<>]+");
         if (parts.length > 0) return parts[parts.length - 1];
         return null;
     }
 
     private void insertSelectedSuggestion() {
-        String selected = suggestionList.getSelectedValue();
+        String selected = suggestionList.getSelectionModel().getSelectedItem();
         if (selected == null) return;
         
         try {
@@ -184,14 +168,13 @@ public class JqlAutocompleteTextArea extends JTextArea {
                 start--;
             }
             
-            // If the suggestion has spaces and isn't a function, wrap in quotes
             if (selected.contains(" ") && !selected.endsWith("()")) {
                 selected = "\"" + selected + "\"";
             }
 
-            replaceRange(selected, start, pos);
-            setCaretPosition(start + selected.length());
-            popup.setVisible(false);
+            replaceText(start, pos, selected);
+            positionCaret(start + selected.length());
+            popup.hide();
         } finally {
             isUpdating = false;
         }

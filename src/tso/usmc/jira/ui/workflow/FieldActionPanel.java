@@ -2,123 +2,127 @@ package tso.usmc.jira.ui.workflow;
 
 import tso.usmc.jira.workflow.FieldAction;
 import tso.usmc.jira.ui.AutocompleteTextField;
-import tso.usmc.jira.ui.SwingUtils;
+import tso.usmc.jira.ui.UiUtils;
 import org.json.JSONArray;
 import org.json.JSONObject;
-import javax.swing.*;
-import java.awt.*;
-import java.util.*;
-import java.util.List;
 
-public class FieldActionPanel extends JPanel {
+import javafx.geometry.Insets;
+import javafx.geometry.Pos;
+import javafx.scene.control.*;
+import javafx.scene.layout.*;
+import java.util.*;
+
+public class FieldActionPanel extends HBox {
     public interface FieldActionListener {
         void onMoveUp(FieldActionPanel panel);
         void onMoveDown(FieldActionPanel panel);
         void onRemove(FieldActionPanel panel);
     }
 
-    private final JComboBox<FieldAction.MappingMode> modeCombo;
-    private final JComboBox<String> keyCombo;
-    private final JPanel valuePanel;
+    private final ComboBox<FieldAction.MappingMode> modeCombo;
+    private final ComboBox<String> keyCombo;
+    private final StackPane valuePanel;
     private final AutocompleteTextField valueField;
-    private final JTextField promptQuestionField;
-    private final JTextField promptOptionsField;
-    private final CardLayout cardLayout;
+    private final TextField promptQuestionField;
+    private final TextField promptOptionsField;
+    private final HBox promptPanel;
     private Map<String, String> currentOptions;
     private Map<String, JSONObject> fullMetadata;
 
     public FieldActionPanel(FieldAction action, Map<String, String> fieldOptions, Map<String, JSONObject> fullMetadata, FieldActionListener listener) {
         this.currentOptions = fieldOptions;
         this.fullMetadata = fullMetadata;
-        setLayout(new FlowLayout(FlowLayout.LEFT, 5, 0));
+
+        setSpacing(5);
+        setAlignment(Pos.CENTER_LEFT);
+        setPadding(new Insets(2, 5, 2, 5));
+        setMinWidth(Region.USE_PREF_SIZE);
 
         // Rearrangement and Removal Buttons
-        JPanel controls = new JPanel(new FlowLayout(FlowLayout.LEFT, 1, 0));
-        JButton upBtn = new JButton("▲");
-        JButton downBtn = new JButton("▼");
-        JButton delBtn = new JButton("X");
+        HBox controls = new HBox(2);
+        controls.setAlignment(Pos.CENTER_LEFT);
         
-        Dimension btnDim = new Dimension(22, 22);
-        upBtn.setPreferredSize(btnDim);
-        downBtn.setPreferredSize(btnDim);
-        delBtn.setPreferredSize(btnDim);
+        Button upBtn = new Button("^");
+        Button downBtn = new Button("v");
+        Button delBtn = new Button("X");
         
-        upBtn.setMargin(new Insets(0, 0, 0, 0));
-        downBtn.setMargin(new Insets(0, 0, 0, 0));
-        delBtn.setMargin(new Insets(0, 0, 0, 0));
-        delBtn.setForeground(Color.RED);
+        upBtn.setMinSize(22, 22); upBtn.setMaxSize(22, 22);
+        downBtn.setMinSize(22, 22); downBtn.setMaxSize(22, 22);
+        delBtn.setMinSize(22, 22); delBtn.setMaxSize(22, 22);
         
-        upBtn.addActionListener(e -> listener.onMoveUp(this));
-        downBtn.addActionListener(e -> listener.onMoveDown(this));
-        delBtn.addActionListener(e -> listener.onRemove(this));
+        upBtn.getStyleClass().addAll("list-action-btn", "action-btn-up");
+        downBtn.getStyleClass().addAll("list-action-btn", "action-btn-down");
+        delBtn.getStyleClass().addAll("list-action-btn", "action-btn-delete");
         
-        controls.add(upBtn);
-        controls.add(downBtn);
-        controls.add(delBtn);
-        add(controls);
+        upBtn.setOnAction(e -> listener.onMoveUp(this));
+        downBtn.setOnAction(e -> listener.onMoveDown(this));
+        delBtn.setOnAction(e -> listener.onRemove(this));
         
-        Vector<String> options = new Vector<>();
+        controls.getChildren().addAll(upBtn, downBtn, delBtn);
+        getChildren().add(controls);
+        
+        List<String> options = new ArrayList<>();
         if (fieldOptions != null) {
             options.addAll(fieldOptions.keySet());
             Collections.sort(options);
         }
         
-        keyCombo = new JComboBox<>(options);
+        keyCombo = new ComboBox<>();
+        keyCombo.getItems().addAll(options);
         keyCombo.setEditable(true);
-        keyCombo.setPreferredSize(new Dimension(200, 25));
+        keyCombo.setPrefWidth(200);
         
         if (action != null) {
-            keyCombo.setSelectedItem(action.getFieldId());
+            keyCombo.getSelectionModel().select(action.getFieldId());
         }
         
-        modeCombo = new JComboBox<>(FieldAction.MappingMode.values());
+        modeCombo = new ComboBox<>();
+        modeCombo.getItems().addAll(FieldAction.MappingMode.values());
         
-        valuePanel = new JPanel();
-        cardLayout = new CardLayout();
-        valuePanel.setLayout(cardLayout);
+        valuePanel = new StackPane();
         
-        valueField = new AutocompleteTextField(15);
+        valueField = new AutocompleteTextField();
+        valueField.setPrefWidth(150);
         
         // Prompt Panel: Question + Optional Options
-        JPanel promptPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 2, 0));
-        promptQuestionField = new JTextField("Question?", 10);
-        promptQuestionField.setToolTipText("The label/question for the prompt");
-        promptOptionsField = new JTextField("", 10);
-        promptOptionsField.setToolTipText("Optional: Comma-separated list of selection values");
-        promptPanel.add(promptQuestionField);
-        promptPanel.add(new JLabel("Opts:"));
-        promptPanel.add(promptOptionsField);
+        promptPanel = new HBox(5);
+        promptPanel.setAlignment(Pos.CENTER_LEFT);
+        promptQuestionField = new TextField("Question?");
+        promptQuestionField.setPrefWidth(100);
+        promptQuestionField.setTooltip(new Tooltip("The label/question for the prompt"));
+        promptOptionsField = new TextField("");
+        promptOptionsField.setPrefWidth(100);
+        promptOptionsField.setTooltip(new Tooltip("Optional: Comma-separated list of selection values"));
+        promptPanel.getChildren().addAll(promptQuestionField, new Label("Opts:"), promptOptionsField);
 
-        SwingUtils.setupExpandedView(valueField.getTextField());
-        SwingUtils.setupExpandedView(promptQuestionField);
-        SwingUtils.setupExpandedView(promptOptionsField);
+        UiUtils.setupExpandedView(valueField.getTextField());
+        UiUtils.setupExpandedView(promptQuestionField);
+        UiUtils.setupExpandedView(promptOptionsField);
         
-        valueField.getTextField().getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
-            public void insertUpdate(javax.swing.event.DocumentEvent e) { validateValue(); }
-            public void removeUpdate(javax.swing.event.DocumentEvent e) { validateValue(); }
-            public void changedUpdate(javax.swing.event.DocumentEvent e) { validateValue(); }
-        });
+        valueField.getTextField().textProperty().addListener((obs, oldVal, newVal) -> validateValue());
 
-        valuePanel.add(valueField, FieldAction.MappingMode.SET.toString());
-        valuePanel.add(promptPanel, FieldAction.MappingMode.PROMPT.toString());
+        valuePanel.getChildren().addAll(valueField, promptPanel);
         
-        modeCombo.addActionListener(e -> {
-            FieldAction.MappingMode mode = (FieldAction.MappingMode) modeCombo.getSelectedItem();
-            cardLayout.show(valuePanel, mode.toString());
+        modeCombo.setOnAction(e -> {
+            FieldAction.MappingMode mode = modeCombo.getSelectionModel().getSelectedItem();
+            valueField.setVisible(mode == FieldAction.MappingMode.SET);
+            valueField.setManaged(mode == FieldAction.MappingMode.SET);
+            promptPanel.setVisible(mode == FieldAction.MappingMode.PROMPT);
+            promptPanel.setManaged(mode == FieldAction.MappingMode.PROMPT);
             validateValue();
         });
 
-        keyCombo.addActionListener(e -> updateValueSuggestions());
+        keyCombo.setOnAction(e -> updateValueSuggestions());
 
-        add(new JLabel("Field:"));
-        add(keyCombo);
-        add(new JLabel("Mode:"));
-        add(modeCombo);
-        add(valuePanel);
+        getChildren().addAll(
+            new Label("Field:"), keyCombo,
+            new Label("Mode:"), modeCombo,
+            valuePanel
+        );
 
         // Init values
         if (action != null) {
-            modeCombo.setSelectedItem(action.getMode());
+            modeCombo.getSelectionModel().select(action.getMode());
             if (action.getMode() == FieldAction.MappingMode.SET && action.getValue() != null) {
                 valueField.setText(action.getValue().toString());
             }
@@ -126,7 +130,17 @@ public class FieldActionPanel extends JPanel {
                 promptQuestionField.setText(action.getPromptLabel());
                 if (action.getValue() != null) promptOptionsField.setText(action.getValue().toString());
             }
-            cardLayout.show(valuePanel, action.getMode().toString());
+            FieldAction.MappingMode mode = action.getMode();
+            valueField.setVisible(mode == FieldAction.MappingMode.SET);
+            valueField.setManaged(mode == FieldAction.MappingMode.SET);
+            promptPanel.setVisible(mode == FieldAction.MappingMode.PROMPT);
+            promptPanel.setManaged(mode == FieldAction.MappingMode.PROMPT);
+        } else {
+            modeCombo.getSelectionModel().select(FieldAction.MappingMode.SET);
+            valueField.setVisible(true);
+            valueField.setManaged(true);
+            promptPanel.setVisible(false);
+            promptPanel.setManaged(false);
         }
         updateValueSuggestions();
         validateValue();
@@ -134,8 +148,7 @@ public class FieldActionPanel extends JPanel {
 
     public FieldAction getFieldAction() {
         FieldAction action = new FieldAction();
-        Object selected = keyCombo.getSelectedItem();
-        String selectedStr = selected != null ? selected.toString() : "";
+        String selectedStr = getSelectedFieldIdOrLabel();
         
         String fieldId = selectedStr;
         if (currentOptions != null && currentOptions.containsKey(selectedStr)) {
@@ -143,7 +156,7 @@ public class FieldActionPanel extends JPanel {
         }
         
         action.setFieldId(fieldId);
-        action.setMode((FieldAction.MappingMode) modeCombo.getSelectedItem());
+        action.setMode(modeCombo.getSelectionModel().getSelectedItem());
         
         if (action.getMode() == FieldAction.MappingMode.SET) {
             action.setValue(valueField.getText());
@@ -158,8 +171,7 @@ public class FieldActionPanel extends JPanel {
     public void refreshMetadata(Map<String, String> fieldOptions, Map<String, JSONObject> fullMetadata) {
         this.currentOptions = fieldOptions;
         this.fullMetadata = fullMetadata;
-        Object current = keyCombo.getSelectedItem();
-        String currentStr = current != null ? current.toString() : "";
+        String currentStr = getSelectedFieldIdOrLabel();
         
         // Find existing ID
         String currentId = currentStr;
@@ -167,21 +179,21 @@ public class FieldActionPanel extends JPanel {
             currentId = fieldOptions.get(currentStr);
         }
 
-        Vector<String> options = new Vector<>(fieldOptions.keySet());
+        List<String> options = new ArrayList<>(fieldOptions.keySet());
         Collections.sort(options);
         
-        keyCombo.setModel(new DefaultComboBoxModel<>(options));
+        keyCombo.getItems().setAll(options);
         
         // Try to re-select based on ID
         for (String label : fieldOptions.keySet()) {
             if (fieldOptions.get(label).equals(currentId)) {
-                keyCombo.setSelectedItem(label);
+                keyCombo.getSelectionModel().select(label);
                 updateValueSuggestions();
                 validateValue();
                 return;
             }
         }
-        keyCombo.setSelectedItem(currentStr);
+        keyCombo.getSelectionModel().select(currentStr);
         updateValueSuggestions();
         validateValue();
     }
@@ -205,15 +217,17 @@ public class FieldActionPanel extends JPanel {
     }
     
     private void validateValue() {
-        JTextField activeTextField = valueField.getTextField();
-        if (modeCombo.getSelectedItem() != FieldAction.MappingMode.SET) {
-            activeTextField.setBorder(UIManager.getLookAndFeelDefaults().getBorder("TextField.border"));
+        TextField activeTextField = valueField.getTextField();
+        if (modeCombo.getSelectionModel().getSelectedItem() != FieldAction.MappingMode.SET) {
+            activeTextField.setStyle("");
+            activeTextField.setTooltip(null);
             return;
         }
 
         String val = valueField.getText().trim();
         if (val.isEmpty() || val.contains("{{")) {
-            activeTextField.setBorder(UIManager.getLookAndFeelDefaults().getBorder("TextField.border"));
+            activeTextField.setStyle("");
+            activeTextField.setTooltip(null);
             return;
         }
 
@@ -250,25 +264,32 @@ public class FieldActionPanel extends JPanel {
                 }
 
                 if (!found) {
-                    activeTextField.setBorder(BorderFactory.createLineBorder(Color.RED, 2));
-                    activeTextField.setToolTipText("Value not in allowed list for this field.");
+                    activeTextField.setStyle("-fx-border-color: red; -fx-border-width: 2px;");
+                    activeTextField.setTooltip(new Tooltip("Value not in allowed list for this field."));
                 } else {
-                    activeTextField.setBorder(UIManager.getLookAndFeelDefaults().getBorder("TextField.border"));
-                    activeTextField.setToolTipText(null);
+                    activeTextField.setStyle("");
+                    activeTextField.setTooltip(null);
                 }
                 return;
             }
         }
-        activeTextField.setBorder(UIManager.getLookAndFeelDefaults().getBorder("TextField.border"));
-        activeTextField.setToolTipText(null);
+        activeTextField.setStyle("");
+        activeTextField.setTooltip(null);
     }
 
     private String getSelectedFieldId() {
-        Object selected = keyCombo.getSelectedItem();
-        String selectedStr = selected != null ? selected.toString() : "";
+        String selectedStr = getSelectedFieldIdOrLabel();
         if (currentOptions != null && currentOptions.containsKey(selectedStr)) {
             return currentOptions.get(selectedStr);
         }
         return selectedStr;
+    }
+
+    private String getSelectedFieldIdOrLabel() {
+        String selected = keyCombo.getSelectionModel().getSelectedItem();
+        if (selected == null || selected.trim().isEmpty()) {
+            selected = keyCombo.getEditor().getText();
+        }
+        return selected != null ? selected.trim() : "";
     }
 }

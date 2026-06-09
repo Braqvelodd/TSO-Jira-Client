@@ -2,25 +2,29 @@ package tso.usmc.jira.ui;
 
 import tso.usmc.jira.app.JiraApiClientGui;
 import tso.usmc.jira.service.JqlAutocompleteService;
+import tso.usmc.jira.service.JiraIssueService;
 import tso.usmc.jira.util.JiraUtils;
 import tso.usmc.jira.util.JsonUtils;
 import tso.usmc.jira.util.ExecutionService;
-import javax.swing.*;
-import javax.swing.event.DocumentEvent;
-import javax.swing.event.DocumentListener;
-import javax.swing.event.ListSelectionEvent;
-import javax.swing.event.ListSelectionListener;
-import javax.swing.table.DefaultTableCellRenderer;
-import javax.swing.table.DefaultTableModel;
-import javax.swing.text.DefaultHighlighter;
-import javax.swing.text.Highlighter;
-import java.awt.*;
-import java.awt.datatransfer.DataFlavor;
-import java.awt.dnd.*;
+
+import javafx.application.Platform;
+import javafx.collections.FXCollections;
+import javafx.collections.ObservableList;
+import javafx.collections.ListChangeListener;
+import javafx.beans.property.SimpleStringProperty;
+import javafx.geometry.Insets;
+import javafx.scene.control.*;
+import javafx.scene.layout.*;
+import javafx.scene.input.*;
+import javafx.geometry.Rectangle2D;
+import javafx.geometry.Bounds;
+import javafx.scene.shape.Rectangle;
+import javafx.scene.Node;
+
+import java.awt.Desktop;
 import java.io.File;
 import java.nio.file.Files;
 import java.util.*;
-import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -28,8 +32,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
-
-public class TaskBuilderPanel extends JPanel {
+public class TaskBuilderPanel extends BorderPane {
 
     private static final boolean MOCK_MODE = false;
 
@@ -39,285 +42,399 @@ public class TaskBuilderPanel extends JPanel {
     private boolean isUpdating = false;
 
     // UI Components
-    private final JTextField parentField = new JTextField(20);
-    private final JComboBox<String> defTypeField = new JComboBox<>(new String[]{"Sub-task", "ST-PCU", "ST-Database", "ST-Interface"});
+    private final TextField parentField = new TextField();
+    private final ComboBox<String> defTypeField = new ComboBox<>();
     private final JiraUserAutocompleteTextField defAssigneeField = new JiraUserAutocompleteTextField(20);
-    private final JTextField defCompField = new JTextField(20);
-    private final JTextField defTransField = new JTextField(20);
-    private final JComboBox<String> templateSelector = new JComboBox<>();
+    private final TextField defCompField = new TextField();
+    private final TextField defTransField = new TextField();
+    private final ComboBox<String> templateSelector = new ComboBox<>();
     private final JiraUserAutocompleteTextArea inputArea = new JiraUserAutocompleteTextArea(null);
-    private final DefaultListModel<JiraTask> taskListModel = new DefaultListModel<>();
-    private final JList<JiraTask> taskList = new JList<>(taskListModel);
+    private final Pane overlayPane = new Pane();
+    private final ObservableList<JiraTask> taskListModel = FXCollections.observableArrayList();
+    private final ListView<JiraTask> taskList = new ListView<>(taskListModel);
     private final List<JiraTask> parsedTasks = new ArrayList<>();
 
-    private final DefaultTableModel resultsTableModel = new DefaultTableModel(new Object[]{"Summary", "Status", "Jira Link"}, 0);
-    private final JTable resultsTable = new JTable(resultsTableModel);
+    private final TableView<ExecutionResultRow> resultsTable = new TableView<>();
+    private final Label statusBar = new Label(" Ready");
 
-    private final JLabel statusBar = new JLabel(" Ready");
+    private final Button selectAllBtn = new Button("Select All");
+    private final Button unselectAllBtn = new Button("Unselect All");
 
-    private final JButton selectAllBtn = new JButton("Select All");
-    private final JButton unselectAllBtn = new JButton("Unselect All");
+    public static class ExecutionResultRow {
+        public final SimpleStringProperty summary;
+        public final SimpleStringProperty status;
+        public final SimpleStringProperty link;
+
+        public ExecutionResultRow(String summary, String status, String link) {
+            this.summary = new SimpleStringProperty(summary);
+            this.status = new SimpleStringProperty(status);
+            this.link = new SimpleStringProperty(link);
+        }
+    }
 
     public TaskBuilderPanel(JiraApiClientGui mainFrame) {
         this.mainFrame = mainFrame;
-        setLayout(new BorderLayout());
+        setPadding(new Insets(10));
 
-        // --- All UI setup code is largely unchanged from your original version ---
-        JPanel leftPanel = new JPanel(new BorderLayout());
-        JPanel configPanel = new JPanel(new GridBagLayout());
-        configPanel.setBorder(BorderFactory.createTitledBorder("Defaults " + (MOCK_MODE ? "(MOCK)" : "")));
-        
-        GridBagConstraints gbc = new GridBagConstraints();
-        gbc.insets = new Insets(2, 5, 2, 5);
-        gbc.fill = GridBagConstraints.HORIZONTAL;
+        // --- Defaults Panel (GridPane) ---
+        GridPane configPanel = new GridPane();
+        configPanel.getStyleClass().add("card");
+        configPanel.setPadding(new Insets(10));
+        configPanel.setHgap(10);
+        configPanel.setVgap(5);
 
         // Row 0: Parent and Template
-        gbc.gridy = 0;
-        gbc.gridx = 0; gbc.weightx = 0; configPanel.add(new JLabel("Parent:"), gbc);
-        gbc.gridx = 1; gbc.weightx = 0.5; configPanel.add(parentField, gbc);
-        gbc.gridx = 2; gbc.weightx = 0; configPanel.add(new JLabel(" Template:"), gbc);
-        gbc.gridx = 3; gbc.weightx = 0.5; configPanel.add(templateSelector, gbc);
+        configPanel.add(new Label("Parent:"), 0, 0);
+        configPanel.add(parentField, 1, 0);
+        configPanel.add(new Label(" Template:"), 2, 0);
+        configPanel.add(templateSelector, 3, 0);
+        GridPane.setHgrow(parentField, Priority.ALWAYS);
+        GridPane.setHgrow(templateSelector, Priority.ALWAYS);
 
-        addConfigRow(configPanel, "Type:", defTypeField, 1, 1);
-        addConfigRow(configPanel, "Assignee:", defAssigneeField, 2, 1);
-        addConfigRow(configPanel, "Component:", defCompField, 3, 1);
-        addConfigRow(configPanel, "Transition:", defTransField, 4, 1);
-        
+        // Row 1: Type
+        configPanel.add(new Label("Type:"), 0, 1);
+        defTypeField.getItems().addAll(mainFrame.getJiraConfig().getSubtaskTypes());
+        if (!defTypeField.getItems().isEmpty()) {
+            defTypeField.getSelectionModel().select(0);
+        }
+        defTypeField.setMaxWidth(Double.MAX_VALUE);
+        configPanel.add(defTypeField, 1, 1, 3, 1);
+
+        // Row 2: Assignee
+        configPanel.add(new Label("Assignee:"), 0, 2);
+        configPanel.add(defAssigneeField, 1, 2, 3, 1);
+
+        // Row 3: Component
+        configPanel.add(new Label("Component:"), 0, 3);
+        configPanel.add(defCompField, 1, 3, 3, 1);
+
+        // Row 4: Transition
+        configPanel.add(new Label("Transition:"), 0, 4);
+        configPanel.add(defTransField, 1, 4, 3, 1);
+
+        // Sync inputs to textarea default prefixes
         addSyncListener(parentField, "PARENT_TICKET");
-        defTypeField.addActionListener(e -> syncToText("DEFAULT_TYPE", (String)defTypeField.getSelectedItem()));
+        defTypeField.setOnAction(e -> syncToText("DEFAULT_TYPE", defTypeField.getSelectionModel().getSelectedItem()));
         addSyncListener(defAssigneeField, "DEFAULT_ASSIGNEE");
         addSyncListener(defCompField, "DEFAULT_COMPONENT");
         addSyncListener(defTransField, "DEFAULT_TRANSITION");
+
         loadTemplatesFromDisk();
-        templateSelector.addActionListener(e -> loadSelectedTemplate());
-        leftPanel.add(configPanel, BorderLayout.NORTH);
-        
-        inputArea.addFocusListener(new java.awt.event.FocusAdapter() {
-            @Override
-            public void focusGained(java.awt.event.FocusEvent e) {
-                ensureAutocompleteServiceInitialized();
+        templateSelector.setOnAction(e -> loadSelectedTemplate());
+
+        // Autocomplete init
+        inputArea.focusedProperty().addListener((obs, oldV, newV) -> {
+            if (newV) ensureAutocompleteServiceInitialized();
+        });
+
+        inputArea.setStyle("-fx-font-family: monospace;");
+        setupDragAndDrop();
+
+        // Listen for textarea text changes to parse tasks dynamically
+        inputArea.textProperty().addListener((obs, oldV, newV) -> parseInput());
+
+        // Dynamic visual highlighting listeners
+        inputArea.textProperty().addListener((obs, oldV, newV) -> updateHighlights());
+        inputArea.widthProperty().addListener((obs, oldV, newV) -> updateHighlights());
+        inputArea.heightProperty().addListener((obs, oldV, newV) -> updateHighlights());
+
+        inputArea.skinProperty().addListener((obs, oldSkin, newSkin) -> {
+            if (newSkin != null) {
+                Platform.runLater(() -> {
+                    ScrollBar vScrollBar = (ScrollBar) inputArea.lookup(".scroll-bar:vertical");
+                    ScrollBar hScrollBar = (ScrollBar) inputArea.lookup(".scroll-bar:horizontal");
+                    if (vScrollBar != null) {
+                        vScrollBar.valueProperty().addListener((o, ov, nv) -> updateHighlights());
+                    }
+                    if (hScrollBar != null) {
+                        hScrollBar.valueProperty().addListener((o, ov, nv) -> updateHighlights());
+                    }
+                    updateHighlights();
+                });
             }
         });
 
-        inputArea.setFont(new Font("Monospaced", Font.PLAIN, 12));
-        inputArea.setSelectionColor(new Color(160, 200, 255)); // Slightly deeper blue
-        inputArea.setSelectedTextColor(Color.BLACK); // Keep text black when selected
-        setupDragAndDrop();
-        inputArea.getDocument().addDocumentListener(new DocumentListener() {
-            public void insertUpdate(DocumentEvent e) { parseInput(); }
-            public void removeUpdate(DocumentEvent e) { parseInput(); }
-            public void changedUpdate(DocumentEvent e) { parseInput(); }
-        });
         setupInputAreaKeyBindings();
         setupContextMenu();
-        leftPanel.add(new JScrollPane(inputArea), BorderLayout.CENTER);
-        JPanel rightPanel = new JPanel(new BorderLayout());
-        taskList.setCellRenderer(new TaskCellRenderer()); // Use custom renderer to display HTML
-        taskList.addMouseListener(new java.awt.event.MouseAdapter() {
-            @Override
-            public void mouseClicked(java.awt.event.MouseEvent e) {
-                if (e.getClickCount() == 2) {
-                    int index = taskList.locationToIndex(e.getPoint());
-                    if (index != -1) {
-                        JiraTask task = taskListModel.getElementAt(index);
-                        
-                        // If Ctrl is NOT held, we want to clear other selections and select only this one.
-                        // Note: The JList already handles selection on the first click, 
-                        // but being explicit ensures the double-click behavior matches the request.
-                        if ((e.getModifiersEx() & java.awt.event.InputEvent.CTRL_DOWN_MASK) == 0) {
-                            taskList.setSelectedIndex(index);
+
+        // --- SPLIT PANE ---
+        SplitPane splitPane = new SplitPane();
+        BorderPane leftPanel = new BorderPane();
+        leftPanel.setTop(configPanel);
+        StackPane inputContainer = new StackPane();
+        overlayPane.setMouseTransparent(true);
+        inputContainer.getChildren().addAll(inputArea, overlayPane);
+        leftPanel.setCenter(inputContainer);
+        BorderPane.setMargin(inputContainer, new Insets(10, 0, 0, 0));
+
+        BorderPane rightPanel = new BorderPane();
+        taskList.getSelectionModel().setSelectionMode(SelectionMode.MULTIPLE);
+        
+        // Custom cell renderer in ListView to display HTML-like content and toggle selection on mouse press
+        taskList.setCellFactory(lv -> {
+            ListCell<JiraTask> cell = new ListCell<JiraTask>() {
+                @Override
+                protected void updateItem(JiraTask task, boolean empty) {
+                    super.updateItem(task, empty);
+                    if (empty || task == null) {
+                        setText(null);
+                        setGraphic(null);
+                    } else {
+                        HBox hbox = new HBox(5);
+                        Label summaryLabel = new Label(task.summary);
+                        hbox.getChildren().add(summaryLabel);
+                        if (!task.transition.isEmpty()) {
+                            Label transLabel = new Label(task.transition);
+                            transLabel.getStyleClass().addAll("badge", "badge-transition");
+                            hbox.getChildren().add(transLabel);
                         }
-                        
-                        // Scroll the task to the top of the text area
-                        try {
-                            Rectangle rect = inputArea.modelToView(task.startIndex);
-                            if (rect != null) {
-                                // To force the line to the top, we tell it to scroll to a rectangle 
-                                // that starts at our line and is as tall as the visible area.
-                                rect.height = inputArea.getVisibleRect().height;
-                                inputArea.scrollRectToVisible(rect);
-                            }
-                        } catch (Exception ex) {
-                            // Fallback if modelToView fails
-                        }
-                        
-                        inputArea.setCaretPosition(task.startIndex);
-                        inputArea.requestFocusInWindow();
+                        setGraphic(hbox);
+                        setText(null);
                     }
                 }
-            }
+            };
+            
+            cell.addEventFilter(MouseEvent.MOUSE_PRESSED, event -> {
+                if (!cell.isEmpty() && cell.getItem() != null) {
+                    if (event.getClickCount() == 2) {
+                        JiraTask task = cell.getItem();
+                        if (task != null) {
+                            inputArea.positionCaret(task.startIndex);
+                            inputArea.requestFocus();
+                        }
+                        event.consume();
+                        return;
+                    }
+                    
+                    if (event.isShiftDown() || event.isControlDown()) {
+                        return;
+                    }
+                    
+                    int index = cell.getIndex();
+                    MultipleSelectionModel<JiraTask> selModel = taskList.getSelectionModel();
+                    if (selModel.isSelected(index)) {
+                        selModel.clearSelection(index);
+                    } else {
+                        selModel.select(index);
+                    }
+                    taskList.requestFocus();
+                }
+                event.consume();
+            });
+
+            cell.addEventFilter(MouseEvent.MOUSE_RELEASED, event -> {
+                if (!cell.isEmpty() && cell.getItem() != null) {
+                    if (event.isShiftDown() || event.isControlDown()) {
+                        return;
+                    }
+                    event.consume();
+                }
+            });
+
+            cell.addEventFilter(MouseEvent.MOUSE_CLICKED, event -> {
+                if (!cell.isEmpty() && cell.getItem() != null) {
+                    if (event.isShiftDown() || event.isControlDown()) {
+                        return;
+                    }
+                    event.consume();
+                }
+            });
+            
+            return cell;
         });
-        taskList.addListSelectionListener(new ListSelectionListener() {
+
+        taskList.getSelectionModel().getSelectedItems().addListener((ListChangeListener<JiraTask>) c -> {
+            updateHighlights();
+        });
+
+        rightPanel.setCenter(taskList);
+
+        HBox actionButtonsPanel = new HBox(5);
+        actionButtonsPanel.setPadding(new Insets(10, 0, 0, 0));
+        Button executeBtn = new Button(MOCK_MODE ? "Run Mock Execution" : "Execute Selected Tasks");
+        actionButtonsPanel.getChildren().addAll(selectAllBtn, unselectAllBtn, executeBtn);
+        HBox.setHgrow(executeBtn, Priority.ALWAYS);
+        executeBtn.setMaxWidth(Double.MAX_VALUE);
+        rightPanel.setBottom(actionButtonsPanel);
+
+        splitPane.getItems().addAll(leftPanel, rightPanel);
+        setCenter(splitPane);
+
+        // --- BOTTOM PANEL: Results Table & Status ---
+        VBox bottomContainer = new VBox(5);
+        bottomContainer.getStyleClass().add("card");
+        bottomContainer.setPadding(new Insets(10));
+        
+        Label bottomTitle = new Label("Execution Results");
+        bottomTitle.getStyleClass().add("card-title");
+        
+        resultsTable.setPrefHeight(150);
+        TableColumn<ExecutionResultRow, String> colSummary = new TableColumn<>("Summary");
+        colSummary.setCellValueFactory(cellData -> cellData.getValue().summary);
+        colSummary.setPrefWidth(300);
+
+        TableColumn<ExecutionResultRow, String> colStatus = new TableColumn<>("Status");
+        colStatus.setCellValueFactory(cellData -> cellData.getValue().status);
+        colStatus.setPrefWidth(200);
+
+        TableColumn<ExecutionResultRow, String> colLink = new TableColumn<>("Jira Link");
+        colLink.setCellValueFactory(cellData -> cellData.getValue().link);
+        colLink.setPrefWidth(350);
+        colLink.setCellFactory(col -> new TableCell<ExecutionResultRow, String>() {
+            private final Hyperlink hyperlink = new Hyperlink();
+            {
+                hyperlink.setOnAction(e -> {
+                    String url = hyperlink.getText();
+                    if (url != null && url.startsWith("http")) {
+                        try {
+                            Desktop.getDesktop().browse(new java.net.URI(url));
+                        } catch (Exception ex) {
+                            // ignore
+                        }
+                    }
+                });
+            }
             @Override
-            public void valueChanged(ListSelectionEvent e) {
-                if (!e.getValueIsAdjusting()) {
-                    updateHighlights();
+            protected void updateItem(String item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || item == null || !item.startsWith("http")) {
+                    setGraphic(null);
+                    setText(item);
+                } else {
+                    hyperlink.setText(item);
+                    setGraphic(hyperlink);
+                    setText(null);
                 }
             }
         });
-        rightPanel.add(new JScrollPane(taskList), BorderLayout.CENTER);
 
-        JPanel actionButtonsPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 5, 5));
-        actionButtonsPanel.add(selectAllBtn);
-        actionButtonsPanel.add(unselectAllBtn);
-        JButton executeBtn = new JButton(MOCK_MODE ? "Run Mock Execution" : "Execute Selected Tasks");
-        actionButtonsPanel.add(executeBtn);
-        rightPanel.add(actionButtonsPanel, BorderLayout.SOUTH);
-        setupResultsTable();
-        JPanel bottomContainer = new JPanel(new BorderLayout());
-        JScrollPane tableScroll = new JScrollPane(resultsTable);
-        tableScroll.setPreferredSize(new Dimension(0, 150));
-        bottomContainer.add(tableScroll, BorderLayout.CENTER);
-        statusBar.setBorder(BorderFactory.createEtchedBorder());
-        statusBar.setPreferredSize(new Dimension(getWidth(), 25));
-        bottomContainer.add(statusBar, BorderLayout.SOUTH);
-        JSplitPane splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, leftPanel, rightPanel);
-        splitPane.setResizeWeight(0.5);
-        add(splitPane, BorderLayout.CENTER);
-        add(bottomContainer, BorderLayout.SOUTH);
-        SwingUtilities.invokeLater(() -> splitPane.setDividerLocation(0.5));
-        selectAllBtn.addActionListener(e -> setAllTasksSelected(true));
-        unselectAllBtn.addActionListener(e -> setAllTasksSelected(false));
-        executeBtn.addActionListener(e -> executeTasks());
+        resultsTable.getColumns().addAll(colSummary, colStatus, colLink);
+
+        HBox statusPanel = new HBox();
+        statusPanel.getStyleClass().add("status-bar");
+        statusBar.getStyleClass().add("status-text");
+        statusPanel.getChildren().add(statusBar);
+
+        bottomContainer.getChildren().addAll(bottomTitle, resultsTable);
+        
+        BorderPane footer = new BorderPane();
+        footer.setCenter(bottomContainer);
+        footer.setBottom(statusPanel);
+        BorderPane.setMargin(bottomContainer, new Insets(10, 0, 0, 0));
+        setBottom(footer);
+
+        selectAllBtn.setOnAction(e -> setAllTasksSelected(true));
+        unselectAllBtn.setOnAction(e -> setAllTasksSelected(false));
+        executeBtn.setOnAction(e -> executeTasks());
     }
 
     private void setupContextMenu() {
-        JPopupMenu menu = new JPopupMenu();
+        ContextMenu menu = new ContextMenu();
         
-        JMenuItem addAssignee = new JMenuItem("Set Assignee...");
-        addAssignee.addActionListener(e -> applyTaskOverride("assignee:"));
-        menu.add(addAssignee);
+        MenuItem addAssignee = new MenuItem("Set Assignee...");
+        addAssignee.setOnAction(e -> applyTaskOverride("assignee:"));
+        menu.getItems().add(addAssignee);
 
-        JMenuItem addParent = new JMenuItem("Set Parent...");
-        addParent.addActionListener(e -> applyTaskOverride("parent:"));
-        menu.add(addParent);
+        MenuItem addParent = new MenuItem("Set Parent...");
+        addParent.setOnAction(e -> applyTaskOverride("parent:"));
+        menu.getItems().add(addParent);
         
-        JMenu componentMenu = new JMenu("Set Component");
+        Menu componentMenu = new Menu("Set Component");
         String[] teamKeys = mainFrame.getJiraConfig().getWorkflowTeamKeys();
         for (String key : teamKeys) {
             String details = mainFrame.getJiraConfig().getTeamDetails(key);
             if (details != null && details.contains("|")) {
                 String label = details.split("\\|")[0];
-                String compName = label; // Use index 0 as requested
+                String compName = label;
                 
-                JCheckBoxMenuItem compItem = new JCheckBoxMenuItem(label);
-                compItem.addActionListener(e -> {
-                    toggleComponentOverride(compName);
-                    // Keep the menu open after selection
-                    MenuSelectionManager.defaultManager().setSelectedPath(new MenuElement[]{menu, componentMenu, compItem});
-                });
-                componentMenu.add(compItem);
+                CheckMenuItem compItem = new CheckMenuItem(label);
+                compItem.setOnAction(e -> toggleComponentOverride(compName));
+                componentMenu.getItems().add(compItem);
             }
         }
         
-        JMenuItem otherComp = new JMenuItem("Other...");
-        otherComp.addActionListener(e -> applyTaskOverride("component:"));
-        componentMenu.add(otherComp);
-        
-        // NEW: Update check states when the menu is shown
-        componentMenu.addMenuListener(new javax.swing.event.MenuListener() {
-            @Override
-            public void menuSelected(javax.swing.event.MenuEvent e) {
-                String currentText = inputArea.getText();
-                int caretPos = inputArea.getCaretPosition();
-                int taskStart = 0;
-                int lastPos = 0;
-                while (true) {
-                    int nextMatch = currentText.indexOf("******", lastPos);
-                    if (nextMatch == -1 || nextMatch >= caretPos) break;
-                    taskStart = nextMatch + 6;
-                    lastPos = nextMatch + 6;
-                }
-                int taskEnd = currentText.indexOf("******", taskStart);
-                if (taskEnd == -1) taskEnd = currentText.length();
-                String block = currentText.substring(taskStart, taskEnd);
-                
-                java.util.regex.Pattern p = java.util.regex.Pattern.compile("(?m)^component:(.*)$");
-                java.util.regex.Matcher m = p.matcher(block);
-                Set<String> activeComps = new HashSet<>();
-                if (m.find()) {
-                    for (String s : m.group(1).split(",")) {
-                        activeComps.add(s.trim());
-                    }
-                }
-                
-                for (Component c : componentMenu.getMenuComponents()) {
-                    if (c instanceof JCheckBoxMenuItem) {
-                        JCheckBoxMenuItem item = (JCheckBoxMenuItem) c;
-                        // Find the corresponding component name from the config again
-                        String[] teamKeys = mainFrame.getJiraConfig().getWorkflowTeamKeys();
-                        for (String key : teamKeys) {
-                            String details = mainFrame.getJiraConfig().getTeamDetails(key);
-                            if (details != null && details.split("\\|")[0].equals(item.getText())) {
-                                item.setSelected(activeComps.contains(details.split("\\|")[0]));
-                                break;
-                            }
-                        }
-                    }
-                }
-            }
-            @Override public void menuDeselected(javax.swing.event.MenuEvent e) {}
-            @Override public void menuCanceled(javax.swing.event.MenuEvent e) {}
-        });
-        
-        menu.add(componentMenu);
-        
-        JMenu transitionMenu = new JMenu("Set Transition");
+        MenuItem otherComp = new MenuItem("Other...");
+        otherComp.setOnAction(e -> applyTaskOverride("component:"));
+        componentMenu.getItems().add(otherComp);
+        menu.getItems().add(componentMenu);
+
+        Menu transitionMenu = new Menu("Set Transition");
         String[] transOptions = {"HOLD", "CANCELED", "IN PROGRESS", "DONE"};
         for (String trans : transOptions) {
-            JMenuItem transItem = new JMenuItem(trans);
-            transItem.addActionListener(e -> applyTaskOverride("transition:", trans));
-            transitionMenu.add(transItem);
+            MenuItem transItem = new MenuItem(trans);
+            transItem.setOnAction(e -> applyTaskOverride("transition:", trans));
+            transitionMenu.getItems().add(transItem);
         }
-        JMenuItem otherTrans = new JMenuItem("Other...");
-        otherTrans.addActionListener(e -> applyTaskOverride("transition:"));
-        transitionMenu.add(otherTrans);
-        menu.add(transitionMenu);
+        MenuItem otherTrans = new MenuItem("Other...");
+        otherTrans.setOnAction(e -> applyTaskOverride("transition:"));
+        transitionMenu.getItems().add(otherTrans);
+        menu.getItems().add(transitionMenu);
         
-        JMenu issueTypeMenu = new JMenu("Set Issue-Type");
-        String[] types = {"Sub-task", "ST-PCU", "ST-Database", "ST-Interface"};
+        Menu issueTypeMenu = new Menu("Set Issue-Type");
+        java.util.List<String> types = mainFrame.getJiraConfig().getSubtaskTypes();
         for (String type : types) {
-            JMenuItem typeItem = new JMenuItem(type);
-            typeItem.addActionListener(e -> applyTaskOverride("issue-type:", type));
-            issueTypeMenu.add(typeItem);
+            MenuItem typeItem = new MenuItem(type);
+            typeItem.setOnAction(e -> applyTaskOverride("issue-type:", type));
+            issueTypeMenu.getItems().add(typeItem);
         }
-        JMenuItem otherType = new JMenuItem("Other...");
-        otherType.addActionListener(e -> applyTaskOverride("issue-type:"));
-        issueTypeMenu.add(otherType);
-        menu.add(issueTypeMenu);
+        MenuItem otherType = new MenuItem("Other...");
+        otherType.setOnAction(e -> applyTaskOverride("issue-type:"));
+        issueTypeMenu.getItems().add(otherType);
+        menu.getItems().add(issueTypeMenu);
 
-        JMenuItem addDueDate = new JMenuItem("Set Due Date...");
-        // Use current date as an example format
+        MenuItem addDueDate = new MenuItem("Set Due Date...");
         String dateExample = new java.text.SimpleDateFormat("yyyy-MM-dd").format(new java.util.Date());
-        addDueDate.addActionListener(e -> applyTaskOverride("duedate:", dateExample));
-        menu.add(addDueDate);
+        addDueDate.setOnAction(e -> applyTaskOverride("duedate:", dateExample));
+        menu.getItems().add(addDueDate);
 
-        JMenuItem addNotify = new JMenuItem("Set Notify...");
-        addNotify.addActionListener(e -> applyTaskOverride("notify:"));
-        menu.add(addNotify);
+        MenuItem addNotify = new MenuItem("Set Notify...");
+        addNotify.setOnAction(e -> applyTaskOverride("notify:"));
+        menu.getItems().add(addNotify);
         
-        menu.addSeparator();
+        menu.getItems().add(new SeparatorMenuItem());
         
-        JMenuItem clearAssignee = new JMenuItem("No Assignee");
-        clearAssignee.addActionListener(e -> applyTaskOverride("noassignee:"));
-        menu.add(clearAssignee);
+        MenuItem clearAssignee = new MenuItem("No Assignee");
+        clearAssignee.setOnAction(e -> applyTaskOverride("noassignee:"));
+        menu.getItems().add(clearAssignee);
 
-        JMenuItem clearComp = new JMenuItem("No Component");
-        clearComp.addActionListener(e -> applyTaskOverride("nocomponent:"));
-        menu.add(clearComp);
+        MenuItem clearComp = new MenuItem("No Component");
+        clearComp.setOnAction(e -> applyTaskOverride("nocomponent:"));
+        menu.getItems().add(clearComp);
 
-        JMenuItem clearTrans = new JMenuItem("No Transition");
-        clearTrans.addActionListener(e -> applyTaskOverride("notransition:"));
-        menu.add(clearTrans);
+        MenuItem clearTrans = new MenuItem("No Transition");
+        clearTrans.setOnAction(e -> applyTaskOverride("notransition:"));
+        menu.getItems().add(clearTrans);
 
-        inputArea.setComponentPopupMenu(menu);
+        inputArea.setContextMenu(menu);
         
-        // Ensure caret is updated on right click so we know which task we're in
-        inputArea.addMouseListener(new java.awt.event.MouseAdapter() {
-            public void mousePressed(java.awt.event.MouseEvent e) {
-                if (SwingUtilities.isRightMouseButton(e)) {
-                    int pos = inputArea.viewToModel(e.getPoint());
-                    inputArea.setCaretPosition(pos);
+        menu.setOnShowing(e -> {
+            String currentText = inputArea.getText();
+            int caretPos = inputArea.getCaretPosition();
+            int taskStart = 0;
+            int lastPos = 0;
+            while (true) {
+                int nextMatch = currentText.indexOf("******", lastPos);
+                if (nextMatch == -1 || nextMatch >= caretPos) break;
+                taskStart = nextMatch + 6;
+                lastPos = nextMatch + 6;
+            }
+            int taskEnd = currentText.indexOf("******", taskStart);
+            if (taskEnd == -1) taskEnd = currentText.length();
+            String block = currentText.substring(taskStart, taskEnd);
+            
+            java.util.regex.Pattern p = java.util.regex.Pattern.compile("(?m)^component:(.*)$");
+            java.util.regex.Matcher m = p.matcher(block);
+            Set<String> activeComps = new HashSet<>();
+            if (m.find()) {
+                for (String s : m.group(1).split(",")) {
+                    activeComps.add(s.trim());
+                }
+            }
+            
+            for (MenuItem item : componentMenu.getItems()) {
+                if (item instanceof CheckMenuItem) {
+                    CheckMenuItem checkItem = (CheckMenuItem) item;
+                    checkItem.setSelected(activeComps.contains(checkItem.getText()));
                 }
             }
         });
@@ -327,7 +444,6 @@ public class TaskBuilderPanel extends JPanel {
         String text = inputArea.getText();
         int caretPos = inputArea.getCaretPosition();
         
-        // Find boundaries of current task block
         int taskStart = 0;
         int lastPos = 0;
         while (true) {
@@ -359,16 +475,15 @@ public class TaskBuilderPanel extends JPanel {
             String newLine = "component: " + String.join(", ", comps);
             int lineStart = taskStart + m.start();
             int lineEnd = taskStart + m.end();
-            inputArea.replaceRange(newLine, lineStart, lineEnd);
-            inputArea.setCaretPosition(lineStart + newLine.length());
+            inputArea.replaceText(lineStart, lineEnd, newLine);
+            inputArea.positionCaret(lineStart + newLine.length());
         } else {
-            // Add as new line
             String before = (taskEnd == 0 || text.charAt(taskEnd - 1) == '\n') ? "" : "\n";
             String newLine = "component: " + compName + "\n";
-            inputArea.insert(before + newLine, taskEnd);
-            inputArea.setCaretPosition(taskEnd + before.length() + newLine.length() - 1);
+            inputArea.insertText(taskEnd, before + newLine);
+            inputArea.positionCaret(taskEnd + before.length() + newLine.length() - 1);
         }
-        inputArea.requestFocusInWindow();
+        inputArea.requestFocus();
         parseInput();
     }
 
@@ -380,7 +495,6 @@ public class TaskBuilderPanel extends JPanel {
         String text = inputArea.getText();
         int caretPos = inputArea.getCaretPosition();
         
-        // Find boundaries of the current task block
         int taskStart = 0;
         int lastPos = 0;
         while (true) {
@@ -396,82 +510,137 @@ public class TaskBuilderPanel extends JPanel {
         String prefixMatch = prefix.contains(":") ? prefix.split(":")[0] : prefix;
         String linePrefix = prefixMatch + ":";
         
-        // Use regex to find if this prefix already exists on its own line in this block
         java.util.regex.Pattern p = java.util.regex.Pattern.compile("(?m)^" + linePrefix + "(.*)$");
         java.util.regex.Matcher m = p.matcher(block);
         
         if (m.find()) {
-            // Already exists.
             int lineStartInDoc = taskStart + m.start();
             int lineEndInDoc = taskStart + m.end();
             
             if (value.isEmpty()) {
-                // If "Other..." or empty value selected, clear existing text and place cursor after colon
-                inputArea.replaceRange(linePrefix, lineStartInDoc, lineEndInDoc);
-                inputArea.setCaretPosition(lineStartInDoc + linePrefix.length());
+                inputArea.replaceText(lineStartInDoc, lineEndInDoc, linePrefix);
+                inputArea.positionCaret(lineStartInDoc + linePrefix.length());
             } else {
-                // Replace existing value with new value and select it
                 String newLine = linePrefix + value;
-                inputArea.replaceRange(newLine, lineStartInDoc, lineEndInDoc);
-                inputArea.setSelectionStart(lineStartInDoc + linePrefix.length());
-                inputArea.setSelectionEnd(lineStartInDoc + newLine.length());
+                inputArea.replaceText(lineStartInDoc, lineEndInDoc, newLine);
+                inputArea.selectRange(lineStartInDoc + linePrefix.length(), lineStartInDoc + newLine.length());
             }
         } else {
-            // Not found, insert it at the end of the block
             String before = (taskEnd == 0 || text.charAt(taskEnd - 1) == '\n') ? "" : "\n";
             String after = "\n";
             String insertText = before + linePrefix + value + after;
             
-            inputArea.insert(insertText, taskEnd);
+            inputArea.insertText(taskEnd, insertText);
             
-            // Position caret/selection
             int insertPoint = taskEnd + before.length() + linePrefix.length();
             if (value.isEmpty()) {
-                inputArea.setCaretPosition(insertPoint);
+                inputArea.positionCaret(insertPoint);
             } else {
-                inputArea.setSelectionStart(insertPoint);
-                inputArea.setSelectionEnd(insertPoint + value.length());
+                inputArea.selectRange(insertPoint, insertPoint + value.length());
             }
         }
-        inputArea.requestFocusInWindow();
+        inputArea.requestFocus();
         parseInput();
     }
 
-    private void updateHighlights() {
-        Highlighter h = inputArea.getHighlighter();
-        h.removeAllHighlights();
-        // Use semi-transparent green (alpha 100 out of 255) so manual blue selection blends/shows through
-        Highlighter.HighlightPainter painter = new DefaultHighlighter.DefaultHighlightPainter(new Color(210, 255, 230, 150));
-        
-        for (JiraTask selectedTask : taskList.getSelectedValuesList()) {
-            try {
-                // Ensure indices are within bounds to avoid BadLocationException
-                int start = Math.max(0, Math.min(selectedTask.startIndex, inputArea.getText().length()));
-                int end = Math.max(0, Math.min(selectedTask.endIndex, inputArea.getText().length()));
-                if (start < end) {
-                    h.addHighlight(start, end, painter);
-                }
-            } catch (Exception ex) {
-                // Silently ignore highlighting errors
-            }
+    private Rectangle2D getCharacterBounds(Skin<?> skin, int index) {
+        try {
+            java.lang.reflect.Method m = skin.getClass().getMethod("getCharacterBounds", int.class);
+            m.setAccessible(true);
+            return (Rectangle2D) m.invoke(skin, index);
+        } catch (Exception e) {
+            return null;
         }
     }
 
-    private void updateStatus(String msg) { SwingUtilities.invokeLater(() -> statusBar.setText(" " + msg)); }
-
-    private void addConfigRow(JPanel p, String label, JComponent f, int y, int gridwidth) {
-        GridBagConstraints gbc = new GridBagConstraints();
-        gbc.insets = new Insets(2, 5, 2, 5);
-        gbc.gridy = y; gbc.gridx = 0; gbc.anchor = GridBagConstraints.EAST; p.add(new JLabel(label), gbc);
-        gbc.gridx = 1; gbc.anchor = GridBagConstraints.WEST; gbc.weightx = 0.5; gbc.gridwidth = gridwidth; gbc.fill = GridBagConstraints.HORIZONTAL; p.add(f, gbc);
+    private void updateHighlights() {
+        Platform.runLater(() -> {
+            overlayPane.getChildren().clear();
+            
+            List<JiraTask> selectedTasks = taskList.getSelectionModel().getSelectedItems();
+            if (selectedTasks == null || selectedTasks.isEmpty()) {
+                return;
+            }
+            
+            Skin<?> skin = inputArea.getSkin();
+            if (skin == null) {
+                return;
+            }
+            
+            Node viewport = inputArea.lookup(".viewport");
+            if (viewport != null) {
+                Bounds viewportBounds = viewport.localToScene(viewport.getBoundsInLocal());
+                Bounds localBounds = overlayPane.sceneToLocal(viewportBounds);
+                if (localBounds != null) {
+                    Rectangle clip = new Rectangle(
+                        localBounds.getMinX(),
+                        localBounds.getMinY(),
+                        localBounds.getWidth(),
+                        localBounds.getHeight()
+                    );
+                    overlayPane.setClip(clip);
+                }
+            }
+            
+            for (JiraTask task : selectedTasks) {
+                if (task == null) continue;
+                
+                int start = Math.max(0, Math.min(task.startIndex, inputArea.getText().length()));
+                int end = Math.max(0, Math.min(task.endIndex, inputArea.getText().length()));
+                if (start >= end) continue;
+                
+                double currentX = -1;
+                double currentY = -1;
+                double startX = -1;
+                double height = -1;
+                
+                List<Rectangle> rects = new ArrayList<>();
+                
+                for (int i = start; i < end; i++) {
+                    Rectangle2D charBounds = getCharacterBounds(skin, i);
+                    if (charBounds == null) continue;
+                    
+                    javafx.geometry.Point2D scenePos = inputArea.localToScene(charBounds.getMinX(), charBounds.getMinY());
+                    javafx.geometry.Point2D localPos = overlayPane.sceneToLocal(scenePos);
+                    if (localPos == null) continue;
+                    
+                    double x = localPos.getX();
+                    double y = localPos.getY();
+                    double w = charBounds.getWidth();
+                    double h = charBounds.getHeight();
+                    
+                    if (currentY == -1) {
+                        startX = x;
+                        currentY = y;
+                        currentX = x + w;
+                        height = h;
+                    } else if (Math.abs(y - currentY) > 2) {
+                        rects.add(new Rectangle(startX, currentY, currentX - startX, height));
+                        startX = x;
+                        currentY = y;
+                        currentX = x + w;
+                        height = h;
+                    } else {
+                        currentX = x + w;
+                        height = Math.max(height, h);
+                    }
+                }
+                if (startX != -1) {
+                    rects.add(new Rectangle(startX, currentY, currentX - startX, height));
+                }
+                
+                for (Rectangle r : rects) {
+                    r.setStyle("-fx-fill: -fx-accent; -fx-opacity: 0.25;");
+                    overlayPane.getChildren().add(r);
+                }
+            }
+        });
     }
 
-    private void addSyncListener(JTextField field, String prefix) {
-        field.getDocument().addDocumentListener(new DocumentListener() {
-            public void insertUpdate(DocumentEvent e) { syncToText(prefix, field.getText()); }
-            public void removeUpdate(DocumentEvent e) { syncToText(prefix, field.getText()); }
-            public void changedUpdate(DocumentEvent e) { syncToText(prefix, field.getText()); }
-        });
+    private void updateStatus(String msg) { Platform.runLater(() -> statusBar.setText(" " + msg)); }
+
+    private void addSyncListener(TextField field, String prefix) {
+        field.textProperty().addListener((obs, oldV, newV) -> syncToText(prefix, newV));
     }
 
     private void syncToText(String prefix, String newValue) {
@@ -488,41 +657,18 @@ public class TaskBuilderPanel extends JPanel {
         isUpdating = false;
     }
 
-    private void setupResultsTable() {
-        resultsTable.getColumnModel().getColumn(2).setCellRenderer(new DefaultTableCellRenderer() {
-            public Component getTableCellRendererComponent(JTable t, Object v, boolean isS, boolean hasF, int r, int c) {
-                super.getTableCellRendererComponent(t, v, isS, hasF, r, c);
-                if (v != null && v.toString().startsWith("http")) {
-                    setText("<html><a href=''>" + v.toString() + "</a></html>"); setForeground(Color.BLUE);
-                }
-                return this;
-            }
-        });
-        resultsTable.addMouseListener(new java.awt.event.MouseAdapter() {
-            public void mouseClicked(java.awt.event.MouseEvent e) {
-                int col = resultsTable.columnAtPoint(e.getPoint());
-                if (col == 2) {
-                    try { Desktop.getDesktop().browse(new java.net.URI((String)resultsTableModel.getValueAt(resultsTable.rowAtPoint(e.getPoint()), 2))); } catch (Exception ex) {}
-                }
-            }
-        });
-    }
-
-    /**
-     * USES ORIGINAL, WORKING PARSE LOGIC.
-     * Now adds items to the JList model instead of creating JCheckBoxes.
-     */
     private void parseInput() {
         if (isUpdating) return;
         isUpdating = true;
 
-        // 1. Save the current selection state before destroying the UI
+        List<JiraTask> selectedTasks = new ArrayList<>(taskList.getSelectionModel().getSelectedItems());
         Set<String> selectedSummaries = new HashSet<>();
-        for (JiraTask selectedTask : taskList.getSelectedValuesList()) {
-            selectedSummaries.add(selectedTask.summary);
+        for (JiraTask selectedTask : selectedTasks) {
+            if (selectedTask != null) {
+                selectedSummaries.add(selectedTask.summary);
+            }
         }
 
-        // 2. Clear the UI and the task list
         parsedTasks.clear();
         taskListModel.clear();
 
@@ -542,11 +688,11 @@ public class TaskBuilderPanel extends JPanel {
             for (String line : block.split("\n")) {
                 String t = line.trim();
                 if (t.startsWith("--")) continue;
-                if (t.startsWith("DEFAULT_TYPE:")) { defTypeField.setSelectedItem(val(t)); continue; }
-                if (t.startsWith("DEFAULT_ASSIGNEE:")) { defAssigneeField.setText(val(t)); continue; }
-                if (t.startsWith("DEFAULT_COMPONENT:")) { defCompField.setText(val(t)); continue; }
-                if (t.startsWith("DEFAULT_TRANSITION:")) { defTransField.setText(val(t)); continue; }
-                if (t.startsWith("PARENT_TICKET:")) { parentField.setText(val(t).toUpperCase()); continue; }
+                if (t.startsWith("DEFAULT_TYPE:")) { Platform.runLater(() -> defTypeField.getSelectionModel().select(val(t))); continue; }
+                if (t.startsWith("DEFAULT_ASSIGNEE:")) { Platform.runLater(() -> defAssigneeField.setText(val(t))); continue; }
+                if (t.startsWith("DEFAULT_COMPONENT:")) { Platform.runLater(() -> defCompField.setText(val(t))); continue; }
+                if (t.startsWith("DEFAULT_TRANSITION:")) { Platform.runLater(() -> defTransField.setText(val(t))); continue; }
+                if (t.startsWith("PARENT_TICKET:")) { Platform.runLater(() -> parentField.setText(val(t).toUpperCase())); continue; }
                 if (t.equalsIgnoreCase("noassignee:")) { task.assignee = ""; task.overAssignee = true; continue; }
                 if (t.equalsIgnoreCase("nocomponent:")) { task.component = ""; task.overComp = true; continue; }
                 if (t.equalsIgnoreCase("notransition:")) { task.transition = ""; task.overTrans = true; continue; }
@@ -556,7 +702,7 @@ public class TaskBuilderPanel extends JPanel {
                 if (t.startsWith("transition:")) { task.transition = val(t); task.overTrans = true; continue; }
                 if (t.startsWith("parent:")) { task.parent = val(t).toUpperCase(); continue; }
                 if (t.startsWith("duedate:")) { task.duedate = val(t); continue; }
-                 if (t.startsWith("notify:")) { task.notify = val(t); continue; }
+                if (t.startsWith("notify:")) { task.notify = val(t); continue; }
                 if (!summaryFound && !t.isEmpty()) { task.summary = t; summaryFound = true; }
                 else if (summaryFound) { desc.append(line).append("\n"); }
             }
@@ -565,36 +711,25 @@ public class TaskBuilderPanel extends JPanel {
                 applyDefaults(task);
                 task.description = desc.toString().trim();
                 task.endIndex = blockStart + block.length();
-                parsedTasks.add(task); // Keep the main list of all parsed tasks
-                taskListModel.addElement(task); // Add task to the model for the JList
+                parsedTasks.add(task);
+                taskListModel.add(task);
             }
             if (blockStart != -1) currentOffset = blockStart + block.length();
         }
         
-        // 3. Re-apply the saved state
-        List<JiraTask> tasksToSelect = new ArrayList<>();
-        for (int i = 0; i < taskListModel.size(); i++) {
-            JiraTask currentTask = taskListModel.getElementAt(i);
-            // Select if it was selected before, or if it's a new item (no previous selection existed)
+        for (JiraTask currentTask : taskListModel) {
             if (selectedSummaries.contains(currentTask.summary) || selectedSummaries.isEmpty()) {
-                tasksToSelect.add(currentTask);
+                taskList.getSelectionModel().select(currentTask);
             }
         }
-        
-        // JList requires setting an array of indices to select multiple items
-        int[] indicesToSelect = new int[tasksToSelect.size()];
-        for(int i = 0; i < tasksToSelect.size(); i++) {
-            indicesToSelect[i] = taskListModel.indexOf(tasksToSelect.get(i));
-        }
-        taskList.setSelectedIndices(indicesToSelect);
         updateHighlights();
         
         isUpdating = false;
     }
     
     private void loadTemplatesFromDisk() {
-        templateSelector.removeAllItems();
-        templateSelector.addItem("--- Select Template ---");
+        templateSelector.getItems().clear();
+        templateSelector.getItems().add("--- Select Template ---");
         
         try {
             File templateDir = new File(mainFrame.getJiraConfig().getConfigFile().getParentFile(), "template");
@@ -606,17 +741,18 @@ public class TaskBuilderPanel extends JPanel {
             if (files != null) {
                 Arrays.sort(files, (f1, f2) -> f1.getName().compareToIgnoreCase(f2.getName()));
                 for (File f : files) {
-                    templateSelector.addItem(f.getName());
+                    templateSelector.getItems().add(f.getName());
                 }
             }
         } catch (Exception ex) {
-            // Silently ignore failures to list templates
+            // ignore
         }
+        templateSelector.getSelectionModel().select(0);
     }
 
     private void loadSelectedTemplate() {
         if (isUpdating) return;
-        String selected = (String) templateSelector.getSelectedItem();
+        String selected = templateSelector.getSelectionModel().getSelectedItem();
         if (selected == null || selected.equals("--- Select Template ---")) return;
         
         try {
@@ -624,22 +760,18 @@ public class TaskBuilderPanel extends JPanel {
             File templateFile = new File(templateDir, selected);
             String content = new String(Files.readAllBytes(templateFile.toPath()));
             
-            // Clear input area and set new content
             inputArea.setText(content);
-            
-            // Force parse and select all tasks
             parseInput();
             setAllTasksSelected(true);
             
-            // Reset selector so it can be re-selected if needed
-            SwingUtilities.invokeLater(() -> templateSelector.setSelectedIndex(0));
+            Platform.runLater(() -> templateSelector.getSelectionModel().select(0));
         } catch (Exception ex) {
-            JOptionPane.showMessageDialog(this, "Error reading template: " + ex.getMessage());
+            showAlert(Alert.AlertType.ERROR, "Error", "Error reading template: " + ex.getMessage());
         }
     }
     
     private void applyDefaults(JiraTask t) {
-        if (t.type == null) t.type = (String)defTypeField.getSelectedItem();
+        if (t.type == null) t.type = defTypeField.getSelectionModel().getSelectedItem();
         if (!t.overAssignee) t.assignee = defAssigneeField.getText();
         if (!t.overComp) t.component = defCompField.getText();
         if (!t.overTrans) t.transition = defTransField.getText();
@@ -648,11 +780,11 @@ public class TaskBuilderPanel extends JPanel {
     private String val(String s) { return s.contains(":") ? s.substring(s.indexOf(":") + 1).trim() : ""; }
 
     private void executeTasks() {
-        resultsTableModel.setRowCount(0);
-        parseInput(); // Ensure defaults are fresh before execution
+        resultsTable.getItems().clear();
+        parseInput();
         
-        List<JiraTask> selected = taskList.getSelectedValuesList();
-        if (selected.isEmpty()) {
+        List<JiraTask> selected = new ArrayList<>(taskList.getSelectionModel().getSelectedItems());
+        if (selected.isEmpty() || (selected.size() == 1 && selected.get(0) == null)) {
             updateStatus("No tasks selected.");
             return;
         }
@@ -660,16 +792,14 @@ public class TaskBuilderPanel extends JPanel {
         final String defaultParent = parentField.getText().trim().toUpperCase();
         final int total = selected.size();
         final List<String> createdKeys = Collections.synchronizedList(new ArrayList<>());
-        final Map<Integer, JiraTask> taskByIndex = new HashMap<>();
-        for (int i = 0; i < selected.size(); i++) taskByIndex.put(i, selected.get(i));
 
         ExecutionService.submit(() -> {
             try {
-                // 1. Creation Phase (Bulk or Sequential)
                 if (total > 1 && !MOCK_MODE) {
                     updateStatus("Creating " + total + " tasks in bulk...");
                     List<String> taskJsons = new ArrayList<>();
                     for (JiraTask t : selected) {
+                        if (t == null) continue;
                         String parent = (t.parent != null && !t.parent.isEmpty()) ? t.parent : defaultParent;
                         String proj = parent.contains("-") ? parent.split("-")[0] : "PROJ";
                         String assignee = t.assignee;
@@ -686,6 +816,7 @@ public class TaskBuilderPanel extends JPanel {
                 } else {
                     for (int i = 0; i < total; i++) {
                         JiraTask t = selected.get(i);
+                        if (t == null) continue;
                         String parent = (t.parent != null && !t.parent.isEmpty()) ? t.parent : defaultParent;
                         String proj = parent.contains("-") ? parent.split("-")[0] : "PROJ";
                         if (MOCK_MODE) {
@@ -702,7 +833,6 @@ public class TaskBuilderPanel extends JPanel {
                     }
                 }
 
-                // 2. Parallel Action Phase (Transitions and Notifications)
                 updateStatus("Created " + total + " tasks. Processing transitions and notifications in parallel...");
                 int threadCount = mainFrame.getJiraConfig().getParallelThreads();
                 ExecutorService executor = Executors.newFixedThreadPool(threadCount);
@@ -712,6 +842,7 @@ public class TaskBuilderPanel extends JPanel {
                     final int idx = i;
                     final String key = createdKeys.get(idx);
                     final JiraTask t = selected.get(idx);
+                    if (t == null) continue;
                     
                     executor.submit(() -> {
                         String link = mainFrame.getBaseUrl() + "/browse/" + key;
@@ -776,151 +907,149 @@ public class TaskBuilderPanel extends JPanel {
         });
     }
 
-    private void addRow(String s, String st, String l) { SwingUtilities.invokeLater(() -> resultsTableModel.addRow(new Object[]{s, st, l})); }
+    private void addRow(String s, String st, String l) { 
+        Platform.runLater(() -> resultsTable.getItems().add(new ExecutionResultRow(s, st, l))); 
+    }
     
-        private void setupInputAreaKeyBindings() {
-        InputMap im = inputArea.getInputMap(JComponent.WHEN_FOCUSED);
-        ActionMap am = inputArea.getActionMap();
-
-        im.put(KeyStroke.getKeyStroke("ctrl alt DOWN"), "duplicateDown");
-        am.put("duplicateDown", new AbstractAction() {
-            public void actionPerformed(java.awt.event.ActionEvent e) { duplicateLines(true); }
-        });
-
-        im.put(KeyStroke.getKeyStroke("ctrl alt UP"), "duplicateUp");
-        am.put("duplicateUp", new AbstractAction() {
-            public void actionPerformed(java.awt.event.ActionEvent e) { duplicateLines(false); }
-        });
-
-        im.put(KeyStroke.getKeyStroke("alt DOWN"), "moveDown");
-        am.put("moveDown", new AbstractAction() {
-            public void actionPerformed(java.awt.event.ActionEvent e) { moveLines(true); }
-        });
-
-        im.put(KeyStroke.getKeyStroke("alt UP"), "moveUp");
-        am.put("moveUp", new AbstractAction() {
-            public void actionPerformed(java.awt.event.ActionEvent e) { moveLines(false); }
-        });
-
-        im.put(KeyStroke.getKeyStroke("ctrl SLASH"), "toggleComment");
-        am.put("toggleComment", new AbstractAction() {
-            public void actionPerformed(java.awt.event.ActionEvent e) { toggleComments(); }
-        });
-
-        im.put(KeyStroke.getKeyStroke("ctrl D"), "deleteLines");
-        am.put("deleteLines", new AbstractAction() {
-            public void actionPerformed(java.awt.event.ActionEvent e) { deleteLines(); }
-        });
-
-        im.put(KeyStroke.getKeyStroke("ctrl B"), "toggleBold");
-        am.put("toggleBold", new AbstractAction() {
-            public void actionPerformed(java.awt.event.ActionEvent e) { toggleFormat("*"); }
-        });
-
-        im.put(KeyStroke.getKeyStroke("ctrl I"), "toggleItalic");
-        am.put("toggleItalic", new AbstractAction() {
-            public void actionPerformed(java.awt.event.ActionEvent e) { toggleFormat("{_}"); }
+    private void setupInputAreaKeyBindings() {
+        inputArea.setOnKeyPressed(event -> {
+            KeyCode code = event.getCode();
+            boolean ctrl = event.isControlDown();
+            boolean alt = event.isAltDown();
+            
+            if (ctrl && alt && code == KeyCode.DOWN) {
+                duplicateLines(true);
+                event.consume();
+            } else if (ctrl && alt && code == KeyCode.UP) {
+                duplicateLines(false);
+                event.consume();
+            } else if (!ctrl && alt && code == KeyCode.DOWN) {
+                moveLines(true);
+                event.consume();
+            } else if (!ctrl && alt && code == KeyCode.UP) {
+                moveLines(false);
+                event.consume();
+            } else if (ctrl && code == KeyCode.SLASH) {
+                toggleComments();
+                event.consume();
+            } else if (ctrl && code == KeyCode.D) {
+                deleteLines();
+                event.consume();
+            } else if (ctrl && code == KeyCode.B) {
+                toggleFormat("*");
+                event.consume();
+            } else if (ctrl && code == KeyCode.I) {
+                toggleFormat("{_}");
+                event.consume();
+            }
         });
     }
 
     private void toggleFormat(String symbol) {
         try {
-            int start = inputArea.getSelectionStart();
-            int end = inputArea.getSelectionEnd();
-            if (start == end) return; // No selection
+            IndexRange range = inputArea.getSelection();
+            if (range.getLength() == 0) return;
 
             String selectedText = inputArea.getSelectedText();
             if (selectedText == null) return;
 
             if (selectedText.startsWith(symbol) && selectedText.endsWith(symbol)) {
-                // Remove format
                 String unformatted = selectedText.substring(symbol.length(), selectedText.length() - symbol.length());
-                inputArea.replaceSelection(unformatted);
-                inputArea.setSelectionStart(start);
-                inputArea.setSelectionEnd(start + unformatted.length());
+                inputArea.replaceText(range.getStart(), range.getEnd(), unformatted);
+                inputArea.selectRange(range.getStart(), range.getStart() + unformatted.length());
             } else {
-                // Add format
                 String formatted = symbol + selectedText + symbol;
-                inputArea.replaceSelection(formatted);
-                inputArea.setSelectionStart(start);
-                inputArea.setSelectionEnd(start + formatted.length());
+                inputArea.replaceText(range.getStart(), range.getEnd(), formatted);
+                inputArea.selectRange(range.getStart(), range.getStart() + formatted.length());
             }
         } catch (Exception ex) { ex.printStackTrace(); }
     }
 
+    private int getRowStart(String text, int offset) {
+        int start = offset;
+        while (start > 0 && text.charAt(start - 1) != '\n') {
+            start--;
+        }
+        return start;
+    }
+
+    private int getRowEnd(String text, int offset) {
+        int end = offset;
+        while (end < text.length() && text.charAt(end) != '\n') {
+            end++;
+        }
+        return end;
+    }
+
     private void duplicateLines(boolean down) {
         try {
-            int start = inputArea.getSelectionStart();
-            int end = inputArea.getSelectionEnd();
-            int lineStart = javax.swing.text.Utilities.getRowStart(inputArea, start);
-            int lineEnd = javax.swing.text.Utilities.getRowEnd(inputArea, end);
+            String text = inputArea.getText();
+            IndexRange range = inputArea.getSelection();
+            int lineStart = getRowStart(text, range.getStart());
+            int lineEnd = getRowEnd(text, range.getEnd());
             
-            String textToDuplicate = inputArea.getText(lineStart, lineEnd - lineStart);
+            String textToDuplicate = text.substring(lineStart, lineEnd);
             if (textToDuplicate.isEmpty()) return;
 
             if (down) {
-                inputArea.insert("\n" + textToDuplicate, lineEnd);
+                inputArea.insertText(lineEnd, "\n" + textToDuplicate);
             } else {
-                inputArea.insert(textToDuplicate + "\n", lineStart);
-                inputArea.setCaretPosition(lineStart);
+                inputArea.insertText(lineStart, textToDuplicate + "\n");
+                inputArea.positionCaret(lineStart);
             }
         } catch (Exception ex) { ex.printStackTrace(); }
     }
 
     private void moveLines(boolean down) {
         try {
-            int start = inputArea.getSelectionStart();
-            int end = inputArea.getSelectionEnd();
-            int lineStart = javax.swing.text.Utilities.getRowStart(inputArea, start);
-            int lineEnd = javax.swing.text.Utilities.getRowEnd(inputArea, end);
+            String text = inputArea.getText();
+            IndexRange range = inputArea.getSelection();
+            int lineStart = getRowStart(text, range.getStart());
+            int lineEnd = getRowEnd(text, range.getEnd());
             
-            int docLen = inputArea.getDocument().getLength();
-            // Include the newline character if it exists
+            int docLen = text.length();
             int selectionEnd = (lineEnd < docLen) ? lineEnd + 1 : lineEnd;
-            String textToMove = inputArea.getText(lineStart, selectionEnd - lineStart);
+            String textToMove = text.substring(lineStart, selectionEnd);
             
-            // Ensure the text to move ends with a newline unless it's at the very end of the document
             if (!textToMove.endsWith("\n") && selectionEnd < docLen) {
                 textToMove += "\n";
             }
 
             if (down) {
-                if (selectionEnd >= docLen) return; // Already at the bottom
-                int nextLineEnd = javax.swing.text.Utilities.getRowEnd(inputArea, selectionEnd);
+                if (selectionEnd >= docLen) return;
+                int nextLineEnd = getRowEnd(text, selectionEnd);
                 int nextSelectionEnd = (nextLineEnd < docLen) ? nextLineEnd + 1 : nextLineEnd;
-                String nextLine = inputArea.getText(selectionEnd, nextSelectionEnd - selectionEnd);
+                String nextLine = text.substring(selectionEnd, nextSelectionEnd);
                 
                 if (!nextLine.endsWith("\n") && nextSelectionEnd < docLen) {
                     nextLine += "\n";
                 }
 
-                inputArea.replaceRange(nextLine + textToMove, lineStart, nextSelectionEnd);
+                inputArea.replaceText(lineStart, nextSelectionEnd, nextLine + textToMove);
                 int newStart = lineStart + nextLine.length();
-                inputArea.setSelectionStart(newStart);
-                inputArea.setSelectionEnd(newStart + textToMove.length() - (textToMove.endsWith("\n") ? 1 : 0));
+                inputArea.selectRange(newStart, newStart + textToMove.length() - (textToMove.endsWith("\n") ? 1 : 0));
             } else {
-                if (lineStart <= 0) return; // Already at the top
-                int prevLineStart = javax.swing.text.Utilities.getRowStart(inputArea, lineStart - 1);
-                String prevLine = inputArea.getText(prevLineStart, lineStart - prevLineStart);
+                if (lineStart <= 0) return;
+                int prevLineStart = getRowStart(text, lineStart - 1);
+                String prevLine = text.substring(prevLineStart, lineStart);
                 
                 if (!prevLine.endsWith("\n")) {
                     prevLine += "\n";
                 }
 
-                inputArea.replaceRange(textToMove + prevLine, prevLineStart, selectionEnd);
-                inputArea.setSelectionStart(prevLineStart);
-                inputArea.setSelectionEnd(prevLineStart + textToMove.length() - (textToMove.endsWith("\n") ? 1 : 0));
+                inputArea.replaceText(prevLineStart, selectionEnd, textToMove + prevLine);
+                inputArea.selectRange(prevLineStart, prevLineStart + textToMove.length() - (textToMove.endsWith("\n") ? 1 : 0));
             }
         } catch (Exception ex) { ex.printStackTrace(); }
     }
 
     private void toggleComments() {
         try {
-            int start = inputArea.getSelectionStart();
-            int end = inputArea.getSelectionEnd();
-            int lineStart = javax.swing.text.Utilities.getRowStart(inputArea, start);
-            int lineEnd = javax.swing.text.Utilities.getRowEnd(inputArea, end);
-            String selectedText = inputArea.getText(lineStart, lineEnd - lineStart);
+            String text = inputArea.getText();
+            IndexRange range = inputArea.getSelection();
+            int lineStart = getRowStart(text, range.getStart());
+            int lineEnd = getRowEnd(text, range.getEnd());
+            String selectedText = text.substring(lineStart, lineEnd);
             
             String[] lines = selectedText.split("\n", -1);
             boolean allCommented = true;
@@ -946,51 +1075,60 @@ public class TaskBuilderPanel extends JPanel {
                 if (i < lines.length - 1) sb.append("\n");
             }
             
-            inputArea.replaceRange(sb.toString(), lineStart, lineEnd);
-            inputArea.setSelectionStart(lineStart);
-            inputArea.setSelectionEnd(lineStart + sb.length());
+            inputArea.replaceText(lineStart, lineEnd, sb.toString());
+            inputArea.selectRange(lineStart, lineStart + sb.length());
         } catch (Exception ex) { ex.printStackTrace(); }
     }
 
     private void deleteLines() {
         try {
-            int start = inputArea.getSelectionStart();
-            int end = inputArea.getSelectionEnd();
-            int lineStart = javax.swing.text.Utilities.getRowStart(inputArea, start);
-            int lineEnd = javax.swing.text.Utilities.getRowEnd(inputArea, end);
+            String text = inputArea.getText();
+            IndexRange range = inputArea.getSelection();
+            int lineStart = getRowStart(text, range.getStart());
+            int lineEnd = getRowEnd(text, range.getEnd());
             
-            int docLen = inputArea.getDocument().getLength();
-            // Include the trailing newline if it's not the last line
+            int docLen = text.length();
             int deletionEnd = (lineEnd < docLen) ? lineEnd + 1 : lineEnd;
             
-            inputArea.replaceRange("", lineStart, deletionEnd);
+            inputArea.replaceText(lineStart, deletionEnd, "");
         } catch (Exception ex) { ex.printStackTrace(); }
     }
 
     private void setupDragAndDrop() {
-        inputArea.setDropTarget(new DropTarget() {
-            public synchronized void drop(DropTargetDropEvent e) {
-                try {
-                    e.acceptDrop(DnDConstants.ACTION_COPY);
-                    List<File> files = (List<File>) e.getTransferable().getTransferData(DataFlavor.javaFileListFlavor);
-                    for (File f : files) {
+        inputArea.setOnDragOver(event -> {
+            if (event.getDragboard().hasFiles()) {
+                event.acceptTransferModes(TransferMode.COPY);
+            }
+            event.consume();
+        });
+
+        inputArea.setOnDragDropped(event -> {
+            Dragboard db = event.getDragboard();
+            boolean success = false;
+            if (db.hasFiles()) {
+                success = true;
+                for (File file : db.getFiles()) {
+                    try {
+                        String fileContent = new String(Files.readAllBytes(file.toPath()));
                         if (inputArea.getText().length() > 0) {
-                            inputArea.append("\n******\n");
+                            inputArea.appendText("\n******\n");
                         }
-                        inputArea.append(new String(Files.readAllBytes(f.toPath())));
+                        inputArea.appendText(fileContent);
+                    } catch (Exception ex) {
+                        // ignore
                     }
-                } catch (Exception ex) {
-                    // Handle exception
                 }
             }
+            event.setDropCompleted(success);
+            event.consume();
         });
     }
     
     private void setAllTasksSelected(boolean selected) {
         if (selected) {
-            taskList.setSelectionInterval(0, taskListModel.getSize() - 1);
+            taskList.getSelectionModel().selectAll();
         } else {
-            taskList.clearSelection();
+            taskList.getSelectionModel().clearSelection();
         }
     }
 
@@ -1004,22 +1142,22 @@ public class TaskBuilderPanel extends JPanel {
             this.defAssigneeField.setService(jqlAutocompleteService);
             this.defAssigneeField.setAutocompleteEnabled(enabled);
         } catch (Exception e) {
-            // Fails if cert not selected
+            // ignore
         }
     }
     
-    // JiraTask class is unchanged, but no longer needs a JCheckBox member
     private class JiraTask {
         String summary = "", description = "", type = null, assignee = "", component = "", transition = "", duedate = null, notify = null, parent = null;
         boolean overAssignee = false, overComp = false, overTrans = false;
         int startIndex = 0, endIndex = 0;
     }
+
     public void setParentTicket(String issueKey) {
-        // Replace 'parentTicketField' with the actual name of your parent ticket JTextField
         if (issueKey != null) {
             parentField.setText(issueKey);
         }
     }
+
     public void setInputAreaText(String text) {
         if (text != null) {
             inputArea.setText(text);
@@ -1035,30 +1173,19 @@ public class TaskBuilderPanel extends JPanel {
             String current = inputArea.getText();
             if (!current.isEmpty()) {
                 if (!current.endsWith("\n")) {
-                    inputArea.append("\n");
+                    inputArea.appendText("\n");
                 }
-                inputArea.append("******\n");
+                inputArea.appendText("******\n");
             }
-            inputArea.append(text);
+            inputArea.appendText(text);
         }
     }
 
-    /**
-     * NEW: Custom renderer to display JiraTask objects in the JList
-     * This creates the same HTML label that the JCheckBox used to.
-     */
-    private static class TaskCellRenderer extends DefaultListCellRenderer {
-        @Override
-        public Component getListCellRendererComponent(JList<?> list, Object value, int index, boolean isSelected, boolean cellHasFocus) {
-            // Let the default renderer configure the colors and border for selection
-            super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
-
-            if (value instanceof JiraTask) {
-                JiraTask task = (JiraTask) value;
-                String label = "<html>" + task.summary + (task.transition.isEmpty() ? "" : " <font color='red'>[" + task.transition + "]</font>") + "</html>";
-                setText(label);
-            }
-            return this;
-        }
+    private void showAlert(Alert.AlertType type, String title, String content) {
+        Alert alert = new Alert(type);
+        alert.setTitle(title);
+        alert.setHeaderText(null);
+        alert.setContentText(content);
+        alert.showAndWait();
     }
 }

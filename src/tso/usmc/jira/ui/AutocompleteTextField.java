@@ -1,42 +1,36 @@
 package tso.usmc.jira.ui;
 
-import javax.swing.*;
-import javax.swing.event.DocumentEvent;
-import javax.swing.event.DocumentListener;
-import java.awt.*;
-import java.awt.event.FocusAdapter;
-import java.awt.event.FocusEvent;
-import java.awt.event.KeyAdapter;
-import java.awt.event.KeyEvent;
+import javafx.application.Platform;
+import javafx.geometry.Bounds;
+import javafx.scene.control.*;
+import javafx.scene.input.KeyCode;
+import javafx.scene.layout.AnchorPane;
+import javafx.stage.Popup;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
-public class AutocompleteTextField extends JPanel {
-    private final JTextField textField;
-    private final JWindow popup;
-    private final JList<String> suggestionList;
-    private final DefaultListModel<String> listModel;
+public class AutocompleteTextField extends AnchorPane {
+    private final TextField textField;
+    private final Popup popup;
+    private final ListView<String> suggestionList;
     private List<String> allSuggestions = new ArrayList<>();
     private boolean enabled = true;
 
-    public AutocompleteTextField(int columns) {
-        super(new BorderLayout());
+    public AutocompleteTextField() {
+        textField = new TextField();
+        AnchorPane.setTopAnchor(textField, 0.0);
+        AnchorPane.setBottomAnchor(textField, 0.0);
+        AnchorPane.setLeftAnchor(textField, 0.0);
+        AnchorPane.setRightAnchor(textField, 0.0);
         
-        textField = new JTextField(columns);
-        listModel = new DefaultListModel<>();
-        suggestionList = new JList<>(listModel);
-        
-        popup = new JWindow(SwingUtilities.getWindowAncestor(this));
-        popup.setType(Window.Type.POPUP);
-        popup.setFocusableWindowState(false);
-        popup.setLayout(new BorderLayout());
-        JScrollPane scrollPane = new JScrollPane(suggestionList);
-        scrollPane.setBorder(BorderFactory.createLineBorder(Color.GRAY));
-        popup.add(scrollPane);
+        suggestionList = new ListView<>();
+        popup = new Popup();
+        popup.setAutoHide(true);
+        popup.getContent().add(suggestionList);
 
         setupListeners();
-        add(textField, BorderLayout.CENTER);
+        getChildren().add(textField);
     }
 
     public void setSuggestions(List<String> suggestions) {
@@ -55,116 +49,88 @@ public class AutocompleteTextField extends JPanel {
         textField.setText(text);
     }
     
-    public JTextField getTextField() {
+    public TextField getTextField() {
         return textField;
     }
 
     private void setupListeners() {
-        textField.getDocument().addDocumentListener(new DocumentListener() {
-            @Override
-            public void insertUpdate(DocumentEvent e) {
-                showSuggestions();
-            }
-            @Override
-            public void removeUpdate(DocumentEvent e) {
-                showSuggestions();
-            }
-            @Override
-            public void changedUpdate(DocumentEvent e) {
-                showSuggestions();
+        textField.textProperty().addListener((observable, oldValue, newValue) -> {
+            showSuggestions();
+        });
+
+        textField.focusedProperty().addListener((observable, oldValue, newValue) -> {
+            if (!newValue) {
+                // Focus lost
+                popup.hide();
             }
         });
 
-        textField.addFocusListener(new FocusAdapter() {
-            @Override
-            public void focusLost(FocusEvent e) {
-                // Hide popup if focus is lost to a component outside the popup
-                if (e.getOppositeComponent() != null && SwingUtilities.getWindowAncestor(e.getOppositeComponent()) != popup) {
-                    popup.setVisible(false);
-                }
+        suggestionList.setOnMouseClicked(e -> {
+            if (e.getClickCount() == 1) {
+                selectFromList();
             }
         });
 
-        suggestionList.addMouseListener(new java.awt.event.MouseAdapter() {
-            public void mouseClicked(java.awt.event.MouseEvent e) {
-                if (e.getClickCount() == 1) {
-                    selectFromList();
-                }
-            }
-        });
+        textField.setOnKeyPressed(e -> {
+            if (!popup.isShowing()) return;
 
-        textField.addKeyListener(new KeyAdapter() {
-            @Override
-            public void keyPressed(KeyEvent e) {
-                if (!popup.isVisible()) return;
-
-                switch (e.getKeyCode()) {
-                    case KeyEvent.VK_DOWN:
-                        suggestionList.setSelectedIndex(Math.min(listModel.getSize() - 1, suggestionList.getSelectedIndex() + 1));
-                        suggestionList.ensureIndexIsVisible(suggestionList.getSelectedIndex());
-                        e.consume();
-                        break;
-                    case KeyEvent.VK_UP:
-                        suggestionList.setSelectedIndex(Math.max(0, suggestionList.getSelectedIndex() - 1));
-                        suggestionList.ensureIndexIsVisible(suggestionList.getSelectedIndex());
-                        e.consume();
-                        break;
-                    case KeyEvent.VK_ENTER:
-                        selectFromList();
-                        e.consume();
-                        break;
-                    case KeyEvent.VK_ESCAPE:
-                        popup.setVisible(false);
-                        e.consume();
-                        break;
-                }
+            if (e.getCode() == KeyCode.DOWN) {
+                int index = suggestionList.getSelectionModel().getSelectedIndex();
+                suggestionList.getSelectionModel().select(Math.min(suggestionList.getItems().size() - 1, index + 1));
+                suggestionList.scrollTo(suggestionList.getSelectionModel().getSelectedIndex());
+                e.consume();
+            } else if (e.getCode() == KeyCode.UP) {
+                int index = suggestionList.getSelectionModel().getSelectedIndex();
+                suggestionList.getSelectionModel().select(Math.max(0, index - 1));
+                suggestionList.scrollTo(suggestionList.getSelectionModel().getSelectedIndex());
+                e.consume();
+            } else if (e.getCode() == KeyCode.ENTER) {
+                selectFromList();
+                e.consume();
+            } else if (e.getCode() == KeyCode.ESCAPE) {
+                popup.hide();
+                e.consume();
             }
         });
     }
 
     private void showSuggestions() {
         if (!enabled || allSuggestions.isEmpty()) {
-            popup.setVisible(false);
+            popup.hide();
             return;
         }
         
         String text = textField.getText().toLowerCase();
-        listModel.clear();
+        suggestionList.getItems().clear();
 
         List<String> filtered = allSuggestions.stream()
                 .filter(s -> s.toLowerCase().contains(text))
                 .collect(Collectors.toList());
 
         if (filtered.isEmpty()) {
-            popup.setVisible(false);
+            popup.hide();
             return;
         }
 
-        for (String s : filtered) {
-            listModel.addElement(s);
-        }
+        suggestionList.getItems().addAll(filtered);
         
-        Point location = textField.getLocationOnScreen();
-        popup.setLocation(location.x, location.y + textField.getHeight());
-        popup.pack();
-        
-        // Ensure popup does not exceed a reasonable height
-        int listHeight = suggestionList.getPreferredSize().height;
-        int maxHeight = 200;
-        if (listHeight > maxHeight) {
-            popup.setSize(popup.getWidth(), maxHeight);
-        }
-
-        if (!popup.isVisible()) {
-            popup.setVisible(true);
+        // Show popup below the text field
+        Bounds bounds = textField.localToScreen(textField.getBoundsInLocal());
+        if (bounds != null) {
+            popup.show(textField, bounds.getMinX(), bounds.getMaxY());
+            
+            // Set size of suggestionList
+            suggestionList.setPrefWidth(bounds.getWidth());
+            suggestionList.setPrefHeight(Math.min(200, filtered.size() * 24 + 10));
         }
     }
 
     private void selectFromList() {
-        if (suggestionList.getSelectedIndex() != -1) {
-            SwingUtilities.invokeLater(() -> {
-                textField.setText(suggestionList.getSelectedValue());
-                popup.setVisible(false);
+        String selected = suggestionList.getSelectionModel().getSelectedItem();
+        if (selected != null) {
+            Platform.runLater(() -> {
+                textField.setText(selected);
+                popup.hide();
             });
         }
     }

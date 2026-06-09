@@ -1,0 +1,84 @@
+/* default.css - Standard system theme for JavaFX */
+.root {
+    -fx-font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    -fx-font-size: 13px;
+}
+
+/* Custom classes for spacing and layout styling */
+.connection-panel {
+    -fx-padding: 10px;
+}
+
+.status-bar {
+    -fx-padding: 5px;
+    -fx-background-color: #f3f4f6;
+    -fx-border-color: #d1d5db;
+    -fx-border-width: 1px 0 0 0;
+}
+
+.status-text {
+    -fx-text-fill: #374151;
+}
+
+.title-label {
+    -fx-font-size: 16px;
+    -fx-font-weight: bold;
+}
+
+.step-header {
+    -fx-background-color: #e6e6e6;
+}
+
+/* Badges */
+.badge {
+    -fx-padding: 2px 6px;
+    -fx-background-radius: 4px;
+    -fx-font-size: 11px;
+    -fx-font-weight: bold;
+    -fx-text-fill: white;
+}
+.badge-create {
+    -fx-background-color: #10b981;
+}
+.badge-update {
+    -fx-background-color: #f59e0b;
+}
+.badge-transition {
+    -fx-background-color: #ef4444;
+}
+.badge-link {
+    -fx-background-color: #3b82f6;
+}
+.badge-asset {
+    -fx-background-color: #8b5cf6;
+}
+.badge-worklog {
+    -fx-background-color: #ec4899;
+}
+
+/* List Action Buttons (Up/Down/Delete) */
+.list-action-btn {
+    -fx-padding: 0;
+    -fx-font-weight: bold;
+    -fx-background-color: transparent;
+    -fx-border-color: #d1d5db;
+    -fx-border-width: 1px;
+    -fx-border-radius: 4px;
+    -fx-background-radius: 4px;
+}
+.list-action-btn:hover {
+    -fx-background-color: rgba(0, 0, 0, 0.05);
+}
+.action-btn-up, .action-btn-down {
+    -fx-text-fill: #4b5563;
+}
+.action-btn-up:hover, .action-btn-down:hover {
+    -fx-text-fill: -fx-accent;
+}
+.action-btn-delete {
+    -fx-text-fill: #dc2626;
+}
+.action-btn-delete:hover {
+    -fx-background-color: rgba(220, 38, 38, 0.1);
+    -fx-border-color: #dc2626;
+}

@@ -15,7 +15,7 @@ src\tso\usmc\jira\ui\JqlRunnerPanel.java
 src\tso\usmc\jira\ui\RawApiPanel.java
 src\tso\usmc\jira\ui\ReconciliationPanel.java
 src\tso\usmc\jira\ui\ReportPanel.java
-src\tso\usmc\jira\ui\SwingUtils.java
+src\tso\usmc\jira\ui\UiUtils.java
 src\tso\usmc\jira\ui\TaskBuilderPanel.java
 src\tso\usmc\jira\ui\TemplateExtractorPanel.java
 src\tso\usmc\jira\ui\WorkflowOrchestratorPanel.java
@@ -48,6 +48,5 @@ src\tso\usmc\jira\util\WorkflowException.java
 src\tso\usmc\jira\ui\JiraFieldAutocompleteTextField.java
 src\tso\usmc\jira\ui\AutocompleteTextField.java
 src\tso\usmc\jira\workflow\TokenEngine.java
-src\tso\usmc\jira\ui\StyledBorder.java
 src\tso\usmc\jira\ui\ThemeSettingsPanel.java
 src\tso\usmc\jira\util\ThemeManager.java

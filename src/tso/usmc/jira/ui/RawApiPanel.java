@@ -3,21 +3,23 @@ package tso.usmc.jira.ui;
 import tso.usmc.jira.app.JiraApiClientGui;
 import tso.usmc.jira.util.JsonUtils;
 import tso.usmc.jira.util.ExecutionService;
-import javax.swing.*;
-import java.awt.*;
+import javafx.application.Platform;
+import javafx.geometry.Insets;
+import javafx.scene.control.*;
+import javafx.scene.layout.*;
+
 import java.util.HashMap;
 import java.util.Map;
 
-public class RawApiPanel extends JPanel {
+public class RawApiPanel extends GridPane {
 
     private final JiraApiClientGui mainFrame;
-    private final JTextField endpointField = new JTextField("/rest/api/2/issue/TSO-123");
-    private final JTextArea requestArea = new JTextArea();
-    private final JTextArea responseArea = new JTextArea();
-    private final JComboBox<ApiTemplate> templateCombo = new JComboBox<>();
+    private final TextField endpointField = new TextField("/rest/api/2/issue/TSO-123");
+    private final TextArea requestArea = new TextArea();
+    private final TextArea responseArea = new TextArea();
+    private final ComboBox<ApiTemplate> templateCombo = new ComboBox<>();
     
-    // Map to keep track of buttons for dynamic visibility
-    private final Map<String, JButton> actionButtons = new HashMap<>();
+    private final Map<String, Button> actionButtons = new HashMap<>();
 
     private static class ApiTemplate {
         String label, method, endpoint, body;
@@ -29,75 +31,81 @@ public class RawApiPanel extends JPanel {
 
     public RawApiPanel(JiraApiClientGui mainFrame) {
         this.mainFrame = mainFrame;
-        setLayout(new GridBagLayout());
-        GridBagConstraints gbc = new GridBagConstraints();
-        gbc.insets = new Insets(5, 5, 5, 5);
-        gbc.fill = GridBagConstraints.BOTH;
+        setPadding(new Insets(10));
+        setHgap(10);
+        setVgap(10);
+
+        // Column Constraints
+        ColumnConstraints col1 = new ColumnConstraints();
+        col1.setMinWidth(80);
+        ColumnConstraints col2 = new ColumnConstraints();
+        col2.setHgrow(Priority.ALWAYS);
+        getColumnConstraints().addAll(col1, col2);
+
+        // Row Constraints (to distribute height)
+        RowConstraints rTemplate = new RowConstraints();
+        RowConstraints rEndpoint = new RowConstraints();
+        RowConstraints rReqLabel = new RowConstraints();
+        RowConstraints rReqArea = new RowConstraints();
+        rReqArea.setVgrow(Priority.ALWAYS);
+        RowConstraints rButtons = new RowConstraints();
+        RowConstraints rResLabel = new RowConstraints();
+        RowConstraints rResArea = new RowConstraints();
+        rResArea.setVgrow(Priority.ALWAYS);
+        getRowConstraints().addAll(rTemplate, rEndpoint, rReqLabel, rReqArea, rButtons, rResLabel, rResArea);
 
         // 0. Template Row
-        gbc.gridx = 0; gbc.gridy = 0; gbc.weightx = 0;
-        add(new JLabel("Template:"), gbc);
-        gbc.gridx = 1; gbc.weightx = 1.0;
+        add(new Label("Template:"), 0, 0);
+        templateCombo.setMaxWidth(Double.MAX_VALUE);
         loadTemplates();
-        add(templateCombo, gbc);
-        templateCombo.addActionListener(e -> applyTemplate());
+        add(templateCombo, 1, 0);
+        templateCombo.setOnAction(e -> applyTemplate());
 
         // 1. Endpoint Row
-        gbc.gridx = 0; gbc.gridy = 1; gbc.weightx = 0;
-        add(new JLabel("Endpoint:"), gbc);
-        gbc.gridx = 1; gbc.weightx = 1.0;
-        add(endpointField, gbc);
+        add(new Label("Endpoint:"), 0, 1);
+        add(endpointField, 1, 1);
 
         // 2. Request JSON Area (Label)
-        gbc.gridx = 0; gbc.gridy = 2; gbc.gridwidth = 2; gbc.weighty = 0;
-        add(new JLabel("Request Body (JSON for POST/PUT):"), gbc);
+        Label reqLabel = new Label("Request Body (JSON for POST/PUT):");
+        add(reqLabel, 0, 2, 2, 1);
 
         // 3. Request JSON ScrollPane
-        gbc.gridy = 3; gbc.weighty = 0.4;
-        requestArea.setFont(new Font("Monospaced", Font.PLAIN, 12));
-        add(new JScrollPane(requestArea), gbc);
+        requestArea.setStyle("-fx-font-family: monospace;");
+        add(requestArea, 0, 3, 2, 1);
 
         // 4. Button Row
-        JPanel btnPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 10, 10)); 
+        HBox btnPanel = new HBox(10);
+        btnPanel.setPadding(new Insets(5, 0, 5, 0));
         
-        JButton getBtn = new JButton("Execute GET");
-        JButton postBtn = new JButton("Execute POST");
-        JButton putBtn = new JButton("Execute PUT");
-        JButton delBtn = new JButton("Execute DELETE");
+        Button getBtn = new Button("Execute GET");
+        Button postBtn = new Button("Execute POST");
+        Button putBtn = new Button("Execute PUT");
+        Button delBtn = new Button("Execute DELETE");
         
-        getBtn.addActionListener(e -> callApi("GET"));
-        postBtn.addActionListener(e -> callApi("POST"));
-        putBtn.addActionListener(e -> callApi("PUT"));
-        delBtn.addActionListener(e -> callApi("DELETE"));
+        getBtn.setOnAction(e -> callApi("GET"));
+        postBtn.setOnAction(e -> callApi("POST"));
+        putBtn.setOnAction(e -> callApi("PUT"));
+        delBtn.setOnAction(e -> callApi("DELETE"));
         
-        // Add to map for easy management
         actionButtons.put("GET", getBtn);
         actionButtons.put("POST", postBtn);
         actionButtons.put("PUT", putBtn);
         actionButtons.put("DELETE", delBtn);
 
-        btnPanel.add(getBtn);
-        btnPanel.add(putBtn);
-        btnPanel.add(postBtn);
-        btnPanel.add(delBtn);
-        
-        gbc.gridy = 4; gbc.weighty = 0;
-        add(btnPanel, gbc);
+        btnPanel.getChildren().addAll(getBtn, putBtn, postBtn, delBtn);
+        add(btnPanel, 0, 4, 2, 1);
 
         // 5. Response Area (Label)
-        gbc.gridy = 5;
-        add(new JLabel("Response:"), gbc);
+        add(new Label("Response:"), 0, 5, 2, 1);
 
         // 6. Response ScrollPane
-        gbc.gridy = 6; gbc.weighty = 0.5;
         responseArea.setEditable(false);
-        responseArea.setBackground(new Color(245, 245, 245));
-        responseArea.setFont(new Font("Monospaced", Font.PLAIN, 12));
-        add(new JScrollPane(responseArea), gbc);
+        responseArea.setStyle("-fx-font-family: monospace;");
+        add(responseArea, 0, 6, 2, 1);
     }
 
     private void loadTemplates() {
-        templateCombo.addItem(new ApiTemplate("--- Select Template ---", "", "", ""));
+        templateCombo.getItems().add(new ApiTemplate("--- Select Template ---", "", "", ""));
         String[] keys = mainFrame.getJiraConfig().getRawApiTemplateKeys();
         for (String key : keys) {
             String val = mainFrame.getJiraConfig().getRawApiTemplate(key);
@@ -105,14 +113,15 @@ public class RawApiPanel extends JPanel {
                 String[] parts = val.split("\\|", -1);
                 if (parts.length >= 4) {
                     String body = parts[3].replace("\\n", "\n");
-                    templateCombo.addItem(new ApiTemplate(parts[0], parts[1], parts[2], body));
+                    templateCombo.getItems().add(new ApiTemplate(parts[0], parts[1], parts[2], body));
                 }
             }
         }
+        templateCombo.getSelectionModel().select(0);
     }
 
     private void applyTemplate() {
-        ApiTemplate t = (ApiTemplate) templateCombo.getSelectedItem();
+        ApiTemplate t = templateCombo.getSelectionModel().getSelectedItem();
         
         if (t != null && !t.method.isEmpty()) {
             endpointField.setText(t.endpoint);
@@ -133,20 +142,17 @@ public class RawApiPanel extends JPanel {
             requestArea.setText("");
             
             // Reset: Show all buttons
-            for (JButton btn : actionButtons.values()) {
+            for (Button btn : actionButtons.values()) {
                 btn.setVisible(true);
             }
         }
-        
-        this.revalidate();
-        this.repaint();
     }
 
     private void callApi(String method) {
         String fullUrl = mainFrame.getBaseUrl() + endpointField.getText().trim();
         String body = ("POST".equals(method) || "PUT".equals(method)) ? requestArea.getText() : null;
         
-        responseArea.setForeground(Color.BLACK);
+        responseArea.setStyle("-fx-font-family: monospace; -fx-text-fill: -fx-text-base-color;");
         responseArea.setText("Sending " + method + " request to: " + fullUrl + "...");
         
         ExecutionService.submit(() -> {
@@ -156,10 +162,10 @@ public class RawApiPanel extends JPanel {
                     ? "Request successful (204 No Content)"
                     : JsonUtils.prettyPrintJson(rawResponse);
                 
-                SwingUtilities.invokeLater(() -> responseArea.setText(formatted));
+                Platform.runLater(() -> responseArea.setText(formatted));
             } catch (Exception ex) {
-                SwingUtilities.invokeLater(() -> {
-                    responseArea.setForeground(Color.RED);
+                Platform.runLater(() -> {
+                    responseArea.setStyle("-fx-font-family: monospace; -fx-text-fill: red;");
                     responseArea.setText("ERROR: " + ex.getMessage() + "\n\nStack Trace:\n" + getStackTrace(ex));
                 });
             }

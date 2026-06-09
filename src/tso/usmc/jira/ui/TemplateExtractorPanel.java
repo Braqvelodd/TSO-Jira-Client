@@ -4,9 +4,13 @@ import tso.usmc.jira.app.JiraApiClientGui;
 import tso.usmc.jira.service.JiraApiService;
 import tso.usmc.jira.util.ExecutionService;
 
-import javax.swing.*;
-import java.awt.*;
-import java.awt.datatransfer.StringSelection;
+import javafx.application.Platform;
+import javafx.geometry.Insets;
+import javafx.scene.control.*;
+import javafx.scene.layout.*;
+import javafx.scene.input.Clipboard;
+import javafx.scene.input.ClipboardContent;
+
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.util.ArrayList;
@@ -14,50 +18,70 @@ import java.util.ArrayList;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
-public class TemplateExtractorPanel extends JPanel {
+public class TemplateExtractorPanel extends BorderPane {
 
-    private static final String EPIC_LINK_FIELD_ID = "customfield_13056";
     private final JiraApiClientGui mainFrame;
+    private final String epicLinkFieldId;
 
     // UI Components
-    private final JTextField parentIssueField = new JTextField(20);
-    private final JButton generateBtn = new JButton("Generate Template from Sub-tasks");
-    private final JButton generateFromEpicBtn = new JButton("Generate from Epic's Issues");
-    private final JTextArea templateArea = new JTextArea();
-    private final JButton copyBtn = new JButton("Copy to Clipboard");
-    private final JLabel statusLabel = new JLabel("Enter a parent issue key (e.g., a Story) and click Generate.");
+    private final TextField parentIssueField = new TextField();
+    private final Button generateBtn = new Button("Generate Template from Sub-tasks");
+    private final Button generateFromEpicBtn = new Button("Generate from Epic's Issues");
+    private final TextArea templateArea = new TextArea();
+    private final Button copyBtn = new Button("Copy to Clipboard");
+    private final Label statusLabel = new Label("Enter a parent issue key (e.g., a Story) and click Generate.");
 
     public TemplateExtractorPanel(JiraApiClientGui mainFrame) {
         this.mainFrame = mainFrame;
-        setLayout(new BorderLayout(10, 10));
-        setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+        this.epicLinkFieldId = mainFrame.getJiraConfig().getCustomFieldId("epic_link", "customfield_13056");
+        setPadding(new Insets(10));
 
         // --- UI Setup ---
-        JPanel topPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 5));
-        topPanel.setBorder(BorderFactory.createTitledBorder("1. Source Parent Issue"));
-        topPanel.add(new JLabel("Parent Key:"));
-        topPanel.add(parentIssueField);
-        topPanel.add(generateBtn);
-        topPanel.add(generateFromEpicBtn);
-        JPanel centerPanel = new JPanel(new BorderLayout());
-        centerPanel.setBorder(BorderFactory.createTitledBorder("2. Generated Template (for Task Builder)"));
-        templateArea.setFont(new Font("Monospaced", Font.PLAIN, 12));
+        HBox topPanel = new HBox(10);
+        topPanel.getStyleClass().add("card");
+        topPanel.setPadding(new Insets(10));
+        
+        parentIssueField.setPrefWidth(150);
+        topPanel.getChildren().addAll(
+            new Label("Parent Key:"),
+            parentIssueField,
+            generateBtn,
+            generateFromEpicBtn
+        );
+
+        VBox centerPanel = new VBox(5);
+        centerPanel.getStyleClass().add("card");
+        centerPanel.setPadding(new Insets(10));
+        BorderPane.setMargin(centerPanel, new Insets(10, 0, 10, 0));
+        
+        Label centerTitle = new Label("2. Generated Template (for Task Builder)");
+        centerTitle.getStyleClass().add("card-title");
+        
+        templateArea.setStyle("-fx-font-family: monospace;");
         templateArea.setEditable(false);
-        templateArea.setLineWrap(true);
-        templateArea.setWrapStyleWord(true);
-        centerPanel.add(new JScrollPane(templateArea), BorderLayout.CENTER);
-        JPanel bottomActions = new JPanel(new FlowLayout(FlowLayout.RIGHT));
-        bottomActions.add(copyBtn);
-        centerPanel.add(bottomActions, BorderLayout.SOUTH);
-        JPanel statusPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
-        statusPanel.setBorder(BorderFactory.createEtchedBorder());
-        statusPanel.add(statusLabel);
-        add(topPanel, BorderLayout.NORTH);
-        add(centerPanel, BorderLayout.CENTER);
-        add(statusPanel, BorderLayout.SOUTH);
-        generateBtn.addActionListener(e -> generateTemplate());
-        generateFromEpicBtn.addActionListener(e -> generateEpicTemplate());
-        copyBtn.addActionListener(e -> copyToClipboard());
+        templateArea.setWrapText(true);
+        templateArea.setPrefRowCount(25);
+        templateArea.setMinHeight(350);
+        VBox.setVgrow(templateArea, Priority.ALWAYS);
+
+        HBox bottomActions = new HBox();
+        bottomActions.setPadding(new Insets(5, 0, 0, 0));
+        bottomActions.getChildren().add(copyBtn);
+        
+        centerPanel.getChildren().addAll(centerTitle, templateArea, bottomActions);
+
+        HBox statusPanel = new HBox();
+        statusPanel.getStyleClass().add("status-bar");
+        statusLabel.getStyleClass().add("status-text");
+        statusPanel.getChildren().add(statusLabel);
+
+        setTop(topPanel);
+        setCenter(centerPanel);
+        setBottom(statusPanel);
+
+        generateBtn.setOnAction(e -> generateTemplate());
+        generateFromEpicBtn.setOnAction(e -> generateEpicTemplate());
+        copyBtn.setOnAction(e -> copyToClipboard());
     }
 
     private void generateTemplate() {
@@ -87,7 +111,7 @@ public class TemplateExtractorPanel extends JPanel {
 
                 String templateContent = buildTemplateFromSubtasks(subtasks, defaultComponent);
 
-                SwingUtilities.invokeLater(() -> {
+                Platform.runLater(() -> {
                     updateTemplateArea(templateContent, "Success! Generated template from " + subtasks.length() + " sub-tasks.");
                     setBusyState(false, null);
                 });
@@ -108,7 +132,7 @@ public class TemplateExtractorPanel extends JPanel {
                 JiraApiService service = mainFrame.getService();
                 String baseUrl = mainFrame.getBaseUrl();
 
-                String fieldsToFetch = EPIC_LINK_FIELD_ID + ",components,issuetype";
+                String fieldsToFetch = epicLinkFieldId + ",components,issuetype";
                 String issueDetailsResponse = service.executeRequest(baseUrl + "/rest/api/2/issue/" + issueKey + "?fields=" + fieldsToFetch, "GET", null);
                 JSONObject issueJson = new JSONObject(issueDetailsResponse);
                 JSONObject fields = issueJson.getJSONObject("fields");
@@ -121,15 +145,14 @@ public class TemplateExtractorPanel extends JPanel {
                     epicKey = issueKey;
                     updateStatus("'" + issueKey + "' is an Epic. Fetching all child issues...");
                 } else {
-                    epicKey = fields.optString(EPIC_LINK_FIELD_ID, null);
+                    epicKey = fields.optString(epicLinkFieldId, null);
                     if (epicKey == null || epicKey.isEmpty()) {
-                        throw new Exception("Issue '" + issueKey + "' is not an Epic and does not belong to one. Verify the '" + EPIC_LINK_FIELD_ID + "' custom field ID.");
+                        throw new Exception("Issue '" + issueKey + "' is not an Epic and does not belong to one. Verify the '" + epicLinkFieldId + "' custom field ID.");
                     }
                     updateStatus("Found Epic " + epicKey + ". Fetching all child issues...");
                 }
 
-                // Step 1: Find all issues within that Epic using the custom field.
-                String issuesInEpicJql = String.format("'%s' = '%s'", EPIC_LINK_FIELD_ID, epicKey);
+                String issuesInEpicJql = String.format("'%s' = '%s'", epicLinkFieldId, epicKey);
                 JSONObject epicSearchPayload = new JSONObject().put("jql", issuesInEpicJql).put("fields", new JSONArray().put("key")).put("maxResults", 500);
                 String issuesInEpicResponse = service.executeRequest(baseUrl + "/rest/api/2/search", "POST", epicSearchPayload.toString());
                 JSONArray issuesInEpic = new JSONObject(issuesInEpicResponse).getJSONArray("issues");
@@ -140,7 +163,6 @@ public class TemplateExtractorPanel extends JPanel {
                 }
                 updateStatus("Found " + issueKeys.size() + " issues in Epic. Fetching all their sub-tasks...");
 
-                // Step 2: Build the final JQL to get all sub-tasks.
                 StringBuilder subtaskJql = new StringBuilder();
                 subtaskJql.append("parent = '").append(epicKey).append("'"); 
                 if (!issueKeys.isEmpty()) {
@@ -165,7 +187,7 @@ public class TemplateExtractorPanel extends JPanel {
                 final String templateContent = buildTemplateFromSubtasks(allSubtasks, defaultComponent);
                 final String finalEpicKey = epicKey;
 
-                SwingUtilities.invokeLater(() -> {
+                Platform.runLater(() -> {
                     updateTemplateArea(templateContent, "Success! Generated template from " + allSubtasks.length() + " sub-tasks in Epic " + finalEpicKey + ".");
                     setBusyState(false, null);
                 });
@@ -206,24 +228,26 @@ public class TemplateExtractorPanel extends JPanel {
     private void copyToClipboard() {
         String textToCopy = templateArea.getText();
         if (textToCopy != null && !textToCopy.isEmpty()) {
-            StringSelection stringSelection = new StringSelection(textToCopy);
-            Toolkit.getDefaultToolkit().getSystemClipboard().setContents(stringSelection, null);
+            Clipboard clipboard = Clipboard.getSystemClipboard();
+            ClipboardContent content = new ClipboardContent();
+            content.putString(textToCopy);
+            clipboard.setContent(content);
             statusLabel.setText("Template content copied to clipboard!");
         }
     }
 
     private boolean isInputInvalid(String input) {
         if (input.isEmpty()) {
-            JOptionPane.showMessageDialog(this, "Please enter an issue key.", "Input Error", JOptionPane.ERROR_MESSAGE);
+            showAlert(Alert.AlertType.ERROR, "Input Error", "Please enter an issue key.");
             return true;
         }
         return false;
     }
 
     private void setBusyState(boolean isBusy, String statusText) {
-        generateBtn.setEnabled(!isBusy);
-        generateFromEpicBtn.setEnabled(!isBusy);
-        copyBtn.setEnabled(!isBusy);
+        generateBtn.setDisable(isBusy);
+        generateFromEpicBtn.setDisable(isBusy);
+        copyBtn.setDisable(isBusy);
         if (statusText != null) {
             statusLabel.setText(statusText);
         }
@@ -233,12 +257,12 @@ public class TemplateExtractorPanel extends JPanel {
     }
     
     private void updateStatus(String text) {
-        SwingUtilities.invokeLater(() -> statusLabel.setText(text));
+        Platform.runLater(() -> statusLabel.setText(text));
     }
 
     private void updateTemplateArea(String content, String status) {
         templateArea.setText(content);
-        templateArea.setCaretPosition(0);
+        templateArea.selectRange(0, 0); // scroll to top
         statusLabel.setText(status);
     }
 
@@ -246,8 +270,8 @@ public class TemplateExtractorPanel extends JPanel {
         StringWriter sw = new StringWriter();
         ex.printStackTrace(new PrintWriter(sw));
         String errorMessage = "API Error:\n" + ex.getMessage() + "\n\n" + sw.toString();
-        SwingUtilities.invokeLater(() -> {
-             JOptionPane.showMessageDialog(this, errorMessage, "Execution Error", JOptionPane.ERROR_MESSAGE);
+        Platform.runLater(() -> {
+             showAlert(Alert.AlertType.ERROR, "Execution Error", errorMessage);
              setBusyState(false, "Error generating template. Check logs or error dialog.");
         });
     }
@@ -258,5 +282,13 @@ public class TemplateExtractorPanel extends JPanel {
             return parentFields.getJSONArray("components").getJSONObject(0).getString("name");
         }
         return "";
+    }
+
+    private void showAlert(Alert.AlertType type, String title, String content) {
+        Alert alert = new Alert(type);
+        alert.setTitle(title);
+        alert.setHeaderText(null);
+        alert.setContentText(content);
+        alert.showAndWait();
     }
 }

@@ -10,22 +10,18 @@ import tso.usmc.jira.workflow.LinkAction;
 import tso.usmc.jira.workflow.LinkStep;
 import tso.usmc.jira.workflow.WorklogStep;
 import org.json.JSONObject;
-import tso.usmc.jira.ui.SwingUtils;
+import tso.usmc.jira.ui.UiUtils;
 
-import javax.swing.*;
-import java.awt.BorderLayout;
-import java.awt.Color;
-import java.awt.Component;
-import java.awt.Dimension;
-import java.awt.FlowLayout;
-import java.awt.Insets;
-import java.awt.Font;
+import javafx.geometry.Insets;
+import javafx.geometry.Pos;
+import javafx.scene.control.*;
+import javafx.scene.layout.*;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-public class StepEditorPanel extends JPanel {
+public class StepEditorPanel extends BorderPane {
     public interface StepActionListener {
         void onMoveUp(StepEditorPanel panel);
         void onMoveDown(StepEditorPanel panel);
@@ -37,180 +33,215 @@ public class StepEditorPanel extends JPanel {
     }
 
     private final WorkflowStep step;
-    private final JTextField labelField;
-    private final JPanel fieldsContainer;
+    private final TextField labelField;
+    private final VBox fieldsContainer;
+    private final VBox contentPanel;
+    private final HBox header;
     private final List<FieldActionPanel> actionPanels = new ArrayList<>();
     private final List<LinkActionPanel> linkActionPanels = new ArrayList<>();
     private final Map<String, String> fieldOptions; // Label -> ID mapping
     private final Map<String, JSONObject> fullMetadata;
     private final StepMetadataListener metadataListener;
 
-    private JTextField targetIssueField;
-    private JTextField projField;
-    private JTextField typeField;
-    private JTextField inwardField;
-    private JTextField sourceTokenField;
-    private JTextField targetTokenField;
-    private JTextField timeSpentField;
-    private JTextField commentField;
-    private JTextField startedField;
-    private JTextField subTaskFieldsComp;
+    private TextField targetIssueField;
+    private TextField projField;
+    private TextField typeField;
+    private TextField inwardField;
+    private TextField sourceTokenField;
+    private TextField targetTokenField;
+    private TextField timeSpentField;
+    private TextField commentField;
+    private TextField startedField;
+    private TextField subTaskFieldsComp;
     private List<String> cachedLinkTypes = new ArrayList<>();
 
     // Condition UI
-    private final JTextField condTokenField;
-    private final JComboBox<String> condOpCombo;
-    private final JTextField condValueField;
-    private final JPanel conditionInnerPanel;
+    private final TextField condTokenField;
+    private final ComboBox<String> condOpCombo;
+    private final TextField condValueField;
 
     public StepEditorPanel(WorkflowStep step, Map<String, String> fieldOptions, Map<String, JSONObject> fullMetadata, Runnable onRemove, StepActionListener stepListener, StepMetadataListener metadataListener) {
         this.step = step;
         this.fieldOptions = fieldOptions;
         this.fullMetadata = fullMetadata;
         this.metadataListener = metadataListener;
-        setLayout(new BorderLayout());
-        setBorder(BorderFactory.createCompoundBorder(
-            BorderFactory.createLineBorder(Color.GRAY),
-            BorderFactory.createEmptyBorder(5, 5, 5, 5)
-        ));
+        this.contentPanel = new VBox(5);
+        this.header = new HBox(10);
+
+        setStyle("-fx-border-color: gray; -fx-border-width: 1px; -fx-padding: 5px;");
+        setMinWidth(Region.USE_PREF_SIZE);
 
         // Header
-        JPanel header = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 5));
-        header.setBackground(new Color(230, 230, 230));
+        header.setAlignment(Pos.CENTER_LEFT);
+        header.setPadding(new Insets(5));
+        header.getStyleClass().add("step-header");
 
-        labelField = new JTextField(step.getLabel(), 20);
-        SwingUtils.setupExpandedView(labelField);
-        header.add(createPair("[" + step.getType() + "] Label:", labelField));
+        Button collapseBtn = new Button("▼");
+        collapseBtn.getStyleClass().add("list-action-btn");
+        collapseBtn.setMinSize(22, 22); collapseBtn.setMaxSize(22, 22);
+        collapseBtn.setOnAction(e -> {
+            boolean visible = !contentPanel.isVisible();
+            contentPanel.setVisible(visible);
+            contentPanel.setManaged(visible);
+            collapseBtn.setText(visible ? "▼" : "▶");
+        });
+        header.getChildren().add(collapseBtn);
+
+        labelField = new TextField(step.getLabel());
+        labelField.setPrefColumnCount(20);
+        UiUtils.setupExpandedView(labelField);
+        
+        HBox pair = new HBox(5);
+        pair.setAlignment(Pos.CENTER_LEFT);
+        Label typeBadge = new Label(step.getType().toString());
+        typeBadge.getStyleClass().addAll("badge", "badge-" + step.getType().toString().toLowerCase());
+        Label labelText = new Label(" Label:");
+        pair.getChildren().addAll(typeBadge, labelText, labelField);
+        header.getChildren().add(pair);
         
         if (step instanceof UpdateStep) {
-            targetIssueField = new JTextField(((UpdateStep)step).getTargetIssueToken(), 10);
-            SwingUtils.setupExpandedView(targetIssueField);
-            header.add(createPair("Target Issue:", targetIssueField));
+            targetIssueField = new TextField(((UpdateStep)step).getTargetIssueToken());
+            targetIssueField.setPrefColumnCount(10);
+            UiUtils.setupExpandedView(targetIssueField);
+            header.getChildren().add(createPair("Target Issue:", targetIssueField));
         }
 
         if (step instanceof TransitionStep) {
             TransitionStep ts = (TransitionStep) step;
-            targetIssueField = new JTextField(ts.getTargetIssueToken(), 10);
-            SwingUtils.setupExpandedView(targetIssueField);
-            header.add(createPair("Target Issue:", targetIssueField));
+            targetIssueField = new TextField(ts.getTargetIssueToken());
+            targetIssueField.setPrefColumnCount(10);
+            UiUtils.setupExpandedView(targetIssueField);
+            header.getChildren().add(createPair("Target Issue:", targetIssueField));
             
-            JTextField targetField = new JTextField(ts.getTargetStatus(), 15);
-            SwingUtils.setupExpandedView(targetField);
-            targetField.getDocument().addDocumentListener(new SimpleDocumentListener(() -> ts.setTargetStatus(targetField.getText())));
-            header.add(createPair("Target Status:", targetField));
+            TextField targetField = new TextField(ts.getTargetStatus());
+            targetField.setPrefColumnCount(15);
+            UiUtils.setupExpandedView(targetField);
+            targetField.textProperty().addListener((obs, oldVal, newVal) -> ts.setTargetStatus(newVal));
+            header.getChildren().add(createPair("Target Status:", targetField));
         }
 
         if (step instanceof CreateStep) {
             CreateStep cs = (CreateStep) step;
-            projField = new JTextField(cs.getProjectKey(), 5);
-            SwingUtils.setupExpandedView(projField);
-            header.add(createPair("Project:", projField));
+            projField = new TextField(cs.getProjectKey());
+            projField.setPrefColumnCount(5);
+            UiUtils.setupExpandedView(projField);
+            header.getChildren().add(createPair("Project:", projField));
             
-            typeField = new JTextField(cs.getIssueType(), 10);
-            SwingUtils.setupExpandedView(typeField);
-            header.add(createPair("Type:", typeField));
+            typeField = new TextField(cs.getIssueType());
+            typeField.setPrefColumnCount(10);
+            UiUtils.setupExpandedView(typeField);
+            header.getChildren().add(createPair("Type:", typeField));
         }
 
         if (step instanceof AssetStep) {
             AssetStep as = (AssetStep) step;
-            sourceTokenField = new JTextField(as.getSourceIssueToken(), 10);
-            SwingUtils.setupExpandedView(sourceTokenField);
-            header.add(createPair("From:", sourceTokenField));
+            sourceTokenField = new TextField(as.getSourceIssueToken());
+            sourceTokenField.setPrefColumnCount(10);
+            UiUtils.setupExpandedView(sourceTokenField);
+            header.getChildren().add(createPair("From:", sourceTokenField));
             
-            targetTokenField = new JTextField(as.getTargetIssueToken(), 10);
-            SwingUtils.setupExpandedView(targetTokenField);
-            header.add(createPair("To:", targetTokenField));
+            targetTokenField = new TextField(as.getTargetIssueToken());
+            targetTokenField.setPrefColumnCount(10);
+            UiUtils.setupExpandedView(targetTokenField);
+            header.getChildren().add(createPair("To:", targetTokenField));
             
-            JCheckBox pOpt = new JCheckBox("Prompt?", as.isPromptOptions());
-            pOpt.addActionListener(e -> as.setPromptOptions(pOpt.isSelected()));
-            header.add(createPair("", pOpt));
-            JCheckBox att = new JCheckBox("Attachments", as.isCopyAttachments());
-            att.addActionListener(e -> as.setCopyAttachments(att.isSelected()));
-            header.add(createPair("", att));
+            CheckBox pOpt = new CheckBox("Prompt?");
+            pOpt.setSelected(as.isPromptOptions());
+            pOpt.setOnAction(e -> as.setPromptOptions(pOpt.isSelected()));
+            header.getChildren().add(pOpt);
 
-            JCheckBox links = new JCheckBox("Links", as.isCopyLinks());
-            links.addActionListener(e -> as.setCopyLinks(links.isSelected()));
-            header.add(createPair("", links));
+            CheckBox att = new CheckBox("Attachments");
+            att.setSelected(as.isCopyAttachments());
+            att.setOnAction(e -> as.setCopyAttachments(att.isSelected()));
+            header.getChildren().add(att);
 
-            JCheckBox subtasks = new JCheckBox("Sub-tasks", as.isCopySubTasks());
-            subtasks.addActionListener(e -> as.setCopySubTasks(subtasks.isSelected()));
-            header.add(createPair("", subtasks));
+            CheckBox links = new CheckBox("Links");
+            links.setSelected(as.isCopyLinks());
+            links.setOnAction(e -> as.setCopyLinks(links.isSelected()));
+            header.getChildren().add(links);
 
-            subTaskFieldsComp = new JTextField(as.getSubTaskFields(), 20);
-            SwingUtils.setupExpandedView(subTaskFieldsComp);
-            header.add(createPair("Fields to Asset (CSV):", subTaskFieldsComp));
+            CheckBox subtasks = new CheckBox("Sub-tasks");
+            subtasks.setSelected(as.isCopySubTasks());
+            subtasks.setOnAction(e -> as.setCopySubTasks(subtasks.isSelected()));
+            header.getChildren().add(subtasks);
+
+            subTaskFieldsComp = new TextField(as.getSubTaskFields());
+            subTaskFieldsComp.setPrefColumnCount(20);
+            UiUtils.setupExpandedView(subTaskFieldsComp);
+            header.getChildren().add(createPair("Fields to Asset (CSV):", subTaskFieldsComp));
         }
 
         if (step instanceof WorklogStep) {
             WorklogStep ws = (WorklogStep) step;
-            targetIssueField = new JTextField(ws.getTargetIssueToken(), 10);
-            SwingUtils.setupExpandedView(targetIssueField);
-            header.add(createPair("Target Issue:", targetIssueField));
+            targetIssueField = new TextField(ws.getTargetIssueToken());
+            targetIssueField.setPrefColumnCount(10);
+            UiUtils.setupExpandedView(targetIssueField);
+            header.getChildren().add(createPair("Target Issue:", targetIssueField));
             
-            timeSpentField = new JTextField(ws.getTimeSpent(), 8);
-            SwingUtils.setupExpandedView(timeSpentField);
-            header.add(createPair("Time Spent:", timeSpentField));
+            timeSpentField = new TextField(ws.getTimeSpent());
+            timeSpentField.setPrefColumnCount(8);
+            UiUtils.setupExpandedView(timeSpentField);
+            header.getChildren().add(createPair("Time Spent:", timeSpentField));
             
-            commentField = new JTextField(ws.getComment(), 15);
-            SwingUtils.setupExpandedView(commentField);
-            header.add(createPair("Comment:", commentField));
+            commentField = new TextField(ws.getComment());
+            commentField.setPrefColumnCount(15);
+            UiUtils.setupExpandedView(commentField);
+            header.getChildren().add(createPair("Comment:", commentField));
             
-            startedField = new JTextField(ws.getStarted(), 12);
-            SwingUtils.setupExpandedView(startedField);
-            header.add(createPair("Started:", startedField));
+            startedField = new TextField(ws.getStarted());
+            startedField.setPrefColumnCount(12);
+            UiUtils.setupExpandedView(startedField);
+            header.getChildren().add(createPair("Started:", startedField));
         }
 
         // Step Rearrangement Buttons
-        JPanel movePanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 2, 0));
-        movePanel.setOpaque(false);
-        JButton stepUpBtn = new JButton("▲");
-        JButton stepDownBtn = new JButton("▼");
-        Dimension stepBtnDim = new Dimension(22, 22);
-        stepUpBtn.setPreferredSize(stepBtnDim);
-        stepDownBtn.setPreferredSize(stepBtnDim);
-        stepUpBtn.setMargin(new Insets(0, 0, 0, 0));
-        stepDownBtn.setMargin(new Insets(0, 0, 0, 0));
-        stepUpBtn.addActionListener(e -> stepListener.onMoveUp(this));
-        stepDownBtn.addActionListener(e -> stepListener.onMoveDown(this));
-        movePanel.add(stepUpBtn);
-        movePanel.add(stepDownBtn);
-        header.add(movePanel);
-
-        JButton removeBtn = new JButton("X");
-        removeBtn.setForeground(Color.RED);
-        removeBtn.addActionListener(e -> onRemove.run());
-        header.add(removeBtn);
+        HBox movePanel = new HBox(2);
+        movePanel.setAlignment(Pos.CENTER_LEFT);
+        Button stepUpBtn = new Button("^");
+        Button stepDownBtn = new Button("v");
+        stepUpBtn.setMinSize(22, 22); stepUpBtn.setMaxSize(22, 22);
+        stepDownBtn.setMinSize(22, 22); stepDownBtn.setMaxSize(22, 22);
+        stepUpBtn.getStyleClass().addAll("list-action-btn", "action-btn-up");
+        stepDownBtn.getStyleClass().addAll("list-action-btn", "action-btn-down");
         
-        add(header, BorderLayout.NORTH);
+        stepUpBtn.setOnAction(e -> stepListener.onMoveUp(this));
+        stepDownBtn.setOnAction(e -> stepListener.onMoveDown(this));
+        movePanel.getChildren().addAll(stepUpBtn, stepDownBtn);
+        header.getChildren().add(movePanel);
+
+        Button removeBtn = new Button("X");
+        removeBtn.getStyleClass().addAll("list-action-btn", "action-btn-delete");
+        removeBtn.setMinSize(22, 22); removeBtn.setMaxSize(22, 22);
+        removeBtn.setOnAction(e -> onRemove.run());
+        header.getChildren().add(removeBtn);
+        
+        setTop(header);
 
         // Content Wrapper
-        JPanel contentPanel = new JPanel();
-        contentPanel.setLayout(new BoxLayout(contentPanel, BoxLayout.Y_AXIS));
+        contentPanel.setPadding(new Insets(5, 0, 5, 0));
 
         // --- CONDITION SECTION ---
-        JPanel conditionOuterPanel = new JPanel(new BorderLayout());
-        conditionOuterPanel.setBorder(BorderFactory.createTitledBorder("Step Execution Condition (Optional)"));
-        conditionOuterPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        condTokenField = new TextField(step.getConditionToken() != null ? step.getConditionToken() : "");
+        condTokenField.setPrefColumnCount(15);
+        condOpCombo = new ComboBox<>();
+        condOpCombo.getItems().addAll("ALWAYS", "EQUALS", "NOT_EQUALS", "CONTAINS", "NOT_CONTAINS", "EMPTY", "NOT_EMPTY");
+        condOpCombo.getSelectionModel().select(step.getConditionOperator() != null ? step.getConditionOperator() : "ALWAYS");
+        condValueField = new TextField(step.getConditionValue() != null ? step.getConditionValue() : "");
+        condValueField.setPrefColumnCount(15);
         
-        conditionInnerPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 2));
-        condTokenField = new JTextField(step.getConditionToken() != null ? step.getConditionToken() : "", 15);
-        condOpCombo = new JComboBox<>(new String[]{"ALWAYS", "EQUALS", "NOT_EQUALS", "CONTAINS", "NOT_CONTAINS", "EMPTY", "NOT_EMPTY"});
-        condOpCombo.setSelectedItem(step.getConditionOperator() != null ? step.getConditionOperator() : "ALWAYS");
-        condValueField = new JTextField(step.getConditionValue() != null ? step.getConditionValue() : "", 15);
+        HBox conditionInnerPanel = new HBox(5);
+        conditionInnerPanel.setAlignment(Pos.CENTER_LEFT);
+        conditionInnerPanel.getChildren().addAll(
+            new Label("If:"), condTokenField, condOpCombo, condValueField, new Label("then execute.")
+        );
         
-        conditionInnerPanel.add(new JLabel("If:"));
-        conditionInnerPanel.add(condTokenField);
-        conditionInnerPanel.add(condOpCombo);
-        conditionInnerPanel.add(condValueField);
-        conditionInnerPanel.add(new JLabel("then execute."));
-        
-        conditionOuterPanel.add(conditionInnerPanel, BorderLayout.CENTER);
-        contentPanel.add(conditionOuterPanel);
+        TitledPane conditionOuterPanel = new TitledPane("Step Execution Condition (Optional)", conditionInnerPanel);
+        conditionOuterPanel.setCollapsible(false);
+        contentPanel.getChildren().add(conditionOuterPanel);
 
         // Fields Container
-        fieldsContainer = new JPanel();
-        fieldsContainer.setLayout(new BoxLayout(fieldsContainer, BoxLayout.Y_AXIS));
-        fieldsContainer.setAlignmentX(Component.LEFT_ALIGNMENT);
+        fieldsContainer = new VBox(5);
+        fieldsContainer.setPadding(new Insets(5, 0, 5, 0));
         
         if (step instanceof LinkStep) {
             for (LinkAction la : ((LinkStep) step).getLinkActions()) {
@@ -221,37 +252,36 @@ public class StepEditorPanel extends JPanel {
                 addField(action);
             }
         }
-        contentPanel.add(fieldsContainer);
+        contentPanel.getChildren().add(fieldsContainer);
 
         // Footer (Add Field/Link)
-        JPanel footer = new JPanel(new FlowLayout(FlowLayout.LEFT));
-        footer.setAlignmentX(Component.LEFT_ALIGNMENT);
+        HBox footer = new HBox(10);
+        footer.setAlignment(Pos.CENTER_LEFT);
+        footer.setPadding(new Insets(5, 0, 5, 0));
         
         if (step instanceof LinkStep) {
-            JButton addLinkBtn = new JButton("+ Add Link");
-            addLinkBtn.addActionListener(e -> addLinkAction(new LinkAction()));
-            footer.add(addLinkBtn);
+            Button addLinkBtn = new Button("+ Add Link");
+            addLinkBtn.setOnAction(e -> addLinkAction(new LinkAction()));
+            footer.getChildren().add(addLinkBtn);
         } else if (step.getType() != WorkflowStep.StepType.ASSET && step.getType() != WorkflowStep.StepType.WORKLOG) {
-            JButton addFieldBtn = new JButton("+ Add Field");
-            addFieldBtn.addActionListener(e -> addField(new FieldAction("", FieldAction.MappingMode.SET, "", "")));
-            footer.add(addFieldBtn);
+            Button addFieldBtn = new Button("+ Add Field");
+            addFieldBtn.setOnAction(e -> addField(new FieldAction("", FieldAction.MappingMode.SET, "", "")));
+            footer.getChildren().add(addFieldBtn);
             
             if (step instanceof TransitionStep) {
-                JButton fetchBtn = new JButton("Fetch Transition Fields");
-                fetchBtn.addActionListener(e -> {
+                Button fetchBtn = new Button("Fetch Transition Fields");
+                fetchBtn.setOnAction(e -> {
                     if (metadataListener != null) {
                         saveToStep(); // Save latest status/key from UI
                         metadataListener.onFetchTransitionFields((TransitionStep) step);
                     }
                 });
-                footer.add(fetchBtn);
+                footer.getChildren().add(fetchBtn);
             }
         }
-        contentPanel.add(footer);
+        contentPanel.getChildren().add(footer);
 
-        JPanel centerWrapper = new JPanel(new BorderLayout());
-        centerWrapper.add(contentPanel, BorderLayout.NORTH);
-        add(centerWrapper, BorderLayout.CENTER);
+        setCenter(contentPanel);
     }
 
     public void addField(FieldAction action) {
@@ -279,16 +309,11 @@ public class StepEditorPanel extends JPanel {
             @Override
             public void onRemove(FieldActionPanel p) {
                 actionPanels.remove(p);
-                fieldsContainer.remove(p);
-                fieldsContainer.revalidate();
-                fieldsContainer.repaint();
+                fieldsContainer.getChildren().remove(p);
             }
         });
-        panel.setAlignmentX(Component.LEFT_ALIGNMENT);
         actionPanels.add(panel);
-        fieldsContainer.add(panel);
-        fieldsContainer.revalidate();
-        fieldsContainer.repaint();
+        fieldsContainer.getChildren().add(panel);
     }
 
     public void addLinkAction(LinkAction action) {
@@ -316,37 +341,30 @@ public class StepEditorPanel extends JPanel {
             @Override
             public void onRemove(LinkActionPanel p) {
                 linkActionPanels.remove(p);
-                fieldsContainer.remove(p);
-                fieldsContainer.revalidate();
-                fieldsContainer.repaint();
+                fieldsContainer.getChildren().remove(p);
             }
         });
-        panel.setAlignmentX(Component.LEFT_ALIGNMENT);
         linkActionPanels.add(panel);
-        fieldsContainer.add(panel);
-        fieldsContainer.revalidate();
-        fieldsContainer.repaint();
+        fieldsContainer.getChildren().add(panel);
     }
 
-    private JPanel createPair(String label, JComponent comp) {
-        JPanel p = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
-        p.setOpaque(false);
-        if (label != null && !label.isEmpty()) {
-            p.add(new JLabel(label));
+    private HBox createPair(String labelText, javafx.scene.Node comp) {
+        HBox p = new HBox(5);
+        p.setAlignment(Pos.CENTER_LEFT);
+        if (labelText != null && !labelText.isEmpty()) {
+            p.getChildren().add(new Label(labelText));
         }
-        p.add(comp);
+        p.getChildren().add(comp);
         return p;
     }
 
     private void refreshActionLayout() {
-        fieldsContainer.removeAll();
+        fieldsContainer.getChildren().clear();
         if (step instanceof LinkStep) {
-            for (LinkActionPanel p : linkActionPanels) fieldsContainer.add(p);
+            for (LinkActionPanel p : linkActionPanels) fieldsContainer.getChildren().add(p);
         } else {
-            for (FieldActionPanel p : actionPanels) fieldsContainer.add(p);
+            for (FieldActionPanel p : actionPanels) fieldsContainer.getChildren().add(p);
         }
-        fieldsContainer.revalidate();
-        fieldsContainer.repaint();
     }
 
     public void saveToStep() {
@@ -354,7 +372,7 @@ public class StepEditorPanel extends JPanel {
         
         // Save Condition
         step.setConditionToken(condTokenField.getText());
-        step.setConditionOperator((String) condOpCombo.getSelectedItem());
+        step.setConditionOperator(condOpCombo.getSelectionModel().getSelectedItem());
         step.setConditionValue(condValueField.getText());
 
         if (step instanceof UpdateStep) {
@@ -398,6 +416,8 @@ public class StepEditorPanel extends JPanel {
 
     public WorkflowStep getStep() { return step; }
 
+    public HBox getHeader() { return header; }
+
     public void refreshMetadata(Map<String, String> fieldOptions, Map<String, JSONObject> fullMetadata) {
         for (FieldActionPanel panel : actionPanels) {
             panel.refreshMetadata(fieldOptions, fullMetadata);
@@ -409,13 +429,5 @@ public class StepEditorPanel extends JPanel {
         for (LinkActionPanel panel : linkActionPanels) {
             panel.updateLinkTypes(linkTypes);
         }
-    }
-
-    private static class SimpleDocumentListener implements javax.swing.event.DocumentListener {
-        private final Runnable onChange;
-        SimpleDocumentListener(Runnable onChange) { this.onChange = onChange; }
-        public void insertUpdate(javax.swing.event.DocumentEvent e) { onChange.run(); }
-        public void removeUpdate(javax.swing.event.DocumentEvent e) { onChange.run(); }
-        public void changedUpdate(javax.swing.event.DocumentEvent e) { onChange.run(); }
     }
 }

@@ -1,8 +1,10 @@
 package tso.usmc.jira.ui;
 
-import javax.swing.*;
-import javax.swing.border.EmptyBorder;
-import java.awt.*;
+import javafx.application.Platform;
+import javafx.geometry.Insets;
+import javafx.scene.control.*;
+import javafx.scene.layout.*;
+import javafx.scene.web.WebView;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.util.concurrent.Future;
@@ -18,78 +20,86 @@ import tso.usmc.jira.util.ExecutionService;
  * A panel for fetching comments from a Jira issue and summarizing them
  * using a local offline LLM (llama.cpp).
  */
-public class CommentSummarizerPanel extends JPanel {
+public class CommentSummarizerPanel extends BorderPane {
 
     private final JiraApiClientGui mainFrame;
     private EmbeddedLlmService llmService;
     private Future<?> activeTask;
 
     // UI Components
-    private final JTextField issueKeyField = new JTextField(15);
-    private final JButton summarizeButton = new JButton("Fetch & Summarize");
-    private final JButton cancelButton = new JButton("Cancel");
-    private final JButton resetButton = new JButton("Reset");
-    private final JEditorPane summaryPane = new JEditorPane();
-    private final JTextArea rawCommentsArea = new JTextArea();
-    private final JLabel statusLabel = new JLabel(" Ready");
+    private final TextField issueKeyField = new TextField();
+    private final Button summarizeButton = new Button("Fetch & Summarize");
+    private final Button cancelButton = new Button("Cancel");
+    private final Button resetButton = new Button("Reset");
+    private final WebView summaryPane = new WebView();
+    private final TextArea rawCommentsArea = new TextArea();
+    private final Label statusLabel = new Label(" Ready");
 
     // Progress components for extraction
-    private final JPanel progressPanel = new JPanel(new BorderLayout(5, 5));
-    private final JProgressBar progressBar = new JProgressBar(0, 100);
-    private final JLabel progressLabel = new JLabel("Initial setup...");
+    private final VBox progressPanel = new VBox(5);
+    private final ProgressBar progressBar = new ProgressBar(0);
+    private final Label progressLabel = new Label("Initial setup...");
 
     public CommentSummarizerPanel(JiraApiClientGui mainFrame) {
         this.mainFrame = mainFrame;
-        setLayout(new BorderLayout(10, 10));
-        setBorder(new EmptyBorder(10, 10, 10, 10));
+        setPadding(new Insets(10));
 
         // --- TOP: Input ---
-        JPanel topPanel = new JPanel(new BorderLayout());
+        VBox topPanel = new VBox(10);
         
-        JPanel inputPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
-        inputPanel.setBorder(BorderFactory.createTitledBorder("Issue Details"));
-        inputPanel.add(new JLabel("Jira Issue Key:"));
-        inputPanel.add(issueKeyField);
-        inputPanel.add(summarizeButton);
-        inputPanel.add(cancelButton);
-        inputPanel.add(resetButton);
+        HBox inputPanel = new HBox(10);
+        inputPanel.getStyleClass().add("card");
+        inputPanel.setPadding(new Insets(10));
         
-        cancelButton.setEnabled(false);
-        cancelButton.setForeground(Color.RED);
+        issueKeyField.setPrefWidth(150);
+        cancelButton.setDisable(true);
+        cancelButton.setStyle("-fx-text-fill: red;");
 
+        inputPanel.getChildren().addAll(
+            new Label("Jira Issue Key:"),
+            issueKeyField,
+            summarizeButton,
+            cancelButton,
+            resetButton
+        );
+        
         // Progress Panel (Hidden by default, shown during extraction)
-        progressPanel.setBorder(BorderFactory.createTitledBorder("One-time AI Setup"));
-        progressPanel.add(progressLabel, BorderLayout.NORTH);
-        progressPanel.add(progressBar, BorderLayout.CENTER);
+        progressPanel.getStyleClass().add("card");
+        progressPanel.setPadding(new Insets(10));
+        progressBar.setMaxWidth(Double.MAX_VALUE);
+        progressPanel.getChildren().addAll(progressLabel, progressBar);
         progressPanel.setVisible(false);
+        progressPanel.setManaged(false); // don't allocate space when invisible
 
-        topPanel.add(inputPanel, BorderLayout.CENTER);
-        topPanel.add(progressPanel, BorderLayout.SOUTH);
-        add(topPanel, BorderLayout.NORTH);
+        topPanel.getChildren().addAll(inputPanel, progressPanel);
+        setTop(topPanel);
 
         // --- CENTER: Results (Tabs) ---
-        JTabbedPane resultTabs = new JTabbedPane();
+        TabPane resultTabs = new TabPane();
+        resultTabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
         
-        summaryPane.setEditable(false);
-        summaryPane.setContentType("text/html");
-        resultTabs.addTab("AI Summary", new JScrollPane(summaryPane));
-
+        // Tab 1: AI Summary
+        Tab summaryTab = new Tab("AI Summary", summaryPane);
+        
+        // Tab 2: Raw Comments
         rawCommentsArea.setEditable(false);
-        rawCommentsArea.setFont(new Font("Monospaced", Font.PLAIN, 12));
-        resultTabs.addTab("Raw Comments", new JScrollPane(rawCommentsArea));
+        rawCommentsArea.setStyle("-fx-font-family: monospace;");
+        Tab rawTab = new Tab("Raw Comments", rawCommentsArea);
 
-        add(resultTabs, BorderLayout.CENTER);
+        resultTabs.getTabs().addAll(summaryTab, rawTab);
+        setCenter(resultTabs);
 
         // --- BOTTOM: Status ---
-        JPanel statusPanel = new JPanel(new BorderLayout());
-        statusPanel.setBorder(BorderFactory.createEtchedBorder());
-        statusPanel.add(statusLabel, BorderLayout.CENTER);
-        add(statusPanel, BorderLayout.SOUTH);
+        HBox statusPanel = new HBox();
+        statusPanel.getStyleClass().add("status-bar");
+        statusLabel.getStyleClass().add("status-text");
+        statusPanel.getChildren().add(statusLabel);
+        setBottom(statusPanel);
 
         // --- Action Listeners ---
-        summarizeButton.addActionListener(e -> startSummarization());
-        cancelButton.addActionListener(e -> cancelTask());
-        resetButton.addActionListener(e -> resetPanel());
+        summarizeButton.setOnAction(e -> startSummarization());
+        cancelButton.setOnAction(e -> cancelTask());
+        resetButton.setOnAction(e -> resetPanel());
 
         // Initialize LLM in background
         initializeLlm();
@@ -98,11 +108,11 @@ public class CommentSummarizerPanel extends JPanel {
     private void resetPanel() {
         cancelTask();
         issueKeyField.setText("");
-        summaryPane.setText("");
+        summaryPane.getEngine().loadContent("");
         rawCommentsArea.setText("");
         statusLabel.setText(" Ready");
-        summarizeButton.setEnabled(true);
-        cancelButton.setEnabled(false);
+        summarizeButton.setDisable(false);
+        cancelButton.setDisable(true);
     }
 
     private void cancelTask() {
@@ -112,38 +122,39 @@ public class CommentSummarizerPanel extends JPanel {
                 llmService.terminate(); // KILL the active llama process
             }
             statusLabel.setText(" Process Cancelled.");
-            summarizeButton.setEnabled(true);
-            cancelButton.setEnabled(false);
+            summarizeButton.setDisable(false);
+            cancelButton.setDisable(true);
         }
     }
 
     private void initializeLlm() {
         statusLabel.setText(" Initializing Offline LLM Engine...");
-        summarizeButton.setEnabled(false);
+        summarizeButton.setDisable(true);
         
         ExecutionService.submit(() -> {
             try {
                 llmService = new EmbeddedLlmService(mainFrame.getJiraConfig(), (task, percent) -> {
-                    SwingUtilities.invokeLater(() -> {
+                    Platform.runLater(() -> {
                         if (!progressPanel.isVisible()) {
                             progressPanel.setVisible(true);
-                            revalidate();
+                            progressPanel.setManaged(true);
                         }
                         progressLabel.setText(task);
-                        progressBar.setValue(percent);
+                        progressBar.setProgress(percent / 100.0);
                     });
                 });
-                SwingUtilities.invokeLater(() -> {
+                Platform.runLater(() -> {
                     statusLabel.setText(" Offline LLM Ready.");
-                    summarizeButton.setEnabled(true);
+                    summarizeButton.setDisable(false);
                     progressPanel.setVisible(false);
-                    revalidate();
+                    progressPanel.setManaged(false);
                 });
             } catch (Exception e) {
-                SwingUtilities.invokeLater(() -> {
+                Platform.runLater(() -> {
                     statusLabel.setText(" LLM Error: " + e.getMessage());
                     progressPanel.setVisible(false);
-                    summaryPane.setText("<html><body style='color:red;'><h3>LLM Initialization Failed</h3>" +
+                    progressPanel.setManaged(false);
+                    summaryPane.getEngine().loadContent("<html><body style='color:red;'><h3>LLM Initialization Failed</h3>" +
                             "<p>Error: " + e.getMessage() + "</p></body></html>");
                 });
             }
@@ -153,13 +164,17 @@ public class CommentSummarizerPanel extends JPanel {
     private void startSummarization() {
         String issueKey = issueKeyField.getText().trim().toUpperCase();
         if (issueKey.isEmpty()) {
-            JOptionPane.showMessageDialog(this, "Please enter an issue key.");
+            Alert alert = new Alert(Alert.AlertType.WARNING);
+            alert.setTitle("Warning");
+            alert.setHeaderText(null);
+            alert.setContentText("Please enter an issue key.");
+            alert.showAndWait();
             return;
         }
 
-        summarizeButton.setEnabled(false);
-        cancelButton.setEnabled(true);
-        summaryPane.setText("<html><body><h3>Processing " + issueKey + "...</h3><p>Fetching data and running local AI model.</p></body></html>");
+        summarizeButton.setDisable(true);
+        cancelButton.setDisable(false);
+        summaryPane.getEngine().loadContent("<html><body><h3>Processing " + issueKey + "...</h3><p>Fetching data and running local AI model.</p></body></html>");
         rawCommentsArea.setText("");
         statusLabel.setText(" Fetching comments from Jira...");
 
@@ -196,7 +211,7 @@ public class CommentSummarizerPanel extends JPanel {
                 String formattedRaw = displayRaw.toString();
                 String rawTextForAI = aiInput.toString();
                 
-                SwingUtilities.invokeLater(() -> rawCommentsArea.setText(formattedRaw));
+                Platform.runLater(() -> rawCommentsArea.setText(formattedRaw));
 
                 // 2. Run LLM
                 updateStatus("Local AI Engine: Analyzing " + comments.length() + " comments...");
@@ -223,22 +238,22 @@ public class CommentSummarizerPanel extends JPanel {
                     updateSummary("<span style='color:red;'><b>Error:</b> " + ex.getMessage() + "</span>", false);
                 }
             } finally {
-                SwingUtilities.invokeLater(() -> {
-                    summarizeButton.setEnabled(true);
-                    cancelButton.setEnabled(false);
+                Platform.runLater(() -> {
+                    summarizeButton.setDisable(false);
+                    cancelButton.setDisable(true);
                 });
             }
         });
     }
 
     private void updateStatus(String msg) {
-        SwingUtilities.invokeLater(() -> statusLabel.setText(" " + msg));
+        Platform.runLater(() -> statusLabel.setText(" " + msg));
     }
 
     private void updateSummary(String text, boolean partial) {
-        SwingUtilities.invokeLater(() -> {
+        Platform.runLater(() -> {
             String title = partial ? "AI Summary (Generating...)" : "AI Summary";
-            summaryPane.setText("<html><body><h3>" + title + "</h3><p>" + text.replace("\n", "<br>") + "</p></body></html>");
+            summaryPane.getEngine().loadContent("<html><body><h3>" + title + "</h3><p>" + text.replace("\n", "<br>") + "</p></body></html>");
         });
     }
 }
