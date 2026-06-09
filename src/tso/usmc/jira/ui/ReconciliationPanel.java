@@ -180,6 +180,10 @@ public class ReconciliationPanel extends BorderPane {
         setupMatchesTable();
         Tab tabMatches = new Tab("Matches (Both)", matchesTable);
 
+        setupTableKeys(onlyInIspwTable);
+        setupTableKeys(onlyInJiraTable);
+        setupTableKeys(matchesTable);
+
         resultsTabs.getTabs().addAll(tabIspw, tabJira, tabMatches);
         centerContainer.setCenter(resultsTabs);
         setCenter(centerContainer);
@@ -667,5 +671,56 @@ public class ReconciliationPanel extends BorderPane {
         alert.setHeaderText(null);
         alert.setContentText(content);
         alert.showAndWait();
+    }
+
+    private <T> void setupTableKeys(TableView<T> table) {
+        table.getSelectionModel().setSelectionMode(SelectionMode.MULTIPLE);
+        
+        table.setOnKeyPressed(event -> {
+            if (event.isControlDown()) {
+                if (event.getCode() == javafx.scene.input.KeyCode.C) {
+                    copyTableSelectionToClipboard(table);
+                    event.consume();
+                } else if (event.getCode() == javafx.scene.input.KeyCode.A) {
+                    table.getSelectionModel().selectAll();
+                    event.consume();
+                }
+            }
+        });
+    }
+
+    private <T> void copyTableSelectionToClipboard(TableView<T> table) {
+        ObservableList<T> selectedItems = table.getSelectionModel().getSelectedItems();
+        if (selectedItems.isEmpty()) return;
+
+        StringBuilder sb = new StringBuilder();
+        ObservableList<TableColumn<T, ?>> columns = table.getColumns();
+
+        for (int i = 0; i < selectedItems.size(); i++) {
+            T item = selectedItems.get(i);
+            if (item == null) continue;
+
+            if (i > 0) {
+                sb.append("\n");
+            }
+
+            for (int colIndex = 0; colIndex < columns.size(); colIndex++) {
+                TableColumn<T, ?> column = columns.get(colIndex);
+                Object cellValue = null;
+                if (column.getCellValueFactory() != null) {
+                    cellValue = column.getCellData(item);
+                }
+
+                if (colIndex > 0) {
+                    sb.append("\t");
+                }
+
+                sb.append(cellValue != null ? cellValue.toString() : "");
+            }
+        }
+
+        javafx.scene.input.ClipboardContent content = new javafx.scene.input.ClipboardContent();
+        content.putString(sb.toString());
+        javafx.scene.input.Clipboard.getSystemClipboard().setContent(content);
     }
 }

@@ -20,6 +20,9 @@ import org.json.JSONObject;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import javafx.scene.input.Clipboard;
+import javafx.scene.input.ClipboardContent;
+import javafx.scene.input.KeyCode;
 
 public class JqlRunnerPanel extends BorderPane implements tso.usmc.jira.util.ConfigChangeListener {
 
@@ -38,6 +41,12 @@ public class JqlRunnerPanel extends BorderPane implements tso.usmc.jira.util.Con
 
     private final TableView<ObservableList<String>> resultsTable = new TableView<>();
     private boolean isRefreshingFilters = false;
+
+    // Excel-like Drag Selection State
+    private int dragStartRow = -1;
+    private int dragStartCol = -1;
+    private boolean isDragSelecting = false;
+    private List<TablePosition> dragInitialSelection = new ArrayList<>();
 
     public JqlRunnerPanel(JiraApiClientGui mainFrame) {
         this.mainFrame = mainFrame;
@@ -121,6 +130,19 @@ public class JqlRunnerPanel extends BorderPane implements tso.usmc.jira.util.Con
             if (newVal) {
                 populateWorkflowsMenu();
             }
+        });
+
+        // Key pressed listener for clipboard copy (Ctrl+C)
+        resultsTable.setOnKeyPressed(event -> {
+            if (event.isControlDown() && event.getCode() == KeyCode.C) {
+                copySelectionToClipboard();
+                event.consume();
+            }
+        });
+
+        // Ensure drag ends if mouse released on table structure
+        resultsTable.setOnMouseReleased(e -> {
+            isDragSelecting = false;
         });
     }
 
@@ -410,6 +432,60 @@ public class JqlRunnerPanel extends BorderPane implements tso.usmc.jira.util.Con
                             }
                             return new SimpleStringProperty("");
                         });
+
+                        column.setCellFactory(tc -> {
+                            TableCell<ObservableList<String>, String> cell = new TableCell<ObservableList<String>, String>() {
+                                @Override
+                                protected void updateItem(String item, boolean empty) {
+                                    super.updateItem(item, empty);
+                                    if (empty || item == null) {
+                                        setText(null);
+                                        setGraphic(null);
+                                    } else {
+                                        setText(item);
+                                    }
+                                }
+                            };
+
+                            cell.setOnMousePressed(e -> {
+                                if (e.isPrimaryButtonDown() && cell.getTableRow() != null) {
+                                    resultsTable.requestFocus();
+                                    dragStartRow = cell.getTableRow().getIndex();
+                                    dragStartCol = resultsTable.getColumns().indexOf(cell.getTableColumn());
+                                    isDragSelecting = false;
+                                }
+                            });
+
+                            cell.setOnDragDetected(e -> {
+                                if (e.isPrimaryButtonDown() && cell.getTableRow() != null) {
+                                    isDragSelecting = true;
+                                    dragInitialSelection = new ArrayList<>(resultsTable.getSelectionModel().getSelectedCells());
+                                    cell.startFullDrag();
+                                    e.consume();
+                                }
+                            });
+
+                            cell.setOnMouseDragEntered(e -> {
+                                if (isDragSelecting && cell.getTableRow() != null) {
+                                    int currentRow = cell.getTableRow().getIndex();
+                                    int currentCol = resultsTable.getColumns().indexOf(cell.getTableColumn());
+                                    if (currentRow >= 0 && currentCol >= 0) {
+                                        updateDragSelection(currentRow, currentCol);
+                                        e.consume();
+                                    }
+                                }
+                            });
+
+                            cell.setOnMouseReleased(e -> {
+                                if (isDragSelecting) {
+                                    isDragSelecting = false;
+                                    e.consume();
+                                }
+                            });
+
+                            return cell;
+                        });
+
                         resultsTable.getColumns().add(column);
                     }
 
@@ -762,5 +838,72 @@ public class JqlRunnerPanel extends BorderPane implements tso.usmc.jira.util.Con
         alert.setHeaderText(null);
         alert.setContentText(content);
         alert.showAndWait();
+    }
+
+    private void updateDragSelection(int currentRow, int currentCol) {
+        if (dragStartRow < 0 || dragStartCol < 0) return;
+        
+        resultsTable.getSelectionModel().clearSelection();
+        
+        // Restore initial selection if Ctrl was held
+        for (TablePosition pos : dragInitialSelection) {
+            resultsTable.getSelectionModel().select(pos.getRow(), pos.getTableColumn());
+        }
+        
+        int minRow = Math.min(dragStartRow, currentRow);
+        int maxRow = Math.max(dragStartRow, currentRow);
+        int minCol = Math.min(dragStartCol, currentCol);
+        int maxCol = Math.max(dragStartCol, currentCol);
+        
+        for (int r = minRow; r <= maxRow; r++) {
+            for (int c = minCol; c <= maxCol; c++) {
+                TableColumn<ObservableList<String>, ?> col = resultsTable.getColumns().get(c);
+                resultsTable.getSelectionModel().select(r, col);
+            }
+        }
+    }
+
+    private void copySelectionToClipboard() {
+        List<TablePosition> selected = new ArrayList<>(resultsTable.getSelectionModel().getSelectedCells());
+        if (selected.isEmpty()) return;
+
+        // Sort by row index, then by column index
+        selected.sort((a, b) -> {
+            if (a.getRow() != b.getRow()) {
+                return Integer.compare(a.getRow(), b.getRow());
+            }
+            int colA = resultsTable.getColumns().indexOf(a.getTableColumn());
+            int colB = resultsTable.getColumns().indexOf(b.getTableColumn());
+            return Integer.compare(colA, colB);
+        });
+
+        StringBuilder sb = new StringBuilder();
+        int lastRow = -1;
+        
+        for (TablePosition pos : selected) {
+            int row = pos.getRow();
+            if (lastRow == -1) {
+                lastRow = row;
+            } else if (row != lastRow) {
+                sb.append("\n");
+                lastRow = row;
+            } else {
+                sb.append("\t");
+            }
+            
+            // Get the value of the cell
+            ObservableList<String> rowData = resultsTable.getItems().get(row);
+            int colIndex = resultsTable.getColumns().indexOf(pos.getTableColumn());
+            String val = "";
+            if (rowData != null && colIndex >= 0 && colIndex < rowData.size()) {
+                val = rowData.get(colIndex);
+            }
+            sb.append(val != null ? val : "");
+        }
+
+        // Put onto system clipboard
+        javafx.scene.input.ClipboardContent content = new javafx.scene.input.ClipboardContent();
+        content.putString(sb.toString());
+        javafx.scene.input.Clipboard.getSystemClipboard().setContent(content);
     }
 }

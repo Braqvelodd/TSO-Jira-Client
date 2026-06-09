@@ -57,6 +57,11 @@ public class JiraApiClientGui extends Application implements ConfigChangeListene
 
         stage.setTitle("USMC TSO CCB Jira Client");
 
+        java.net.URL iconUrl = JiraApiClientGui.class.getResource("/app_icon.png");
+        if (iconUrl != null) {
+            stage.getIcons().add(new javafx.scene.image.Image(iconUrl.toExternalForm()));
+        }
+
         // Layout Assembly
         BorderPane root = new BorderPane();
         mainScene = new Scene(root, 1200, 900);
@@ -168,6 +173,10 @@ public class JiraApiClientGui extends Application implements ConfigChangeListene
         themeManager.applyTheme(mainScene);
 
         stage.setScene(mainScene);
+        stage.setOnCloseRequest(e -> {
+            Platform.exit();
+            System.exit(0);
+        });
         stage.show();
     }
 
@@ -254,6 +263,12 @@ public class JiraApiClientGui extends Application implements ConfigChangeListene
         alert.setHeaderText(null);
         alert.setContentText(content);
         alert.showAndWait();
+    }
+
+    @Override
+    public void stop() throws Exception {
+        super.stop();
+        System.exit(0);
     }
 
     public static void main(String[] args) {

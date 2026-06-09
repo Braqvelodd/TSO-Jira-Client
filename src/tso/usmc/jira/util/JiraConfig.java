@@ -367,30 +367,8 @@ public class JiraConfig {
     private void loadProperties() {
         synchronized (lock) {
             properties.clear(); // Clear old properties before loading new ones
-            try (InputStream input = new FileInputStream(this.configFile)) {
-                properties.load(input);
-                System.out.println("Configuration reloaded from " + configFile.getName());
-            } catch (IOException ex) {
-                System.err.println("Error reloading configuration: " + ex.getMessage());
-            }
 
-            if (this.templateFile.exists()) {
-                try (InputStream input = new FileInputStream(this.templateFile)) {
-                    Properties tempProps = new Properties();
-                    tempProps.load(input);
-                    // Only merge template, api_template, workflow, and jql_filter keys
-                    for (String key : tempProps.stringPropertyNames()) {
-                        if (key.startsWith("template.") || key.startsWith("api_template.") || 
-                            key.startsWith("workflow.") || key.startsWith("jql_filter.")) {
-                            properties.setProperty(key, tempProps.getProperty(key));
-                        }
-                    }
-                    System.out.println("Templates reloaded from " + templateFile.getName());
-                } catch (IOException ex) {
-                    System.err.println("Error reloading templates: " + ex.getMessage());
-                }
-            }
-
+            // 1. Load constants.ini first (contains system defaults & base settings)
             if (this.constantsFile != null && this.constantsFile.exists()) {
                 try {
                     List<String> lines = Files.readAllLines(this.constantsFile.toPath());
@@ -413,10 +391,36 @@ public class JiraConfig {
                             properties.setProperty(fullKey, value);
                         }
                     }
-                    System.out.println("Constants reloaded from " + constantsFile.getName());
+                    System.out.println("Constants loaded from " + constantsFile.getName());
                 } catch (IOException ex) {
-                    System.err.println("Error reloading constants: " + ex.getMessage());
+                    System.err.println("Error loading constants: " + ex.getMessage());
                 }
+            }
+
+            // 2. Load jiratemplate.ini second (contains custom workflows, filters, and templates)
+            if (this.templateFile.exists()) {
+                try (InputStream input = new FileInputStream(this.templateFile)) {
+                    Properties tempProps = new Properties();
+                    tempProps.load(input);
+                    // Only merge template, api_template, workflow, and jql_filter keys
+                    for (String key : tempProps.stringPropertyNames()) {
+                        if (key.startsWith("template.") || key.startsWith("api_template.") || 
+                            key.startsWith("workflow.") || key.startsWith("jql_filter.")) {
+                            properties.setProperty(key, tempProps.getProperty(key));
+                        }
+                    }
+                    System.out.println("Templates loaded from " + templateFile.getName());
+                } catch (IOException ex) {
+                    System.err.println("Error loading templates: " + ex.getMessage());
+                }
+            }
+
+            // 3. Load JiraConfig.ini last (contains user-specific overrides, settings, and themes)
+            try (InputStream input = new FileInputStream(this.configFile)) {
+                properties.load(input);
+                System.out.println("Configuration reloaded from " + configFile.getName());
+            } catch (IOException ex) {
+                System.err.println("Error reloading configuration: " + ex.getMessage());
             }
         }
     }

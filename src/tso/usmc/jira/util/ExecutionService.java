@@ -10,7 +10,12 @@ import java.util.concurrent.TimeUnit;
  * Replaces ad-hoc 'new Thread()' calls with a managed thread pool.
  */
 public class ExecutionService {
-    private static final ExecutorService pool = Executors.newFixedThreadPool(10);
+    private static final ExecutorService pool = Executors.newFixedThreadPool(10, r -> {
+        Thread t = new Thread(r);
+        t.setDaemon(true);
+        t.setName("ExecutionService-Pool-Thread");
+        return t;
+    });
 
     /**
      * Executes a task in the background thread pool.
