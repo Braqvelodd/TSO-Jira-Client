@@ -26,10 +26,12 @@ public class ThemeSettingsPanel extends BorderPane {
     private ComboBox<String> themeDropdown;
     private ColorPicker colorPicker;
     private WebView cssWebView;
+    private WebView helpPanel;
     private Label statusLabel;
     private Timeline saveDebouncer;
     private boolean isUpdatingFromCode = false;
     private String pendingCssText = "";
+    private final JavaConnector javaConnector = new JavaConnector();
 
     private static final String EDITOR_HTML = 
         "<!DOCTYPE html>\n" +
@@ -41,6 +43,15 @@ public class ThemeSettingsPanel extends BorderPane {
         "    background-color: #0f172a; color: #f8fafc;\n" +
         "    font-family: 'Consolas', 'Courier New', monospace;\n" +
         "    overflow: hidden;\n" +
+        "  }\n" +
+        "  body.light, body.light #textarea {\n" +
+        "    background-color: #ffffff;\n" +
+        "    color: #1e293b;\n" +
+        "  }\n" +
+        "  body.light #line-numbers {\n" +
+        "    background-color: #f1f5f9;\n" +
+        "    color: #64748b;\n" +
+        "    border-right: 1px solid #cbd5e1;\n" +
         "  }\n" +
         "  #editor-container {\n" +
         "    display: flex;\n" +
@@ -79,7 +90,7 @@ public class ThemeSettingsPanel extends BorderPane {
         "    font-size: 13px;\n" +
         "    line-height: 20px;\n" +
         "    padding: 10px;\n" +
-        "    padding-right: 50px;\n" +
+        "    padding-right: 100px;\n" +
         "    box-sizing: border-box;\n" +
         "    white-space: pre;\n" +
         "    overflow-y: scroll;\n" +
@@ -88,8 +99,8 @@ public class ThemeSettingsPanel extends BorderPane {
         "  #pickers-gutter {\n" +
         "    position: absolute;\n" +
         "    top: 0;\n" +
-        "    right: 15px;\n" +
-        "    width: 30px;\n" +
+        "    right: 10px;\n" +
+        "    width: 85px;\n" +
         "    height: 100%;\n" +
         "    pointer-events: none;\n" +
         "    overflow: hidden;\n" +
@@ -145,6 +156,27 @@ public class ThemeSettingsPanel extends BorderPane {
         "      lineNumbers.scrollTop = textarea.scrollTop;\n" +
         "    }\n" +
         "\n" +
+        "    function replaceColorOnLine(lineText, matchIndexToReplace, newColorStr) {\n" +
+        "      const colorPattern = /(#[a-fA-F0-9]{8}\\b|#[a-fA-F0-9]{6}\\b|#[a-fA-F0-9]{3,4}\\b|rgba?\\(\\s*\\d+\\s*,\\s*\\d+\\s*,\\s*\\d+\\s*(?:,\\s*[0-9.]+\\s*)?\\))/gi;\n" +
+        "      let match;\n" +
+        "      let currentMatchIndex = 0;\n" +
+        "      let lastIndex = 0;\n" +
+        "      let result = '';\n" +
+        "      \n" +
+        "      while ((match = colorPattern.exec(lineText)) !== null) {\n" +
+        "        result += lineText.substring(lastIndex, match.index);\n" +
+        "        if (currentMatchIndex === matchIndexToReplace) {\n" +
+        "          result += newColorStr;\n" +
+        "        } else {\n" +
+        "          result += match[0];\n" +
+        "        }\n" +
+        "        lastIndex = colorPattern.lastIndex;\n" +
+        "        currentMatchIndex++;\n" +
+        "      }\n" +
+        "      result += lineText.substring(lastIndex);\n" +
+        "      return result;\n" +
+        "    }\n" +
+        "\n" +
         "    function parseColors() {\n" +
         "      pickersGutter.innerHTML = '';\n" +
         "      const lines = textarea.value.split('\\n');\n" +
@@ -156,21 +188,23 @@ public class ThemeSettingsPanel extends BorderPane {
         "      lines.forEach((lineText, lineIndex) => {\n" +
         "        let match;\n" +
         "        colorPattern.lastIndex = 0;\n" +
+        "        let pickerIndex = 0;\n" +
         "        while ((match = colorPattern.exec(lineText)) !== null) {\n" +
         "          const colorStr = match[0];\n" +
-        "          const matchIndex = match.index;\n" +
         "          const yPos = padding + (lineIndex * lineHeight) - scrollOffset;\n" +
         "          if (yPos >= 0 && yPos <= textarea.clientHeight) {\n" +
-        "            createPicker(colorStr, lineIndex, matchIndex, colorStr.length, yPos);\n" +
+        "            createPicker(colorStr, lineIndex, yPos, pickerIndex);\n" +
         "          }\n" +
+        "          pickerIndex++;\n" +
         "        }\n" +
         "      });\n" +
         "    }\n" +
         "\n" +
-        "    function createPicker(colorStr, lineIndex, charIndex, length, yPos) {\n" +
+        "    function createPicker(colorStr, lineIndex, yPos, pickerIndex) {\n" +
         "      const wrapper = document.createElement('div');\n" +
         "      wrapper.className = 'color-picker-wrapper';\n" +
         "      wrapper.style.top = yPos + 'px';\n" +
+        "      wrapper.style.left = (pickerIndex * 22) + 'px';\n" +
         "      \n" +
         "      const dot = document.createElement('div');\n" +
         "      dot.className = 'color-dot';\n" +
@@ -181,10 +215,34 @@ public class ThemeSettingsPanel extends BorderPane {
         "      input.className = 'color-input';\n" +
         "      input.value = convertToHex(colorStr);\n" +
         "      \n" +
-        "      input.addEventListener('input', (e) => {\n" +
-        "        const newHex = e.target.value;\n" +
+        "      const handleUpdate = (newHex, isFinal) => {\n" +
         "        const formatted = formatColorLike(newHex, colorStr);\n" +
-        "        updateColorInText(lineIndex, charIndex, length, formatted);\n" +
+        "        const lines = textarea.value.split('\\n');\n" +
+        "        \n" +
+        "        lines[lineIndex] = replaceColorOnLine(lines[lineIndex], pickerIndex, formatted);\n" +
+        "        textarea.value = lines.join('\\n');\n" +
+        "        \n" +
+        "        dot.style.backgroundColor = formatted;\n" +
+        "        \n" +
+        "        if (window.javaConnector) {\n" +
+        "          if (isFinal) {\n" +
+        "            window.javaConnector.onColorPicked(textarea.value);\n" +
+        "          } else {\n" +
+        "            window.javaConnector.onTextChange(textarea.value);\n" +
+        "          }\n" +
+        "        }\n" +
+        "        \n" +
+        "        if (isFinal) {\n" +
+        "          parseColors();\n" +
+        "        }\n" +
+        "      };\n" +
+        "\n" +
+        "      input.addEventListener('input', (e) => {\n" +
+        "        handleUpdate(e.target.value, false);\n" +
+        "      });\n" +
+        "\n" +
+        "      input.addEventListener('change', (e) => {\n" +
+        "        handleUpdate(e.target.value, true);\n" +
         "      });\n" +
         "\n" +
         "      wrapper.appendChild(dot);\n" +
@@ -230,21 +288,6 @@ public class ThemeSettingsPanel extends BorderPane {
         "      return hex;\n" +
         "    }\n" +
         "\n" +
-        "    function updateColorInText(lineIndex, charIndex, length, newColorStr) {\n" +
-        "      const lines = textarea.value.split('\\n');\n" +
-        "      const lineText = lines[lineIndex];\n" +
-        "      const before = lineText.substring(0, charIndex);\n" +
-        "      const after = lineText.substring(charIndex + length);\n" +
-        "      lines[lineIndex] = before + newColorStr + after;\n" +
-        "      \n" +
-        "      textarea.value = lines.join('\\n');\n" +
-        "      \n" +
-        "      if (window.javaConnector) {\n" +
-        "        window.javaConnector.onColorPicked(textarea.value);\n" +
-        "      }\n" +
-        "      parseColors();\n" +
-        "    }\n" +
-        "\n" +
         "    textarea.addEventListener('input', () => {\n" +
         "      updateLineNumbers();\n" +
         "      parseColors();\n" +
@@ -262,6 +305,10 @@ public class ThemeSettingsPanel extends BorderPane {
         "      textarea.value = text;\n" +
         "      updateLineNumbers();\n" +
         "      parseColors();\n" +
+        "    }\n" +
+        "\n" +
+        "    function setTheme(theme) {\n" +
+        "      document.body.className = theme;\n" +
         "    }\n" +
         "\n" +
         "    window.addEventListener('resize', parseColors);\n" +
@@ -327,20 +374,30 @@ public class ThemeSettingsPanel extends BorderPane {
         cssWebView.getEngine().getLoadWorker().stateProperty().addListener((observable, oldValue, newValue) -> {
             if (newValue == Worker.State.SUCCEEDED) {
                 JSObject window = (JSObject) cssWebView.getEngine().executeScript("window");
-                window.setMember("javaConnector", new JavaConnector());
+                window.setMember("javaConnector", javaConnector);
                 if (pendingCssText != null && !pendingCssText.isEmpty()) {
                     setEditorText(pendingCssText);
                 }
+                updateWebViewsTheme();
             }
         });
         centerPanel.setCenter(cssWebView);
 
         // Quick CSS Documentation panel on the right side
-        WebView helpPanel = new WebView();
+        helpPanel = new WebView();
         helpPanel.setPrefWidth(280);
         
-        String helpTextHtml = "<html><body style='font-family:sans-serif; font-size:11px; background:#1e293b; color:#f8fafc; margin:10px;'>" +
-            "<h4 style='color:#3b82f6; margin-top:0;'>CSS Styling Reference</h4>" +
+        String helpTextHtml = "<html><head><style>" +
+            "  body { font-family:sans-serif; font-size:11px; background:#1e293b; color:#f8fafc; margin:10px; }" +
+            "  body.light { background:#f4f4f5; color:#18181b; }" +
+            "  h4 { color:#3b82f6; margin-top:0; }" +
+            "  body.light h4 { color:#2563eb; }" +
+            "  code { background:#0f172a; color:#38bdf8; padding:1px 4px; border-radius:3px; }" +
+            "  body.light code { background:#e4e4e7; color:#2563eb; }" +
+            "  pre { font-size:9px; background:#0f172a; color:#10b981; padding:6px; border-radius:4px; }" +
+            "  body.light pre { background:#f4f4f5; color:#059669; border:1px solid #e4e4e7; }" +
+            "</style></head><body class='dark'>" +
+            "<h4 style='margin-top:0;'>CSS Styling Reference</h4>" +
             "<b>Supported Selectors:</b><br>" +
             "&bull; <code>.root</code>, <code>.button</code>, <code>.label</code><br>" +
             "&bull; <code>.text-input</code>, <code>.combo-box</code>, <code>.tab-pane</code><br>" +
@@ -355,7 +412,7 @@ public class ThemeSettingsPanel extends BorderPane {
             "&bull; <code>-fx-accent</code> (Focus/Highlight color)<br>" +
             "&bull; <code>-fx-text-base-color</code> (Text color)<br><br>" +
             "<b>Glassmorphic Card Example:</b><br>" +
-            "<pre style='font-size:9px; background:#0f172a; color:#10b981; padding:6px; border-radius:4px;'>" +
+            "<pre>" +
             ".card {\n" +
             "  -fx-background-color:\n" +
             "    rgba(255,255,255,0.05);\n" +
@@ -364,7 +421,16 @@ public class ThemeSettingsPanel extends BorderPane {
             "  -fx-border-radius: 12px;\n" +
             "  -fx-border-width: 1px;\n" +
             "}</pre>" +
+            "<script>" +
+            "  function setTheme(t) { document.body.className = t; }" +
+            "</script>" +
             "</body></html>";
+        
+        helpPanel.getEngine().getLoadWorker().stateProperty().addListener((observable, oldValue, newValue) -> {
+            if (newValue == Worker.State.SUCCEEDED) {
+                updateWebViewsTheme();
+            }
+        });
         
         helpPanel.getEngine().loadContent(helpTextHtml);
         centerPanel.setRight(helpPanel);
@@ -384,8 +450,7 @@ public class ThemeSettingsPanel extends BorderPane {
             if (isUpdatingFromCode) return;
             
             String selected = themeDropdown.getSelectionModel().getSelectedItem();
-            String themeVal = "default";
-            
+            String themeVal;
             if ("Modern Dark".equals(selected)) {
                 themeVal = "dark";
             } else if ("Glassmorphism Blue".equals(selected)) {
@@ -394,6 +459,8 @@ public class ThemeSettingsPanel extends BorderPane {
                 themeVal = "custom";
             } else if ("Custom CSS".equals(selected)) {
                 themeVal = "css";
+            } else {
+                themeVal = "default";
             }
             
             config.setTheme(themeVal);
@@ -495,6 +562,22 @@ public class ThemeSettingsPanel extends BorderPane {
         cssWebView.setDisable(!isCustomCss);
         try {
             cssWebView.getEngine().executeScript("document.getElementById('textarea').disabled = " + !isCustomCss);
+        } catch (Exception ignored) {}
+
+        updateWebViewsTheme();
+    }
+
+    private void updateWebViewsTheme() {
+        String selected = themeDropdown.getSelectionModel().getSelectedItem();
+        boolean isDark = !"System Default".equals(selected);
+        String themeClass = isDark ? "dark" : "light";
+        
+        try {
+            cssWebView.getEngine().executeScript("setTheme('" + themeClass + "')");
+        } catch (Exception ignored) {}
+        
+        try {
+            helpPanel.getEngine().executeScript("setTheme('" + themeClass + "')");
         } catch (Exception ignored) {}
     }
 
