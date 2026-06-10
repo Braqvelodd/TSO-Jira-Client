@@ -624,7 +624,9 @@ public class JqlRunnerPanel extends BorderPane implements tso.usmc.jira.util.Con
                     String ciLines = String.join("\n", ciSet);
                     
                     String issueContent = content.toString();
-                    if (issueContent.contains("CIs:")) {
+                    if (issueContent.contains("{{CI}}")) {
+                        issueContent = issueContent.replace("{{CI}}", ciLines);
+                    } else if (issueContent.contains("CIs:")) {
                         issueContent = issueContent.replace("CIs:", "CIs:\n" + ciLines);
                     } else {
                         issueContent = issueContent + "\nCIs:\n" + ciLines;
