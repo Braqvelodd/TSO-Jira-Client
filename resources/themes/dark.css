@@ -166,3 +166,30 @@
     -fx-background-color: rgba(239, 68, 68, 0.2);
     -fx-border-color: #ef4444;
 }
+
+/* HTML Content styling for WebViews (Comment Summarizer & Workflow Report) */
+body {
+    background-color: #0f172a;
+    color: #f8fafc;
+    font-family: "Segoe UI", Arial, sans-serif;
+    margin: 10px;
+}
+h2, h3 {
+    color: #3b82f6;
+    margin-top: 5px;
+}
+table {
+    border-collapse: collapse;
+    width: 100%;
+    background-color: #1e293b;
+    color: #f8fafc;
+    margin-top: 10px;
+}
+th, td {
+    border: 1px solid #334155;
+    padding: 8px;
+}
+th {
+    background-color: #334155;
+}
+
