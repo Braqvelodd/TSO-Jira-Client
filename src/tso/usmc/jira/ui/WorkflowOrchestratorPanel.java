@@ -103,7 +103,7 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
         this.mainFrame = mainFrame;
         this.workflowManager = new WorkflowManager();
         try {
-            this.cachedFullMeta.putAll(mainFrame.getMetadataService().getDiskCache());
+            unpackMetadataFromCache(mainFrame.getMetadataService().getDiskCache());
         } catch (Exception e) {
             System.err.println("Could not load initial metadata: " + e.getMessage());
         }
@@ -1560,7 +1560,8 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
         
         for (String key : cachedFullMeta.keySet()) {
             if (key.startsWith("linktype:")) { cachedLinkTypes.add(key.substring(9)); continue; }
-            if (key.startsWith("trans:") || key.startsWith("createmeta:")) continue;
+            if (key.startsWith("trans:") || key.startsWith("createmeta:") || key.startsWith("editmeta:") ||
+                key.equals("fields:all") || key.equals("linktypes:all") || key.equals("projects:all")) continue;
             JSONObject fieldObj = cachedFullMeta.get(key);
             if (fieldObj == null) continue;
             if (fieldObj.has("inward") && fieldObj.has("outward") && fieldObj.has("name")) { cachedLinkTypes.add(fieldObj.getString("name")); continue; }
@@ -1574,6 +1575,61 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
         allTokens.addAll(tokens);
         filterTokens();
         cachedFieldOptions.put("teams_selection (Virtual)", "teams_selection");
+    }
+
+    private void unpackMetadataFromCache(Map<String, JSONObject> diskCache) {
+        if (diskCache == null) return;
+        cachedFullMeta.clear();
+        
+        // 1. Put raw cached elements in cachedFullMeta so containsKey(cacheKey) works
+        cachedFullMeta.putAll(diskCache);
+        
+        // 2. Unpack fields:all
+        if (diskCache.containsKey("fields:all")) {
+            JSONObject fieldsAll = diskCache.get("fields:all");
+            if (fieldsAll.has("fields")) {
+                JSONArray arr = fieldsAll.getJSONArray("fields");
+                for (int i = 0; i < arr.length(); i++) {
+                    JSONObject f = arr.getJSONObject(i);
+                    String fId = f.optString("id");
+                    if (fId != null && !fId.isEmpty()) {
+                        cachedFullMeta.put(fId, f);
+                    }
+                }
+            }
+        }
+        
+        // 3. Unpack linktypes:all
+        if (diskCache.containsKey("linktypes:all")) {
+            JSONObject linkTypesAll = diskCache.get("linktypes:all");
+            if (linkTypesAll.has("issueLinkTypes")) {
+                JSONArray arr = linkTypesAll.getJSONArray("issueLinkTypes");
+                for (int i = 0; i < arr.length(); i++) {
+                    JSONObject lt = arr.getJSONObject(i);
+                    String name = lt.optString("name");
+                    if (name != null && !name.isEmpty()) {
+                        cachedFullMeta.put("linktype:" + name, lt);
+                    }
+                }
+            }
+        }
+        
+        // 4. Unpack all createmeta:PROJECT:TYPE entries
+        for (String key : diskCache.keySet()) {
+            if (key.startsWith("createmeta:")) {
+                JSONObject blob = diskCache.get(key);
+                if (blob.has("values")) {
+                    JSONArray values = blob.getJSONArray("values");
+                    for (int i = 0; i < values.length(); i++) {
+                        JSONObject f = values.getJSONObject(i);
+                        String fId = f.optString("fieldId");
+                        if (fId != null && !fId.isEmpty()) {
+                            cachedFullMeta.put(fId, f);
+                        }
+                    }
+                }
+            }
+        }
     }
 
     private void showAlert(Alert.AlertType type, String title, String content) {
