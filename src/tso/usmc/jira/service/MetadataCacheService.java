@@ -4,6 +4,7 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 import org.json.JSONTokener;
 import java.io.*;
+import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -253,7 +254,7 @@ public class MetadataCacheService {
     // --- Persistence ---
 
     private synchronized void saveToDisk() {
-        try (PrintWriter out = new PrintWriter(new FileWriter(cacheFile))) {
+        try (PrintWriter out = new PrintWriter(new OutputStreamWriter(new FileOutputStream(cacheFile), StandardCharsets.UTF_8))) {
             JSONObject root = new JSONObject();
             JSONObject cacheData = new JSONObject();
             JSONObject timesData = new JSONObject();
@@ -273,7 +274,7 @@ public class MetadataCacheService {
 
     private synchronized void loadFromDisk() {
         if (!cacheFile.exists()) return;
-        try (BufferedReader reader = new BufferedReader(new FileReader(cacheFile))) {
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(new FileInputStream(cacheFile), StandardCharsets.UTF_8))) {
             JSONTokener tokener = new JSONTokener(reader);
             JSONObject root = new JSONObject(tokener);
             if (root.has("cache") && root.has("lastFetchTime")) {

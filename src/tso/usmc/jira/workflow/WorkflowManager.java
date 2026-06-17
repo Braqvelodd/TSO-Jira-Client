@@ -30,13 +30,13 @@ public class WorkflowManager {
 
     public void saveWorkflow(WorkflowRecipe recipe) throws IOException {
         File file = new File(workflowDir, recipe.getRecipeName() + ".json");
-        Files.write(file.toPath(), recipe.toJson().toString(4).getBytes());
+        Files.write(file.toPath(), recipe.toJson().toString(4).getBytes(java.nio.charset.StandardCharsets.UTF_8));
     }
 
     public WorkflowRecipe loadWorkflow(String name) throws IOException {
         File file = new File(workflowDir, name + ".json");
         if (!file.exists()) return null;
-        String content = new String(Files.readAllBytes(file.toPath()));
+        String content = new String(Files.readAllBytes(file.toPath()), java.nio.charset.StandardCharsets.UTF_8);
         return WorkflowRecipe.fromJson(content);
     }
     
