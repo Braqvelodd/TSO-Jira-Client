@@ -489,7 +489,7 @@ public class JiraConfig {
                 }
 
                 Files.write(path, lines);
-                reload();
+                reload(true);
             } catch (IOException e) {
                 System.err.println("Error saving property " + key + ": " + e.getMessage());
             }
@@ -577,9 +577,13 @@ public class JiraConfig {
     }
     // NEW: Public method to manually trigger a reload and notify listeners
     public void reload() {
+        reload(false);
+    }
+
+    public void reload(boolean force) {
         synchronized (lock) {
             long currentTime = System.currentTimeMillis();
-            if (currentTime - lastReloadTime < RELOAD_DEBOUNCE_MS) {
+            if (!force && (currentTime - lastReloadTime < RELOAD_DEBOUNCE_MS)) {
                 return; // Ignore rapid-fire reload requests
             }
             lastReloadTime = currentTime;
@@ -877,15 +881,48 @@ public class JiraConfig {
 
     public String getThemeCssFilePath() {
         String path = getProperty("theme_css_file");
+        File parentDir = configFile.getParentFile();
+        File themesDir = new File(parentDir, "themes");
+        if (!themesDir.exists()) {
+            themesDir.mkdirs();
+        }
+
         if (path == null || path.trim().isEmpty()) {
-            File parentDir = configFile.getParentFile();
-            File cssFile = new File(parentDir, "custom_theme.css");
+            File cssFile = new File(themesDir, "custom_theme.css");
             ensureCssFileExists(cssFile);
             return cssFile.getAbsolutePath();
         }
+        
         File cssFile = new File(path.trim());
+        // Fallback if the path is corrupted or points to a non-existent file
+        if (!cssFile.exists()) {
+            cssFile = new File(themesDir, "custom_theme.css");
+        }
+
+        // Migration check: if the path points to the old config folder directly, migrate it to the themes folder
+        if (cssFile.getParentFile() != null && cssFile.getParentFile().equals(parentDir)) {
+            File migratedFile = new File(themesDir, cssFile.getName());
+            if (!migratedFile.exists() && cssFile.exists()) {
+                try {
+                    Files.copy(cssFile.toPath(), migratedFile.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                } catch (IOException e) {
+                    System.err.println("Failed to migrate custom CSS file during getThemeCssFilePath: " + e.getMessage());
+                }
+            }
+            cssFile = migratedFile;
+            // Update the property in config so it saves the migrated path
+            setThemeCssFilePath(cssFile.getAbsolutePath());
+        }
+
         ensureCssFileExists(cssFile);
         return cssFile.getAbsolutePath();
+    }
+
+    public void setThemeCssFilePath(String path) {
+        if (path != null) {
+            path = path.replace("\\", "/");
+        }
+        saveProperty("theme_css_file", path);
     }
 
     private void ensureCssFileExists(File file) {

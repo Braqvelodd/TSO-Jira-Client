@@ -340,13 +340,11 @@ public class ThemeSettingsPanel extends BorderPane {
         topPanel.add(new Label("Active Theme:"), 0, 0);
 
         themeDropdown = new ComboBox<>();
-        themeDropdown.getItems().addAll(
-            "System Default", 
-            "Modern Dark", 
-            "Glassmorphism Blue", 
-            "Custom Accent", 
-            "Custom CSS"
-        );
+        themeDropdown.showingProperty().addListener((obs, wasShowing, isShowing) -> {
+            if (isShowing) {
+                populateThemeDropdown();
+            }
+        });
         themeDropdown.setMaxWidth(Double.MAX_VALUE);
         GridPane.setHgrow(themeDropdown, Priority.ALWAYS);
         topPanel.add(themeDropdown, 1, 0);
@@ -444,12 +442,111 @@ public class ThemeSettingsPanel extends BorderPane {
         setBottom(statusLabel);
     }
 
+    private void populateThemeDropdown() {
+        boolean oldUpdating = isUpdatingFromCode;
+        isUpdatingFromCode = true;
+        try {
+            String selectedItem = themeDropdown.getSelectionModel().getSelectedItem();
+            
+            themeDropdown.getItems().clear();
+            themeDropdown.getItems().addAll(
+                "System Default", 
+                "Modern Dark", 
+                "Glassmorphism Blue", 
+                "Custom Accent"
+            );
+            
+            File themesDir = new File(config.getConfigFile().getParentFile(), "themes");
+            if (!themesDir.exists()) {
+                themesDir.mkdirs();
+            }
+            
+            // Ensure default custom_theme.css exists in the new themes directory
+            File defaultCss = new File(themesDir, "custom_theme.css");
+            if (!defaultCss.exists()) {
+                // Check if user has an old custom_theme.css in the parent directory
+                File oldCss = new File(config.getConfigFile().getParentFile(), "custom_theme.css");
+                if (oldCss.exists()) {
+                    try {
+                        Files.copy(oldCss.toPath(), defaultCss.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                    } catch (java.io.IOException e) {
+                        System.err.println("Error migrating custom_theme.css to themes folder: " + e.getMessage());
+                    }
+                } else {
+                    // Otherwise copy default template from classpath resource
+                    try (java.io.InputStream is = getClass().getResourceAsStream("/themes/custom.css")) {
+                        if (is != null) {
+                            Files.copy(is, defaultCss.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                        } else {
+                            // Fallback
+                            java.util.List<String> defaultCssLines = new java.util.ArrayList<>();
+                            defaultCssLines.add("/* Custom CSS Stylesheet for USMC TSO Jira Client */");
+                            defaultCssLines.add(".root { -fx-font-family: \"Segoe UI\", Arial, sans-serif; }");
+                            Files.write(defaultCss.toPath(), defaultCssLines);
+                        }
+                    } catch (java.io.IOException e) {
+                        System.err.println("Error bootstrapping custom_theme.css: " + e.getMessage());
+                    }
+                }
+            }
+            
+            File[] cssFiles = themesDir.listFiles((dir, name) -> name.toLowerCase().endsWith(".css"));
+            if (cssFiles != null) {
+                for (File file : cssFiles) {
+                    String name = file.getName();
+                    String displayName = name.substring(0, name.length() - 4);
+                    themeDropdown.getItems().add(displayName);
+                }
+            }
+            
+            // Restore selection if it still exists in the newly populated list
+            if (selectedItem != null && themeDropdown.getItems().contains(selectedItem)) {
+                themeDropdown.getSelectionModel().select(selectedItem);
+            } else {
+                selectActiveThemeFromConfig();
+            }
+        } catch (Exception e) {
+            System.err.println("Error scanning themes directory: " + e.getMessage());
+        } finally {
+            isUpdatingFromCode = oldUpdating;
+        }
+    }
+
+    private void selectActiveThemeFromConfig() {
+        String theme = config.getTheme();
+        if ("dark".equals(theme)) {
+            themeDropdown.getSelectionModel().select("Modern Dark");
+        } else if ("glass".equals(theme)) {
+            themeDropdown.getSelectionModel().select("Glassmorphism Blue");
+        } else if ("custom".equals(theme)) {
+            themeDropdown.getSelectionModel().select("Custom Accent");
+        } else if ("css".equals(theme)) {
+            String cssPath = config.getThemeCssFilePath();
+            File cssFile = new File(cssPath);
+            String fileName = cssFile.getName();
+            if (fileName.endsWith(".css")) {
+                String themeName = fileName.substring(0, fileName.length() - 4);
+                if (themeDropdown.getItems().contains(themeName)) {
+                    themeDropdown.getSelectionModel().select(themeName);
+                } else {
+                    themeDropdown.getSelectionModel().select("custom_theme");
+                }
+            } else {
+                themeDropdown.getSelectionModel().select("custom_theme");
+            }
+        } else {
+            themeDropdown.getSelectionModel().select("System Default");
+        }
+    }
+
     private void setupListeners() {
         // Dropdown selection listener
         themeDropdown.setOnAction(e -> {
             if (isUpdatingFromCode) return;
             
             String selected = themeDropdown.getSelectionModel().getSelectedItem();
+            if (selected == null) return;
+            
             String themeVal;
             if ("Modern Dark".equals(selected)) {
                 themeVal = "dark";
@@ -457,10 +554,14 @@ public class ThemeSettingsPanel extends BorderPane {
                 themeVal = "glass";
             } else if ("Custom Accent".equals(selected)) {
                 themeVal = "custom";
-            } else if ("Custom CSS".equals(selected)) {
-                themeVal = "css";
-            } else {
+            } else if ("System Default".equals(selected)) {
                 themeVal = "default";
+            } else {
+                // It's a custom CSS file theme (e.g. "ocean" or "custom_theme")
+                themeVal = "css";
+                File themesDir = new File(config.getConfigFile().getParentFile(), "themes");
+                File selectedCssFile = new File(themesDir, selected + ".css");
+                config.setThemeCssFilePath(selectedCssFile.getAbsolutePath());
             }
             
             config.setTheme(themeVal);
@@ -516,18 +617,7 @@ public class ThemeSettingsPanel extends BorderPane {
     private void loadSettingsToUi() {
         isUpdatingFromCode = true;
         try {
-            String theme = config.getTheme();
-            if ("dark".equals(theme)) {
-                themeDropdown.getSelectionModel().select("Modern Dark");
-            } else if ("glass".equals(theme)) {
-                themeDropdown.getSelectionModel().select("Glassmorphism Blue");
-            } else if ("custom".equals(theme)) {
-                themeDropdown.getSelectionModel().select("Custom Accent");
-            } else if ("css".equals(theme)) {
-                themeDropdown.getSelectionModel().select("Custom CSS");
-            } else {
-                themeDropdown.getSelectionModel().select("System Default");
-            }
+            populateThemeDropdown();
 
             // Accent color setup
             String hexColor = config.getThemeAccentColor();
@@ -538,11 +628,26 @@ public class ThemeSettingsPanel extends BorderPane {
             }
 
             // Load Custom CSS file content
-            String cssPath = config.getThemeCssFilePath();
-            File cssFile = new File(cssPath);
-            if (cssFile.exists()) {
-                String cssText = new String(Files.readAllBytes(cssFile.toPath()));
-                setEditorText(cssText);
+            String selected = themeDropdown.getSelectionModel().getSelectedItem();
+            boolean isCustomCss = selected != null && 
+                                 !"System Default".equals(selected) && 
+                                 !"Modern Dark".equals(selected) && 
+                                 !"Glassmorphism Blue".equals(selected) && 
+                                 !"Custom Accent".equals(selected);
+            if (isCustomCss) {
+                File themesDir = new File(config.getConfigFile().getParentFile(), "themes");
+                File cssFile = new File(themesDir, selected + ".css");
+                if (cssFile.exists()) {
+                    String cssText = new String(Files.readAllBytes(cssFile.toPath()));
+                    setEditorText(cssText);
+                }
+            } else {
+                File themesDir = new File(config.getConfigFile().getParentFile(), "themes");
+                File cssFile = new File(themesDir, "custom_theme.css");
+                if (cssFile.exists()) {
+                    String cssText = new String(Files.readAllBytes(cssFile.toPath()));
+                    setEditorText(cssText);
+                }
             }
             
             updateUiState();
@@ -556,13 +661,32 @@ public class ThemeSettingsPanel extends BorderPane {
     private void updateUiState() {
         String selected = themeDropdown.getSelectionModel().getSelectedItem();
         boolean isCustomAccent = "Custom Accent".equals(selected);
-        boolean isCustomCss = "Custom CSS".equals(selected);
+        
+        boolean isCustomCss = selected != null && 
+                             !"System Default".equals(selected) && 
+                             !"Modern Dark".equals(selected) && 
+                             !"Glassmorphism Blue".equals(selected) && 
+                             !"Custom Accent".equals(selected);
 
         colorPicker.setDisable(!isCustomAccent);
         cssWebView.setDisable(!isCustomCss);
         try {
             cssWebView.getEngine().executeScript("document.getElementById('textarea').disabled = " + !isCustomCss);
         } catch (Exception ignored) {}
+
+        // Also update CSS content in editor when switching between custom CSS files
+        if (isCustomCss && !isUpdatingFromCode) {
+            try {
+                File themesDir = new File(config.getConfigFile().getParentFile(), "themes");
+                File cssFile = new File(themesDir, selected + ".css");
+                if (cssFile.exists()) {
+                    String cssText = new String(Files.readAllBytes(cssFile.toPath()));
+                    setEditorText(cssText);
+                }
+            } catch (Exception e) {
+                System.err.println("Error loading custom CSS text: " + e.getMessage());
+            }
+        }
 
         updateWebViewsTheme();
     }
