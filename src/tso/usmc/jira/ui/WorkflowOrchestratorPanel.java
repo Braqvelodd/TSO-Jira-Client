@@ -436,7 +436,7 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
         bottom.setPadding(new Insets(10));
         bottom.setAlignment(Pos.CENTER_RIGHT);
         
-        runBtn.setStyle("-fx-background-color: #c8ffc8;");
+        runBtn.getStyleClass().add("primary-button");
         exportReportBtn.setDisable(true); // Enable after run
         Button clearLogBtn = new Button("Clear Log");
         
@@ -514,6 +514,12 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
         if (recipeName == null) return;
 
         Map<String, String> promptValues = new HashMap<>();
+        // Initialize team variables to prevent holdover and handle missing fields
+        promptValues.put("team.name", "");
+        promptValues.put("team.lead", "");
+        promptValues.put("team.component", "");
+        promptValues.put("team.id", "");
+
         for (String label : promptFields.keySet()) {
             Node comp = promptFields.get(label);
             String val = "";
@@ -524,7 +530,19 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
             } else if (comp instanceof ComboBox) {
                 Object selected = ((ComboBox<?>) comp).getSelectionModel().getSelectedItem();
                 if (selected instanceof ConfigOption) {
-                    val = ((ConfigOption) selected).value;
+                    ConfigOption co = (ConfigOption) selected;
+                    val = co.value;
+                    if (co.teamKey != null) {
+                        String name = mainFrame.getJiraConfig().getTeamProperty(co.teamKey, "name");
+                        String lead = mainFrame.getJiraConfig().getTeamProperty(co.teamKey, "lead");
+                        String component = mainFrame.getJiraConfig().getTeamProperty(co.teamKey, "component");
+                        String id = mainFrame.getJiraConfig().getTeamProperty(co.teamKey, "id");
+                        
+                        promptValues.put("team.name", name != null ? name : "");
+                        promptValues.put("team.lead", lead != null ? lead : "");
+                        promptValues.put("team.component", component != null ? component : "");
+                        promptValues.put("team.id", id != null ? id : "");
+                    }
                 } else if (selected != null) {
                     val = selected.toString();
                 }

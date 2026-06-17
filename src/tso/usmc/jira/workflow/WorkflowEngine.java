@@ -81,6 +81,9 @@ public class WorkflowEngine {
                 for (String pLabel : promptValues.keySet()) {
                     String cleanLabel = pLabel.replaceAll("\\[.*?\\]", "").trim();
                     executionVars.put(cleanLabel + ".value", promptValues.get(pLabel));
+                    if (cleanLabel.startsWith("team.")) {
+                        executionVars.put(cleanLabel, promptValues.get(pLabel));
+                    }
                 }
 
                 for (WorkflowStep step : recipe.getSteps()) {

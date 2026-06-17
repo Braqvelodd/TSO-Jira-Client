@@ -193,3 +193,13 @@ th {
     background-color: #334155;
 }
 
+.primary-button {
+    -fx-background-color: #10b981;
+    -fx-border-color: #059669;
+    -fx-text-fill: white;
+}
+.primary-button:hover {
+    -fx-background-color: #059669;
+    -fx-effect: dropshadow(three-pass-box, rgba(16, 185, 129, 0.4), 8, 0, 0, 0);
+}
+

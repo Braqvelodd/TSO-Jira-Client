@@ -82,3 +82,12 @@
     -fx-background-color: rgba(220, 38, 38, 0.1);
     -fx-border-color: #dc2626;
 }
+
+.primary-button {
+    -fx-background-color: #10b981;
+    -fx-border-color: #059669;
+    -fx-text-fill: white;
+}
+.primary-button:hover {
+    -fx-background-color: #059669;
+}
