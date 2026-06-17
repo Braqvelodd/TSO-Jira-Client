@@ -2,6 +2,7 @@ package tso.usmc.jira.service;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
+import org.json.JSONTokener;
 import java.io.*;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -264,7 +265,7 @@ public class MetadataCacheService {
             
             root.put("cache", cacheData);
             root.put("lastFetchTime", timesData);
-            out.print(root.toString(4));
+            out.print(root.toString());
         } catch (IOException e) {
             System.err.println("Failed to save metadata cache: " + e.getMessage());
         }
@@ -273,11 +274,8 @@ public class MetadataCacheService {
     private synchronized void loadFromDisk() {
         if (!cacheFile.exists()) return;
         try (BufferedReader reader = new BufferedReader(new FileReader(cacheFile))) {
-            StringBuilder sb = new StringBuilder();
-            String line;
-            while ((line = reader.readLine()) != null) sb.append(line);
-            
-            JSONObject root = new JSONObject(sb.toString());
+            JSONTokener tokener = new JSONTokener(reader);
+            JSONObject root = new JSONObject(tokener);
             if (root.has("cache") && root.has("lastFetchTime")) {
                 JSONObject cacheData = root.getJSONObject("cache");
                 JSONObject timesData = root.getJSONObject("lastFetchTime");
