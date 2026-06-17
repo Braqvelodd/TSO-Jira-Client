@@ -33,6 +33,15 @@ public class FieldActionPanel extends HBox {
         this.currentOptions = fieldOptions;
         this.fullMetadata = fullMetadata;
 
+        // Initialize all UI controls first to prevent initialization order issues in lambdas
+        keyCombo = new ComboBox<>();
+        modeCombo = new ComboBox<>();
+        valuePanel = new StackPane();
+        valueField = new AutocompleteTextField();
+        promptQuestionField = new TextField("Question?");
+        promptOptionsField = new TextField("");
+        promptPanel = new HBox(5);
+
         setSpacing(5);
         setAlignment(Pos.CENTER_LEFT);
         setPadding(new Insets(2, 5, 2, 5));
@@ -67,30 +76,67 @@ public class FieldActionPanel extends HBox {
             Collections.sort(options);
         }
         
-        keyCombo = new ComboBox<>();
         keyCombo.getItems().addAll(options);
         keyCombo.setEditable(true);
         keyCombo.setPrefWidth(200);
+
+        keyCombo.getEditor().textProperty().addListener((obs, oldVal, newVal) -> {
+            if (newVal != null && newVal.trim().startsWith("{{") && newVal.trim().endsWith("}}")) {
+                String token = newVal.trim();
+                String fieldId = extractFieldIdFromToken(token);
+                
+                String selectTarget = fieldId;
+                if (currentOptions != null) {
+                    for (String label : currentOptions.keySet()) {
+                        if (fieldId.equals(currentOptions.get(label))) {
+                            selectTarget = label;
+                            break;
+                        }
+                    }
+                }
+                
+                final String finalSelect = selectTarget;
+                javafx.application.Platform.runLater(() -> {
+                    keyCombo.getSelectionModel().select(finalSelect);
+                });
+            }
+        });
         
         if (action != null) {
-            keyCombo.getSelectionModel().select(action.getFieldId());
+            String targetId = action.getFieldId();
+            String selectTarget = targetId;
+            if (targetId != null && targetId.contains("{{")) {
+                String token = targetId.trim();
+                String fieldId = extractFieldIdFromToken(token);
+                if (fieldOptions != null) {
+                    for (String label : fieldOptions.keySet()) {
+                        if (fieldId.equals(fieldOptions.get(label))) {
+                            selectTarget = label;
+                            break;
+                        }
+                    }
+                }
+            } else {
+                if (fieldOptions != null) {
+                    for (String label : fieldOptions.keySet()) {
+                        if (targetId.equals(fieldOptions.get(label))) {
+                            selectTarget = label;
+                            break;
+                        }
+                    }
+                }
+            }
+            keyCombo.getSelectionModel().select(selectTarget);
         }
         
-        modeCombo = new ComboBox<>();
         modeCombo.getItems().addAll(FieldAction.MappingMode.values());
         
-        valuePanel = new StackPane();
-        
-        valueField = new AutocompleteTextField();
         valueField.setPrefWidth(150);
         
         // Prompt Panel: Question + Optional Options
-        promptPanel = new HBox(5);
         promptPanel.setAlignment(Pos.CENTER_LEFT);
-        promptQuestionField = new TextField("Question?");
         promptQuestionField.setPrefWidth(100);
         promptQuestionField.setTooltip(new Tooltip("The label/question for the prompt"));
-        promptOptionsField = new TextField("");
         promptOptionsField.setPrefWidth(100);
         promptOptionsField.setTooltip(new Tooltip("Optional: Comma-separated list of selection values"));
         promptPanel.getChildren().addAll(promptQuestionField, new Label("Opts:"), promptOptionsField);
@@ -179,6 +225,8 @@ public class FieldActionPanel extends HBox {
             currentId = fieldOptions.get(currentStr);
         }
 
+        String cleanId = extractFieldIdFromToken(currentId);
+
         List<String> options = new ArrayList<>(fieldOptions.keySet());
         Collections.sort(options);
         
@@ -186,7 +234,7 @@ public class FieldActionPanel extends HBox {
         
         // Try to re-select based on ID
         for (String label : fieldOptions.keySet()) {
-            if (fieldOptions.get(label).equals(currentId)) {
+            if (fieldOptions.get(label).equals(cleanId)) {
                 keyCombo.getSelectionModel().select(label);
                 updateValueSuggestions();
                 validateValue();
@@ -291,5 +339,18 @@ public class FieldActionPanel extends HBox {
             selected = keyCombo.getEditor().getText();
         }
         return selected != null ? selected.trim() : "";
+    }
+
+    private String extractFieldIdFromToken(String tokenOrId) {
+        if (tokenOrId == null) return "";
+        String token = tokenOrId.trim();
+        if (token.startsWith("{{") && token.endsWith("}}")) {
+            String clean = token.substring(2, token.length() - 2).trim();
+            if (clean.startsWith("issue.fields.")) {
+                clean = clean.substring("issue.fields.".length()).trim();
+            }
+            return clean;
+        }
+        return token;
     }
 }

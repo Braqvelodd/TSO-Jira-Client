@@ -426,6 +426,9 @@ public class WorkflowEngine {
             if ("teams_selection".equalsIgnoreCase(fa.getFieldId())) continue;
             String val = resolveValue(fa, issue, prompts);
             String fieldId = fa.getFieldId();
+            if (fieldId != null && fieldId.contains("{{")) {
+                fieldId = resolveTokens(fieldId, issue);
+            }
             if (val == null || val.equalsIgnoreCase("null")) { fields.put(fieldId, JSONObject.NULL); continue; }
 
             String trimmed = val.trim();

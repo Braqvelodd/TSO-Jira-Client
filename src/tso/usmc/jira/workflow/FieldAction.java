@@ -50,16 +50,38 @@ public class FieldAction {
 
     public static FieldAction fromJson(JSONObject json) {
         FieldAction fa = new FieldAction();
+        String rawFieldId = "";
         if (json.has("fieldId")) {
-            fa.setFieldId(json.getString("fieldId"));
+            rawFieldId = json.getString("fieldId");
         }
+        
+        String fieldId = rawFieldId;
+        String tokenVal = null;
+        if (rawFieldId != null && rawFieldId.contains("{{")) {
+            String token = rawFieldId.trim();
+            if (token.startsWith("{{") && token.endsWith("}}")) {
+                String clean = token.substring(2, token.length() - 2).trim();
+                if (clean.startsWith("issue.fields.")) {
+                    clean = clean.substring("issue.fields.".length()).trim();
+                }
+                fieldId = clean;
+                tokenVal = token;
+            }
+        }
+        
+        fa.setFieldId(fieldId);
+        
         String modeStr = json.getString("mode");
         if (modeStr.equals("STATIC") || modeStr.equals("VARIABLE")) {
             fa.setMode(MappingMode.SET);
         } else {
             fa.setMode(MappingMode.valueOf(modeStr));
         }
-        if (json.has("value")) fa.setValue(json.get("value"));
+        
+        if (json.has("value")) {
+            fa.setValue(json.get("value"));
+        }
+        
         if (json.has("promptLabel")) fa.setPromptLabel(json.optString("promptLabel"));
         if (json.has("description")) fa.setDescription(json.optString("description"));
         return fa;
