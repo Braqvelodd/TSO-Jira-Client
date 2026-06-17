@@ -232,7 +232,21 @@ public class JiraApiClientGui extends Application implements ConfigChangeListene
     }
 
     public MetadataCacheService getMetadataService() throws Exception {
-        if (metadataService == null) metadataService = new MetadataCacheService(getService(), getBaseUrl());
+        if (metadataService == null) {
+            JiraApiService service = null;
+            try {
+                service = getService();
+            } catch (Exception e) {
+                // Ignore for initial startup cache loading
+            }
+            metadataService = new MetadataCacheService(service, getBaseUrl());
+        } else if (metadataService.getApiService() == null) {
+            try {
+                metadataService.setApiService(getService());
+            } catch (Exception e) {
+                // Ignore
+            }
+        }
         return metadataService;
     }
 

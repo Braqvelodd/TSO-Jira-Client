@@ -11,12 +11,20 @@ import java.util.concurrent.ConcurrentHashMap;
  * Serves as the single source of truth for Jira metadata with in-memory and disk persistence.
  */
 public class MetadataCacheService {
-    private final JiraApiService apiService;
+    private JiraApiService apiService;
     private final String baseUrl;
     private final File cacheFile;
     private final Map<String, JSONObject> cache = new ConcurrentHashMap<>();
     private final Map<String, Long> lastFetchTime = new ConcurrentHashMap<>();
     private static final long DEFAULT_TTL = 3600000; // 1 hour in milliseconds
+
+    public JiraApiService getApiService() {
+        return this.apiService;
+    }
+
+    public void setApiService(JiraApiService apiService) {
+        this.apiService = apiService;
+    }
 
     public MetadataCacheService(JiraApiService apiService, String baseUrl) {
         this.apiService = apiService;
