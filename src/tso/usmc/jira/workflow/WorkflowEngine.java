@@ -323,8 +323,8 @@ public class WorkflowEngine {
 
     private String resolveStepProperty(String value, String promptLabel, Map<String, String> prompts, JSONObject issue) {
         if (value == null) return "";
-        if (value.contains(",") || value.contains("[config:") || value.contains("[choice:")) {
-            if (prompts.containsKey(promptLabel)) return prompts.get(promptLabel);
+        if (prompts != null && prompts.containsKey(promptLabel)) {
+            return prompts.get(promptLabel);
         }
         if (value.contains("{{")) return resolveTokens(value, issue);
         return value;

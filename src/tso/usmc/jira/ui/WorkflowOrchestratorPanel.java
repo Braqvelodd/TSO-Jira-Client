@@ -653,8 +653,7 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
                 for (WorkflowStep step : recipe.getSteps()) {
                     if (step instanceof CreateStep) {
                         CreateStep cs = (CreateStep) step;
-                        addDynamicPrompt(labels, "Project (" + step.getLabel() + ")", cs.getProjectKey(), "project", contextIssue);
-                        addDynamicPrompt(labels, "Issue Type (" + step.getLabel() + ")", cs.getIssueType(), "issuetype", contextIssue);
+                        addCreateStepPrompts(labels, cs, contextIssue);
                     }
                     
                     if (step instanceof AssetStep) {
@@ -782,7 +781,24 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
             }
         }
 
-        if (!mergedOptions.isEmpty()) {
+        List<String> customOpts = resolveAndSplitOptions(staticOptions, contextIssue);
+        if (customOpts.size() > 1) {
+            if (isArray) {
+                ListView<String> list = new ListView<>();
+                list.getItems().addAll(customOpts);
+                list.getSelectionModel().setSelectionMode(SelectionMode.MULTIPLE);
+                list.setPrefHeight(Math.min(customOpts.size() * 24 + 4, 100));
+                result = list;
+            } else {
+                ComboBox<String> combo = new ComboBox<>();
+                combo.getItems().addAll(customOpts);
+                combo.getSelectionModel().select(0);
+                combo.setPrefWidth(200);
+                result = combo;
+            }
+        }
+
+        if (result == null && !mergedOptions.isEmpty()) {
             List<String> options = new ArrayList<>(mergedOptions);
             if (isArray) {
                 ListView<String> list = new ListView<>();
@@ -943,19 +959,7 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
             }
         }
         
-        if (result == null && staticOptions != null && !staticOptions.trim().isEmpty() && staticOptions.contains(",")) {
-            String[] opts = smartSplit(staticOptions);
-            if (contextIssue != null) {
-                for (int i = 0; i < opts.length; i++) {
-                    opts[i] = TokenEngine.replaceTokens(opts[i], contextIssue);
-                }
-            }
-            ComboBox<String> combo = new ComboBox<>();
-            combo.getItems().addAll(opts);
-            combo.getSelectionModel().select(0);
-            combo.setPrefWidth(200);
-            result = combo;
-        }
+        
         
         if (result == null) {
             String resolvedValue = staticOptions;
@@ -1016,6 +1020,41 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
         }
         result.add(current.toString().trim());
         return result.toArray(new String[0]);
+    }
+
+    private void addCreateStepPrompts(Set<String> labels, CreateStep cs, JSONObject contextIssue) {
+        String projVal = cs.getProjectKey();
+        List<String> projOpts = resolveAndSplitOptions(projVal, contextIssue);
+        if (projOpts.size() > 1) {
+            addDynamicPrompt(labels, "Project (" + cs.getLabel() + ")", projVal, "project", contextIssue);
+        }
+        
+        String typeVal = cs.getIssueType();
+        List<String> typeOpts = resolveAndSplitOptions(typeVal, contextIssue);
+        if (typeOpts.size() > 1) {
+            addDynamicPrompt(labels, "Issue Type (" + cs.getLabel() + ")", typeVal, "issuetype", contextIssue);
+        }
+    }
+
+    private List<String> resolveAndSplitOptions(String staticOptions, JSONObject contextIssue) {
+        if (staticOptions == null || staticOptions.trim().isEmpty()) {
+            return Collections.emptyList();
+        }
+        
+        String resolved = staticOptions;
+        if (contextIssue != null && staticOptions.contains("{{")) {
+            resolved = TokenEngine.replaceTokens(staticOptions, contextIssue);
+        }
+        
+        String[] parts = smartSplit(resolved);
+        Set<String> uniqueOpts = new LinkedHashSet<>();
+        for (String part : parts) {
+            String trimmed = part.trim();
+            if (!trimmed.isEmpty()) {
+                uniqueOpts.add(trimmed);
+            }
+        }
+        return new ArrayList<>(uniqueOpts);
     }
 
     private static class ConfigOption {
