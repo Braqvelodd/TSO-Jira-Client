@@ -35,6 +35,7 @@ public class JqlRunnerPanel extends BorderPane implements tso.usmc.jira.util.Con
     private final JiraFieldAutocompleteTextField fieldsField;
     private final Button executeBtn = new Button("Execute JQL");
     private final MenuButton workflowsBtn = new MenuButton("Workflows");
+    private final MenuButton actionsBtn = new MenuButton("Actions");
     private final ComboBox<String> filterCombo = new ComboBox<>();
     private final Button saveFilterBtn = new Button("Save Filter");
     private final Label statusLabel = new Label("Enter a JQL query and click Execute.");
@@ -89,7 +90,7 @@ public class JqlRunnerPanel extends BorderPane implements tso.usmc.jira.util.Con
         HBox.setHgrow(fieldsField, Priority.ALWAYS);
         
         HBox buttonPanel = new HBox(5);
-        buttonPanel.getChildren().addAll(workflowsBtn, executeBtn);
+        buttonPanel.getChildren().addAll(workflowsBtn, actionsBtn, executeBtn);
         fieldsPanel.getChildren().add(buttonPanel);
         
         configPanel.getChildren().addAll(filterPanel, jqlWrapper, fieldsPanel);
@@ -129,6 +130,13 @@ public class JqlRunnerPanel extends BorderPane implements tso.usmc.jira.util.Con
         workflowsBtn.showingProperty().addListener((obs, oldVal, newVal) -> {
             if (newVal) {
                 populateWorkflowsMenu();
+            }
+        });
+
+        // Populate actions menu on click/showing
+        actionsBtn.showingProperty().addListener((obs, oldVal, newVal) -> {
+            if (newVal) {
+                populateActionsMenu();
             }
         });
 
@@ -325,7 +333,16 @@ public class JqlRunnerPanel extends BorderPane implements tso.usmc.jira.util.Con
                             contextMenu.getItems().add(item);
 
                             MenuItem itemWithCIs = new MenuItem(label + " with CIs");
-                            itemWithCIs.setOnAction(al -> buildReleaseMgmtWithCIs(keys));
+                            itemWithCIs.setOnAction(al -> {
+                                Alert alert = new Alert(Alert.AlertType.CONFIRMATION, 
+                                    "Do you want to include the issue keys of the sub-tasks (e.g., JRS-1234) on the right of the CI and DLT lines?", 
+                                    ButtonType.YES, ButtonType.NO);
+                                alert.setTitle("Include Issue Keys");
+                                alert.setHeaderText(null);
+                                java.util.Optional<ButtonType> result = alert.showAndWait();
+                                boolean includeKeys = result.isPresent() && result.get() == ButtonType.YES;
+                                buildReleaseMgmtWithCIs(keys, includeKeys);
+                            });
                             contextMenu.getItems().add(itemWithCIs);
                         } else {
                             MenuItem item = new MenuItem(label);
@@ -590,7 +607,12 @@ public class JqlRunnerPanel extends BorderPane implements tso.usmc.jira.util.Con
         return field.toString();
     }
 
-    private void buildReleaseMgmtWithCIs(java.util.List<String> keys) {
+    private static class ReleaseMgmtData {
+        java.util.Set<String> cis = new java.util.TreeSet<>();
+        java.util.List<String> dlts = new java.util.ArrayList<>();
+    }
+
+    private void buildReleaseMgmtWithCIs(java.util.List<String> keys, boolean includeKeys) {
         statusLabel.setText("Building release management with CIs...");
         
         ExecutionService.submit(() -> {
@@ -620,8 +642,12 @@ public class JqlRunnerPanel extends BorderPane implements tso.usmc.jira.util.Con
                 if (defs.length() > 0) finalSb.append("\n");
                 
                 for (String key : keys) {
-                    java.util.Set<String> ciSet = fetchCIsForTicket(key);
-                    String ciLines = String.join("\n", ciSet);
+                    ReleaseMgmtData data = fetchReleaseMgmtData(key, includeKeys);
+                    String ciLines = String.join("\n", data.cis);
+                    String dltLines = String.join("\n", data.dlts);
+                    if (!dltLines.isEmpty()) {
+                        dltLines += "\n";
+                    }
                     
                     String issueContent = content.toString();
                     if (issueContent.contains("{{CI}}")) {
@@ -630,6 +656,14 @@ public class JqlRunnerPanel extends BorderPane implements tso.usmc.jira.util.Con
                         issueContent = issueContent.replace("CIs:", "CIs:\n" + ciLines);
                     } else {
                         issueContent = issueContent + "\nCIs:\n" + ciLines;
+                    }
+
+                    if (issueContent.contains("{{DLT}}")) {
+                        issueContent = issueContent.replace("{{DLT}}", dltLines);
+                    } else if (issueContent.contains("DLT:")) {
+                        issueContent = issueContent.replace("DLT:", "DLT:\n" + dltLines);
+                    } else {
+                        issueContent = issueContent + "\nDLT:\n" + dltLines;
                     }
                     
                     finalSb.append(issueContent);
@@ -657,14 +691,14 @@ public class JqlRunnerPanel extends BorderPane implements tso.usmc.jira.util.Con
         });
     }
 
-    private java.util.Set<String> fetchCIsForTicket(String key) throws Exception {
-        java.util.Set<String> ciSet = new java.util.TreeSet<>();
+    private ReleaseMgmtData fetchReleaseMgmtData(String key, boolean includeKeys) throws Exception {
+        ReleaseMgmtData data = new ReleaseMgmtData();
         
         String url = mainFrame.getBaseUrl() + "/rest/api/2/issue/" + key + "?expand=names";
         String response = mainFrame.getService().executeRequest(url, "GET", null);
         JSONObject issueJson = new JSONObject(response);
         JSONObject fields = issueJson.optJSONObject("fields");
-        if (fields == null) return ciSet;
+        if (fields == null) return data;
         
         String epicKey = null;
         JSONObject issueTypeObj = fields.optJSONObject("issuetype");
@@ -712,7 +746,7 @@ public class JqlRunnerPanel extends BorderPane implements tso.usmc.jira.util.Con
             String jql = "parent in (" + String.join(",", keysToQuery) + ")";
             String searchUrl = mainFrame.getBaseUrl() + "/rest/api/2/search?jql=" + 
                               java.net.URLEncoder.encode(jql, "UTF-8") + 
-                              "&fields=summary,issuetype&maxResults=500";
+                              "&fields=summary,issuetype,comment&maxResults=500";
             String searchResp = mainFrame.getService().executeRequest(searchUrl, "GET", null);
             JSONObject searchJson = new JSONObject(searchResp);
             JSONArray subTasksArray = searchJson.optJSONArray("issues");
@@ -722,6 +756,7 @@ public class JqlRunnerPanel extends BorderPane implements tso.usmc.jira.util.Con
                 java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("^(" + ciPattern + ")[ \\t]+(.+)$", java.util.regex.Pattern.CASE_INSENSITIVE);
                 for (int i = 0; i < subTasksArray.length(); i++) {
                     JSONObject subTask = subTasksArray.getJSONObject(i);
+                    String subTaskKey = subTask.optString("key");
                     JSONObject subTaskFields = subTask.optJSONObject("fields");
                     if (subTaskFields != null) {
                         String summary = subTaskFields.optString("summary", "").trim();
@@ -729,14 +764,109 @@ public class JqlRunnerPanel extends BorderPane implements tso.usmc.jira.util.Con
                         if (m.find()) {
                             String type = m.group(1).toUpperCase();
                             String ciName = m.group(2).trim();
-                            ciSet.add(type + " " + ciName);
+                            String entry = type + " " + ciName;
+                            if (includeKeys && subTaskKey != null && !subTaskKey.isEmpty()) {
+                                entry += " (" + subTaskKey + ")";
+                            }
+                            data.cis.add(entry);
+                        }
+                        
+                        if (summary.toUpperCase().startsWith("DLT")) {
+                            JSONArray commentsArray = null;
+                            JSONObject commentObj = subTaskFields.optJSONObject("comment");
+                            if (commentObj != null) {
+                                commentsArray = commentObj.optJSONArray("comments");
+                            }
+                            
+                            if ((commentsArray == null || commentsArray.length() == 0) && subTaskKey != null && !subTaskKey.isEmpty()) {
+                                try {
+                                    String commentUrl = mainFrame.getBaseUrl() + "/rest/api/2/issue/" + subTaskKey + "/comment";
+                                    String commentResp = mainFrame.getService().executeRequest(commentUrl, "GET", null);
+                                    JSONObject commentJson = new JSONObject(commentResp);
+                                    commentsArray = commentJson.optJSONArray("comments");
+                                } catch (Exception ex) {
+                                    System.err.println("Failed to fetch comments for " + subTaskKey + ": " + ex.getMessage());
+                                }
+                            }
+                            
+                            String changeNum = extractChangeNumberFromComments(commentsArray);
+                            String entry;
+                            if (changeNum != null && !changeNum.isEmpty()) {
+                                entry = summary + " change " + changeNum;
+                            } else {
+                                entry = summary;
+                            }
+                            if (includeKeys && subTaskKey != null && !subTaskKey.isEmpty()) {
+                                entry += " (" + subTaskKey + ")";
+                            }
+                            data.dlts.add(entry);
                         }
                     }
                 }
             }
         }
         
-        return ciSet;
+        return data;
+    }
+
+    private String extractChangeNumberFromComments(JSONArray comments) {
+        if (comments == null) return null;
+        java.util.List<String> changeNumbers = new java.util.ArrayList<>();
+        for (int i = 0; i < comments.length(); i++) {
+            JSONObject c = comments.getJSONObject(i);
+            String body = c.optString("body", "");
+            if (body.toLowerCase().contains("has been released")) {
+                java.util.List<String> nums = parseChangeNumbers(body);
+                for (String num : nums) {
+                    if (!changeNumbers.contains(num)) {
+                        changeNumbers.add(num);
+                    }
+                }
+            }
+        }
+        if (changeNumbers.isEmpty()) {
+            return null;
+        }
+        return String.join(", ", changeNumbers);
+    }
+
+    private java.util.List<String> parseChangeNumbers(String body) {
+        java.util.List<String> results = new java.util.ArrayList<>();
+        java.util.regex.Pattern dottedPattern = java.util.regex.Pattern.compile("\\b\\d+(?:\\.\\d+)+\\b");
+        
+        int changeIdx = body.toLowerCase().indexOf("change");
+        int hashIdx = body.indexOf("#");
+        
+        int startIndex = -1;
+        if (changeIdx != -1 && hashIdx != -1) {
+            startIndex = Math.min(changeIdx, hashIdx);
+        } else if (changeIdx != -1) {
+            startIndex = changeIdx;
+        } else if (hashIdx != -1) {
+            startIndex = hashIdx;
+        }
+        
+        if (startIndex != -1) {
+            String sub = body.substring(startIndex);
+            java.util.regex.Matcher m = dottedPattern.matcher(sub);
+            while (m.find()) {
+                String val = m.group();
+                if (!results.contains(val)) {
+                    results.add(val);
+                }
+            }
+        }
+        
+        if (results.isEmpty()) {
+            java.util.regex.Matcher m = dottedPattern.matcher(body);
+            while (m.find()) {
+                String val = m.group();
+                if (!results.contains(val)) {
+                    results.add(val);
+                }
+            }
+        }
+        return results;
     }
 
     private void populateWorkflowsMenu() {
@@ -907,5 +1037,126 @@ public class JqlRunnerPanel extends BorderPane implements tso.usmc.jira.util.Con
         javafx.scene.input.ClipboardContent content = new javafx.scene.input.ClipboardContent();
         content.putString(sb.toString());
         javafx.scene.input.Clipboard.getSystemClipboard().setContent(content);
+    }
+
+    private void populateActionsMenu() {
+        actionsBtn.getItems().clear();
+
+        int keyColumnIndex = findKeyColumnIndex();
+        if (keyColumnIndex == -1) {
+            MenuItem item = new MenuItem("Error: No 'key' column");
+            item.setDisable(true);
+            actionsBtn.getItems().add(item);
+            return;
+        }
+
+        ObservableList<ObservableList<String>> selectedRows = resultsTable.getSelectionModel().getSelectedItems();
+        if (selectedRows.isEmpty()) {
+            MenuItem item = new MenuItem("Select issues in table first");
+            item.setDisable(true);
+            actionsBtn.getItems().add(item);
+            return;
+        }
+
+        java.util.List<String> keys = new java.util.ArrayList<>();
+        for (ObservableList<String> row : selectedRows) {
+            if (row != null && keyColumnIndex < row.size()) {
+                keys.add(row.get(keyColumnIndex));
+            }
+        }
+        if (keys.isEmpty()) {
+            MenuItem item = new MenuItem("Select issues in table first");
+            item.setDisable(true);
+            actionsBtn.getItems().add(item);
+            return;
+        }
+
+        String selectedIssueKey = String.join(",", keys);
+
+        // 1. Build Release Management options if TaskBuilder tab is enabled
+        if (jiraConfig.isTabEnabled("TaskBuilder")) {
+            String[] templateKeys = jiraConfig.getTemplateKeys();
+            for (String tKey : templateKeys) {
+                String label = jiraConfig.getTemplateLabel(tKey);
+                String text = jiraConfig.getTemplateText(tKey);
+                if (label != null && text != null) {
+                    if ("release_mgmt".equals(tKey)) {
+                        MenuItem item = new MenuItem(label);
+                        item.setOnAction(al -> {
+                            mainFrame.showPanel("Task Builder");
+                            TaskBuilderPanel tbp = mainFrame.getTaskBuilderPanel();
+                            if (tbp != null) {
+                                tbp.setParentTicket(""); // Clear default parent field
+                                
+                                String[] lines = text.split("\n");
+                                StringBuilder defs = new StringBuilder();
+                                StringBuilder content = new StringBuilder();
+                                String sep = "******************************************************************";
+                                
+                                for (String l : lines) {
+                                    if (l.startsWith("DEFAULT_")) {
+                                        defs.append(l).append("\n");
+                                    } else if (l.startsWith("******")) {
+                                        sep = l;
+                                    } else {
+                                        content.append(l).append("\n");
+                                    }
+                                }
+                                
+                                StringBuilder finalSb = new StringBuilder(defs);
+                                if (defs.length() > 0) finalSb.append("\n");
+                                
+                                for (String key : keys) {
+                                    finalSb.append(content);
+                                    finalSb.append("parent: ").append(key).append("\n");
+                                    finalSb.append(sep).append("\n\n");
+                                }
+                                tbp.setInputAreaText(finalSb.toString().trim());
+                            }
+                        });
+                        actionsBtn.getItems().add(item);
+
+                        MenuItem itemWithCIs = new MenuItem(label + " with CIs");
+                        itemWithCIs.setOnAction(al -> {
+                            Alert alert = new Alert(Alert.AlertType.CONFIRMATION, 
+                                "Do you want to include the issue keys of the sub-tasks (e.g., JRS-1234) on the right of the CI and DLT lines?", 
+                                ButtonType.YES, ButtonType.NO);
+                            alert.setTitle("Include Issue Keys");
+                            alert.setHeaderText(null);
+                            java.util.Optional<ButtonType> result = alert.showAndWait();
+                            boolean includeKeys = result.isPresent() && result.get() == ButtonType.YES;
+                            buildReleaseMgmtWithCIs(keys, includeKeys);
+                        });
+                        actionsBtn.getItems().add(itemWithCIs);
+                    } else {
+                        MenuItem item = new MenuItem(label);
+                        item.setOnAction(al -> {
+                            mainFrame.showPanel("Task Builder");
+                            TaskBuilderPanel tbp = mainFrame.getTaskBuilderPanel();
+                            if (tbp != null) {
+                                tbp.setInputAreaText("PARENT_TICKET:" + selectedIssueKey + "\n" + text);
+                            }
+                        });
+                        actionsBtn.getItems().add(item);
+                    }
+                }
+            }
+        }
+
+        // 2. Bulk Actions option if BulkActions tab is enabled
+        if (jiraConfig.isTabEnabled("BulkActions")) {
+            if (!actionsBtn.getItems().isEmpty()) {
+                actionsBtn.getItems().add(new SeparatorMenuItem());
+            }
+            MenuItem bulkActionItem = new MenuItem("Bulk Actions");
+            bulkActionItem.setOnAction(al -> {
+                mainFrame.showPanel("Bulk Actions");
+                BulkActionPanel bap = mainFrame.getBulkActionPanel();
+                if (bap != null) {
+                    bap.setIssueKeys(keys);
+                }
+            });
+            actionsBtn.getItems().add(bulkActionItem);
+        }
     }
 }

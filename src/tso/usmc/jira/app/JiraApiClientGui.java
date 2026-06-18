@@ -34,6 +34,7 @@ public class JiraApiClientGui extends Application implements ConfigChangeListene
     private TabPane tabs;
     private TaskBuilderPanel taskBuilderPanel;
     private WorkflowOrchestratorPanel workflowOrchestratorPanel;
+    private BulkActionPanel bulkActionPanel;
     private final Label statusLabel = new Label(" Ready");
     private ThemeManager themeManager;
     private Stage primaryStage;
@@ -136,7 +137,8 @@ public class JiraApiClientGui extends Application implements ConfigChangeListene
             tabs.getTabs().add(new Tab("Reconciliation", new ReconciliationPanel(this)));
         }
         if (jiraConfig.isTabEnabled("BulkActions")) {
-            tabs.getTabs().add(new Tab("Bulk Actions", new BulkActionPanel(this)));
+            this.bulkActionPanel = new BulkActionPanel(this);
+            tabs.getTabs().add(new Tab("Bulk Actions", this.bulkActionPanel));
         }
         if (jiraConfig.isTabEnabled("CommentSummarizer")) {
             tabs.getTabs().add(new Tab("Comment Summarizer", new CommentSummarizerPanel(this)));
@@ -182,6 +184,7 @@ public class JiraApiClientGui extends Application implements ConfigChangeListene
 
     public TaskBuilderPanel getTaskBuilderPanel() { return this.taskBuilderPanel; }
     public WorkflowOrchestratorPanel getWorkflowOrchestratorPanel() { return this.workflowOrchestratorPanel; }
+    public BulkActionPanel getBulkActionPanel() { return this.bulkActionPanel; }
     public JiraConfig getJiraConfig() { return this.jiraConfig; }
     public ThemeManager getThemeManager() { return this.themeManager; }
     public Stage getPrimaryStage() { return this.primaryStage; }

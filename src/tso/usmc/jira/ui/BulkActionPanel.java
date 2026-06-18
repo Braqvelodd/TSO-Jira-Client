@@ -327,4 +327,10 @@ public class BulkActionPanel extends BorderPane {
             actionValueField.setPromptText("e.g., 2h | Description (or just 45m)");
         }
     }
+
+    public void setIssueKeys(java.util.List<String> keys) {
+        if (keys != null) {
+            issueKeysArea.setText(String.join("\n", keys));
+        }
+    }
 }
