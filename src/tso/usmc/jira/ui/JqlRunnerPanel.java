@@ -943,6 +943,7 @@ public class JqlRunnerPanel extends BorderPane implements tso.usmc.jira.util.Con
             }
             if (step instanceof tso.usmc.jira.workflow.WorklogStep) {
                 tso.usmc.jira.workflow.WorklogStep ws = (tso.usmc.jira.workflow.WorklogStep) step;
+                if (ws.isPromptAtRuntime()) return true;
                 String ts = ws.getTimeSpent();
                 String c = ws.getComment();
                 String s = ws.getStarted();
@@ -951,6 +952,12 @@ public class JqlRunnerPanel extends BorderPane implements tso.usmc.jira.util.Con
                     (s != null && (s.contains(",") || s.contains("[config:") || s.contains("[choice:")))) {
                     return true;
                 }
+            }
+            if (step instanceof tso.usmc.jira.workflow.AttachmentStep) {
+                if (((tso.usmc.jira.workflow.AttachmentStep) step).isPromptAtRuntime()) return true;
+            }
+            if (step instanceof tso.usmc.jira.workflow.CommentStep) {
+                if (((tso.usmc.jira.workflow.CommentStep) step).isPromptAtRuntime()) return true;
             }
             if (step instanceof tso.usmc.jira.workflow.AssetStep) {
                 if (((tso.usmc.jira.workflow.AssetStep) step).isPromptOptions()) return true;
