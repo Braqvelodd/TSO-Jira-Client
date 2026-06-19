@@ -13,6 +13,7 @@ import tso.usmc.jira.workflow.AttachmentStep;
 import tso.usmc.jira.workflow.CommentStep;
 import org.json.JSONObject;
 import tso.usmc.jira.ui.UiUtils;
+import tso.usmc.jira.ui.AutocompleteTextField;
 import tso.usmc.jira.service.JqlAutocompleteService;
 import javafx.scene.input.Dragboard;
 import javafx.scene.input.TransferMode;
@@ -50,8 +51,8 @@ public class StepEditorPanel extends BorderPane {
     private Button collapseBtn;
 
     private TextField targetIssueField;
-    private TextField projField;
-    private TextField typeField;
+    private AutocompleteTextField projField;
+    private AutocompleteTextField typeField;
     private TextField parentField;
     private TextField attachmentPathField;
     private CheckBox attachmentPromptCheck;
@@ -130,23 +131,35 @@ public class StepEditorPanel extends BorderPane {
             UiUtils.setupExpandedView(targetIssueField);
             header.getChildren().add(createPair("Target Issue:", targetIssueField));
             
-            TextField targetField = new TextField(ts.getTargetStatus());
-            targetField.setPrefColumnCount(15);
-            UiUtils.setupExpandedView(targetField);
-            targetField.textProperty().addListener((obs, oldVal, newVal) -> ts.setTargetStatus(newVal));
+            AutocompleteTextField targetField = new AutocompleteTextField();
+            targetField.getTextField().setText(ts.getTargetStatus() != null ? ts.getTargetStatus() : "");
+            targetField.getTextField().setPrefColumnCount(15);
+            UiUtils.setupExpandedView(targetField.getTextField());
+            targetField.setUserAutocompleteService(autocompleteService);
+            targetField.setJqlFieldName("status");
+            targetField.setAutocompleteEnabled(true);
+            targetField.getTextField().textProperty().addListener((obs, oldVal, newVal) -> ts.setTargetStatus(newVal));
             header.getChildren().add(createPair("Target Status:", targetField));
         }
 
         if (step instanceof CreateStep) {
             CreateStep cs = (CreateStep) step;
-            projField = new TextField(cs.getProjectKey());
-            projField.setPrefColumnCount(5);
-            UiUtils.setupExpandedView(projField);
+            projField = new AutocompleteTextField();
+            projField.getTextField().setText(cs.getProjectKey() != null ? cs.getProjectKey() : "");
+            projField.getTextField().setPrefColumnCount(5);
+            UiUtils.setupExpandedView(projField.getTextField());
+            projField.setUserAutocompleteService(autocompleteService);
+            projField.setJqlFieldName("project");
+            projField.setAutocompleteEnabled(true);
             header.getChildren().add(createPair("Project:", projField));
             
-            typeField = new TextField(cs.getIssueType());
-            typeField.setPrefColumnCount(10);
-            UiUtils.setupExpandedView(typeField);
+            typeField = new AutocompleteTextField();
+            typeField.getTextField().setText(cs.getIssueType() != null ? cs.getIssueType() : "");
+            typeField.getTextField().setPrefColumnCount(10);
+            UiUtils.setupExpandedView(typeField.getTextField());
+            typeField.setUserAutocompleteService(autocompleteService);
+            typeField.setJqlFieldName("issuetype");
+            typeField.setAutocompleteEnabled(true);
             header.getChildren().add(createPair("Type:", typeField));
 
             parentField = new TextField(cs.getParentIssueKey());

@@ -1181,10 +1181,40 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
                 UiUtils.setupExpandedView(tf);
                 result = tf;
             } else {
-                TextField tf = new TextField(resolvedValue != null ? resolvedValue : "");
-                tf.setPrefWidth(200);
-                UiUtils.setupExpandedView(tf);
-                result = tf;
+                String jqlField = null;
+                if (effectiveFieldId != null) {
+                    String cleanId = effectiveFieldId.toLowerCase();
+                    if (cleanId.equals("status") || cleanId.equals("project") || cleanId.equals("issuetype") || cleanId.equals("resolution") || cleanId.equals("priority") || cleanId.equals("components")) {
+                        jqlField = cleanId;
+                        if (jqlField.equals("components")) jqlField = "component";
+                    }
+                }
+                if (jqlField == null && label != null) {
+                    String labelLower = label.toLowerCase();
+                    if (labelLower.contains("status") || labelLower.contains("transition")) jqlField = "status";
+                    else if (labelLower.contains("project")) jqlField = "project";
+                    else if (labelLower.contains("type")) jqlField = "issuetype";
+                    else if (labelLower.contains("resolution")) jqlField = "resolution";
+                    else if (labelLower.contains("priority")) jqlField = "priority";
+                }
+                
+                if (jqlField != null) {
+                    AutocompleteTextField atf = new AutocompleteTextField();
+                    atf.setPrefWidth(200);
+                    atf.setUserAutocompleteService(getAutocompleteService());
+                    atf.setJqlFieldName(jqlField);
+                    atf.setAutocompleteEnabled(mainFrame.getJiraConfig().isAutocompleteEnabled());
+                    if (resolvedValue != null) {
+                        atf.setText(resolvedValue);
+                    }
+                    UiUtils.setupExpandedView(atf.getTextField());
+                    result = atf;
+                } else {
+                    TextField tf = new TextField(resolvedValue != null ? resolvedValue : "");
+                    tf.setPrefWidth(200);
+                    UiUtils.setupExpandedView(tf);
+                    result = tf;
+                }
             }
         }
 

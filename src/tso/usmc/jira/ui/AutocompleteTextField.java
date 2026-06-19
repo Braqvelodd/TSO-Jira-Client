@@ -17,10 +17,15 @@ public class AutocompleteTextField extends AnchorPane {
     private final ListView<String> suggestionList;
     private List<String> allSuggestions = new ArrayList<>();
     private JqlAutocompleteService service;
+    private String jqlFieldName;
     private boolean enabled = true;
 
     public void setUserAutocompleteService(JqlAutocompleteService service) {
         this.service = service;
+    }
+
+    public void setJqlFieldName(String jqlFieldName) {
+        this.jqlFieldName = jqlFieldName;
     }
 
     public AutocompleteTextField() {
@@ -109,22 +114,34 @@ public class AutocompleteTextField extends AnchorPane {
         String text = textField.getText();
         if (text == null) text = "";
         
+        int lastComma = text.lastIndexOf(',');
+        String queryText = (lastComma != -1) ? text.substring(lastComma + 1) : text;
+        String queryTrimmed = queryText.trim();
+        if (queryTrimmed.startsWith("@")) {
+            queryTrimmed = queryTrimmed.substring(1);
+        }
+        
         if (service != null && allSuggestions.isEmpty()) {
-            String trimmed = text.trim();
-            if (trimmed.startsWith("@")) {
-                trimmed = trimmed.substring(1);
-            }
-            if (trimmed.length() < 1) {
+            if (queryTrimmed.length() < 1) {
                 popup.hide();
                 return;
             }
             
-            final String query = trimmed;
+            final String query = queryTrimmed;
             new Thread(() -> {
                 try {
-                    List<String> matches = service.getUserSuggestions(query);
+                    List<String> matches;
+                    if (jqlFieldName != null) {
+                        matches = service.getSuggestions(jqlFieldName, query);
+                    } else {
+                        matches = service.getUserSuggestions(query);
+                    }
                     Platform.runLater(() -> {
-                        if (!query.equals(textField.getText().trim().replace("@", ""))) {
+                        String curText = textField.getText();
+                        if (curText == null) curText = "";
+                        int curLastComma = curText.lastIndexOf(',');
+                        String curQuery = (curLastComma != -1) ? curText.substring(curLastComma + 1) : curText;
+                        if (!query.equals(curQuery.trim().replace("@", ""))) {
                             return;
                         }
                         if (matches.isEmpty()) {
@@ -155,7 +172,7 @@ public class AutocompleteTextField extends AnchorPane {
             return;
         }
         
-        String textLower = text.toLowerCase();
+        String textLower = queryTrimmed.toLowerCase();
         suggestionList.getItems().clear();
 
         List<String> filtered = allSuggestions.stream()
@@ -184,7 +201,20 @@ public class AutocompleteTextField extends AnchorPane {
         String selected = suggestionList.getSelectionModel().getSelectedItem();
         if (selected != null) {
             Platform.runLater(() -> {
-                textField.setText(selected);
+                String text = textField.getText();
+                if (text == null) text = "";
+                int lastComma = text.lastIndexOf(',');
+                if (lastComma != -1) {
+                    String prefix = text.substring(0, lastComma + 1);
+                    String trailingSpace = "";
+                    if (lastComma + 1 < text.length() && Character.isWhitespace(text.charAt(lastComma + 1))) {
+                        trailingSpace = " ";
+                    }
+                    textField.setText(prefix + trailingSpace + selected);
+                } else {
+                    textField.setText(selected);
+                }
+                textField.positionCaret(textField.getText().length());
                 popup.hide();
             });
         }
