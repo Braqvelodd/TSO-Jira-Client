@@ -550,7 +550,21 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
         String finalJql = rawText.trim();
         if (finalJql.isEmpty()) return;
 
-        if (!finalJql.contains(" ") && !finalJql.contains("=") && !finalJql.contains("(")) {
+        if (isIssueKeyList(finalJql)) {
+            String[] parts = finalJql.split("[\\r\\n,;\\s]+");
+            List<String> keys = new ArrayList<>();
+            for (String p : parts) {
+                String trimmed = p.trim();
+                if (!trimmed.isEmpty()) {
+                    keys.add(trimmed);
+                }
+            }
+            if (keys.size() > 1) {
+                finalJql = "key in (" + String.join(", ", keys) + ")";
+            } else if (keys.size() == 1) {
+                finalJql = "key = " + keys.get(0);
+            }
+        } else if (!finalJql.contains(" ") && !finalJql.contains("=") && !finalJql.contains("(")) {
             if (finalJql.contains(",")) {
                 finalJql = "key in (" + finalJql + ")";
             } else {
