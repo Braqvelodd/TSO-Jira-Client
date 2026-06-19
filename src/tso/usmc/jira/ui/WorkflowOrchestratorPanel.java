@@ -5,6 +5,7 @@ import tso.usmc.jira.ui.workflow.StepEditorPanel;
 import tso.usmc.jira.workflow.*;
 import tso.usmc.jira.service.MetadataCacheService;
 import tso.usmc.jira.service.JiraIssueService;
+import tso.usmc.jira.service.JqlAutocompleteService;
 import tso.usmc.jira.ui.UiUtils;
 import tso.usmc.jira.util.JiraUtils;
 import tso.usmc.jira.util.ExecutionService;
@@ -59,6 +60,7 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
     private final GridPane runnerInputsPanel = new GridPane();
     private final Map<String, Node> promptFields = new HashMap<>();
     private final TextArea runnerLog = new TextArea();
+    private JqlAutocompleteService jqlAutocompleteService;
     private final Button runBtn = new Button("Run Workflow on Selected");
     private final Button exportReportBtn = new Button("Export Report (CSV)");
     private final CheckBox verboseLogCheck = new CheckBox("Verbose API Logs");
@@ -1159,10 +1161,31 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
             if (contextIssue != null && staticOptions != null && staticOptions.contains("{{")) {
                 resolvedValue = TokenEngine.replaceTokens(staticOptions, contextIssue);
             }
-            TextField tf = new TextField(resolvedValue != null ? resolvedValue : "");
-            tf.setPrefWidth(200);
-            UiUtils.setupExpandedView(tf);
-            result = tf;
+            
+            boolean isUser = isUserField(effectiveFieldId, contextIssue);
+            if (!isUser && label != null) {
+                String labelLower = label.toLowerCase();
+                if (labelLower.contains("assignee") || labelLower.contains("reporter") || labelLower.contains("owner")) {
+                    isUser = true;
+                }
+            }
+            
+            if (isUser) {
+                JiraUserAutocompleteTextField tf = new JiraUserAutocompleteTextField(20);
+                tf.setService(getAutocompleteService());
+                tf.setAutocompleteEnabled(mainFrame.getJiraConfig().isAutocompleteEnabled());
+                if (resolvedValue != null) {
+                    tf.setText(resolvedValue);
+                }
+                tf.setPrefWidth(200);
+                UiUtils.setupExpandedView(tf);
+                result = tf;
+            } else {
+                TextField tf = new TextField(resolvedValue != null ? resolvedValue : "");
+                tf.setPrefWidth(200);
+                UiUtils.setupExpandedView(tf);
+                result = tf;
+            }
         }
 
         // Apply Debug Tooltip
@@ -1523,7 +1546,7 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
     }
 
     private void addStepUI(WorkflowStep step) {
-        StepEditorPanel panel = new StepEditorPanel(step, cachedFieldOptions, cachedFullMeta, () -> {
+        StepEditorPanel panel = new StepEditorPanel(step, cachedFieldOptions, cachedFullMeta, getAutocompleteService(), () -> {
             stepsContainer.getChildren().remove(getStepPanel(step));
         }, new StepEditorPanel.StepActionListener() {
             @Override
@@ -1757,6 +1780,36 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
             if (c instanceof StepEditorPanel && ((StepEditorPanel)c).getStep() == step) return c;
         }
         return null;
+    }
+
+    public JqlAutocompleteService getAutocompleteService() {
+        if (jqlAutocompleteService == null) {
+            try {
+                jqlAutocompleteService = new JqlAutocompleteService(mainFrame.getService(), mainFrame.getBaseUrl());
+            } catch (Exception e) {
+                // ignore
+            }
+        }
+        return jqlAutocompleteService;
+    }
+
+    private boolean isUserField(String fieldId, JSONObject contextIssue) {
+        if (fieldId == null) return false;
+        if ("assignee".equals(fieldId) || "reporter".equals(fieldId)) {
+            return true;
+        }
+        JSONObject meta = findFieldMeta(fieldId, contextIssue);
+        if (meta != null && meta.has("schema")) {
+            JSONObject schema = meta.optJSONObject("schema");
+            if (schema != null) {
+                String type = schema.optString("type");
+                String system = schema.optString("system");
+                if ("user".equals(type) || "user".equals(system)) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     private void loadRecipe(String name) {

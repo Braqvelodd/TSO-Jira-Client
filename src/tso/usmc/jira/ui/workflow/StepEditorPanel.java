@@ -13,6 +13,7 @@ import tso.usmc.jira.workflow.AttachmentStep;
 import tso.usmc.jira.workflow.CommentStep;
 import org.json.JSONObject;
 import tso.usmc.jira.ui.UiUtils;
+import tso.usmc.jira.service.JqlAutocompleteService;
 import javafx.scene.input.Dragboard;
 import javafx.scene.input.TransferMode;
 
@@ -73,10 +74,13 @@ public class StepEditorPanel extends BorderPane {
     private final ComboBox<String> condOpCombo;
     private final TextField condValueField;
 
-    public StepEditorPanel(WorkflowStep step, Map<String, String> fieldOptions, Map<String, JSONObject> fullMetadata, Runnable onRemove, StepActionListener stepListener, StepMetadataListener metadataListener) {
+    private final JqlAutocompleteService autocompleteService;
+
+    public StepEditorPanel(WorkflowStep step, Map<String, String> fieldOptions, Map<String, JSONObject> fullMetadata, JqlAutocompleteService autocompleteService, Runnable onRemove, StepActionListener stepListener, StepMetadataListener metadataListener) {
         this.step = step;
         this.fieldOptions = fieldOptions;
         this.fullMetadata = fullMetadata;
+        this.autocompleteService = autocompleteService;
         this.metadataListener = metadataListener;
         this.contentPanel = new VBox(5);
         this.header = new HBox(10);
@@ -406,7 +410,7 @@ public class StepEditorPanel extends BorderPane {
     }
 
     public void addField(FieldAction action) {
-        FieldActionPanel panel = new FieldActionPanel(action, fieldOptions, fullMetadata, new FieldActionPanel.FieldActionListener() {
+        FieldActionPanel panel = new FieldActionPanel(action, fieldOptions, fullMetadata, autocompleteService, new FieldActionPanel.FieldActionListener() {
             @Override
             public void onMoveUp(FieldActionPanel p) {
                 int idx = actionPanels.indexOf(p);

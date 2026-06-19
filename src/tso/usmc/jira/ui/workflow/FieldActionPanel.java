@@ -5,6 +5,7 @@ import tso.usmc.jira.ui.AutocompleteTextField;
 import tso.usmc.jira.ui.UiUtils;
 import org.json.JSONArray;
 import org.json.JSONObject;
+import tso.usmc.jira.service.JqlAutocompleteService;
 
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
@@ -28,10 +29,12 @@ public class FieldActionPanel extends HBox {
     private final HBox promptPanel;
     private Map<String, String> currentOptions;
     private Map<String, JSONObject> fullMetadata;
+    private final JqlAutocompleteService autocompleteService;
 
-    public FieldActionPanel(FieldAction action, Map<String, String> fieldOptions, Map<String, JSONObject> fullMetadata, FieldActionListener listener) {
+    public FieldActionPanel(FieldAction action, Map<String, String> fieldOptions, Map<String, JSONObject> fullMetadata, JqlAutocompleteService autocompleteService, FieldActionListener listener) {
         this.currentOptions = fieldOptions;
         this.fullMetadata = fullMetadata;
+        this.autocompleteService = autocompleteService;
 
         // Initialize all UI controls first to prevent initialization order issues in lambdas
         keyCombo = new ComboBox<>();
@@ -258,10 +261,38 @@ public class FieldActionPanel extends HBox {
                     suggestions.add(av.optString("name", av.optString("value", "")));
                 }
                 valueField.setSuggestions(suggestions);
+                valueField.setUserAutocompleteService(null);
                 return;
             }
         }
         valueField.setSuggestions(Collections.emptyList());
+        if (isUserField(fieldId)) {
+            valueField.setUserAutocompleteService(autocompleteService);
+        } else {
+            valueField.setUserAutocompleteService(null);
+        }
+    }
+
+    private boolean isUserField(String fieldId) {
+        if (fieldId == null) return false;
+        String cleanId = extractFieldIdFromToken(fieldId);
+        if ("assignee".equals(cleanId) || "reporter".equals(cleanId)) {
+            return true;
+        }
+        if (fullMetadata != null && fullMetadata.containsKey(cleanId)) {
+            JSONObject meta = fullMetadata.get(cleanId);
+            if (meta.has("schema")) {
+                JSONObject schema = meta.optJSONObject("schema");
+                if (schema != null) {
+                    String type = schema.optString("type");
+                    String system = schema.optString("system");
+                    if ("user".equals(type) || "user".equals(system)) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
     }
     
     private void validateValue() {
