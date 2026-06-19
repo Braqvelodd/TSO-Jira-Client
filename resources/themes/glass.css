@@ -167,6 +167,12 @@
 .badge-worklog {
     -fx-background-color: rgba(236, 72, 153, 0.7);
 }
+.badge-attachment {
+    -fx-background-color: rgba(6, 182, 212, 0.7);
+}
+.badge-comment {
+    -fx-background-color: rgba(99, 102, 241, 0.7);
+}
 
 /* List Action Buttons (Up/Down/Delete) */
 .list-action-btn {

@@ -138,6 +138,12 @@
 .badge-worklog {
     -fx-background-color: #ec4899;
 }
+.badge-attachment {
+    -fx-background-color: #0891b2;
+}
+.badge-comment {
+    -fx-background-color: #4f46e5;
+}
 
 /* List Action Buttons (Up/Down/Delete) */
 .list-action-btn {

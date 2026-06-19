@@ -9,8 +9,12 @@ import tso.usmc.jira.workflow.CreateStep;
 import tso.usmc.jira.workflow.LinkAction;
 import tso.usmc.jira.workflow.LinkStep;
 import tso.usmc.jira.workflow.WorklogStep;
+import tso.usmc.jira.workflow.AttachmentStep;
+import tso.usmc.jira.workflow.CommentStep;
 import org.json.JSONObject;
 import tso.usmc.jira.ui.UiUtils;
+import javafx.scene.input.Dragboard;
+import javafx.scene.input.TransferMode;
 
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
@@ -42,10 +46,19 @@ public class StepEditorPanel extends BorderPane {
     private final Map<String, String> fieldOptions; // Label -> ID mapping
     private final Map<String, JSONObject> fullMetadata;
     private final StepMetadataListener metadataListener;
+    private Button collapseBtn;
 
     private TextField targetIssueField;
     private TextField projField;
     private TextField typeField;
+    private TextField parentField;
+    private TextField attachmentPathField;
+    private CheckBox attachmentPromptCheck;
+    private TextArea commentBodyArea;
+    private CheckBox commentPromptCheck;
+    private CheckBox commentPerIssueCheck;
+    private CheckBox worklogPromptCheck;
+    private CheckBox worklogPerIssueCheck;
     private TextField inwardField;
     private TextField sourceTokenField;
     private TextField targetTokenField;
@@ -76,7 +89,7 @@ public class StepEditorPanel extends BorderPane {
         header.setPadding(new Insets(5));
         header.getStyleClass().add("step-header");
 
-        Button collapseBtn = new Button("▼");
+        collapseBtn = new Button("▼");
         collapseBtn.getStyleClass().add("list-action-btn");
         collapseBtn.setMinSize(22, 22); collapseBtn.setMaxSize(22, 22);
         collapseBtn.setOnAction(e -> {
@@ -131,6 +144,11 @@ public class StepEditorPanel extends BorderPane {
             typeField.setPrefColumnCount(10);
             UiUtils.setupExpandedView(typeField);
             header.getChildren().add(createPair("Type:", typeField));
+
+            parentField = new TextField(cs.getParentIssueKey());
+            parentField.setPrefColumnCount(10);
+            UiUtils.setupExpandedView(parentField);
+            header.getChildren().add(createPair("Parent:", parentField));
         }
 
         if (step instanceof AssetStep) {
@@ -192,6 +210,86 @@ public class StepEditorPanel extends BorderPane {
             startedField.setPrefColumnCount(12);
             UiUtils.setupExpandedView(startedField);
             header.getChildren().add(createPair("Started:", startedField));
+
+            worklogPromptCheck = new CheckBox("Prompt?");
+            worklogPromptCheck.setSelected(ws.isPromptAtRuntime());
+            worklogPromptCheck.setOnAction(e -> {
+                ws.setPromptAtRuntime(worklogPromptCheck.isSelected());
+            });
+            header.getChildren().add(worklogPromptCheck);
+
+            worklogPerIssueCheck = new CheckBox("Per-Issue?");
+            worklogPerIssueCheck.setSelected(ws.isPromptPerIssue());
+            worklogPerIssueCheck.setOnAction(e -> {
+                ws.setPromptPerIssue(worklogPerIssueCheck.isSelected());
+            });
+            header.getChildren().add(worklogPerIssueCheck);
+        }
+
+        if (step instanceof AttachmentStep) {
+            AttachmentStep as = (AttachmentStep) step;
+            targetIssueField = new TextField(as.getTargetIssueToken());
+            targetIssueField.setPrefColumnCount(10);
+            UiUtils.setupExpandedView(targetIssueField);
+            header.getChildren().add(createPair("Target Issue:", targetIssueField));
+            
+            attachmentPathField = new TextField(as.getFilePath());
+            attachmentPathField.setPrefColumnCount(25);
+            UiUtils.setupExpandedView(attachmentPathField);
+            header.getChildren().add(createPair("File Path:", attachmentPathField));
+
+            // Drag-and-drop file support in designer
+            attachmentPathField.setOnDragOver(e -> {
+                if (e.getDragboard().hasFiles()) {
+                    e.acceptTransferModes(TransferMode.COPY);
+                }
+                e.consume();
+            });
+            attachmentPathField.setOnDragDropped(e -> {
+                Dragboard db = e.getDragboard();
+                boolean success = false;
+                if (db.hasFiles()) {
+                    java.util.List<java.io.File> files = db.getFiles();
+                    if (!files.isEmpty()) {
+                        attachmentPathField.setText(files.get(0).getAbsolutePath());
+                        success = true;
+                    }
+                }
+                e.setDropCompleted(success);
+                e.consume();
+            });
+            
+            attachmentPromptCheck = new CheckBox("Prompt?");
+            attachmentPromptCheck.setSelected(as.isPromptAtRuntime());
+            attachmentPromptCheck.setOnAction(e -> {
+                as.setPromptAtRuntime(attachmentPromptCheck.isSelected());
+            });
+            header.getChildren().add(attachmentPromptCheck);
+        }
+
+        if (step instanceof CommentStep) {
+            CommentStep cs = (CommentStep) step;
+            targetIssueField = new TextField(cs.getTargetIssueToken());
+            targetIssueField.setPrefColumnCount(10);
+            UiUtils.setupExpandedView(targetIssueField);
+            header.getChildren().add(createPair("Target Issue:", targetIssueField));
+            
+            commentPromptCheck = new CheckBox("Prompt?");
+            commentPromptCheck.setSelected(cs.isPromptAtRuntime());
+            
+            commentPerIssueCheck = new CheckBox("Per-Issue?");
+            commentPerIssueCheck.setSelected(cs.isPromptPerIssue());
+            commentPerIssueCheck.setDisable(!cs.isPromptAtRuntime());
+            
+            commentPromptCheck.setOnAction(e -> {
+                cs.setPromptAtRuntime(commentPromptCheck.isSelected());
+                commentPerIssueCheck.setDisable(!commentPromptCheck.isSelected());
+            });
+            commentPerIssueCheck.setOnAction(e -> {
+                cs.setPromptPerIssue(commentPerIssueCheck.isSelected());
+            });
+            
+            header.getChildren().addAll(commentPromptCheck, commentPerIssueCheck);
         }
 
         // Step Rearrangement Buttons
@@ -252,6 +350,18 @@ public class StepEditorPanel extends BorderPane {
                 addField(action);
             }
         }
+        
+        if (step instanceof CommentStep) {
+            CommentStep cs = (CommentStep) step;
+            commentBodyArea = new TextArea(cs.getCommentBody());
+            commentBodyArea.setPrefRowCount(4);
+            commentBodyArea.setWrapText(true);
+            
+            VBox commentBodyBox = new VBox(5);
+            commentBodyBox.getChildren().addAll(new Label("Default Comment Body (supports tokens):"), commentBodyArea);
+            fieldsContainer.getChildren().add(commentBodyBox);
+        }
+        
         contentPanel.getChildren().add(fieldsContainer);
 
         // Footer (Add Field/Link)
@@ -263,7 +373,7 @@ public class StepEditorPanel extends BorderPane {
             Button addLinkBtn = new Button("+ Add Link");
             addLinkBtn.setOnAction(e -> addLinkAction(new LinkAction()));
             footer.getChildren().add(addLinkBtn);
-        } else if (step.getType() != WorkflowStep.StepType.ASSET && step.getType() != WorkflowStep.StepType.WORKLOG) {
+        } else if (step.getType() != WorkflowStep.StepType.ASSET && step.getType() != WorkflowStep.StepType.WORKLOG && step.getType() != WorkflowStep.StepType.ATTACHMENT && step.getType() != WorkflowStep.StepType.COMMENT) {
             Button addFieldBtn = new Button("+ Add Field");
             addFieldBtn.setOnAction(e -> addField(new FieldAction("", FieldAction.MappingMode.SET, "", "")));
             footer.getChildren().add(addFieldBtn);
@@ -282,6 +392,17 @@ public class StepEditorPanel extends BorderPane {
         contentPanel.getChildren().add(footer);
 
         setCenter(contentPanel);
+    }
+
+    public void setCollapsed(boolean collapsed) {
+        boolean visible = !collapsed;
+        contentPanel.setVisible(visible);
+        contentPanel.setManaged(visible);
+        collapseBtn.setText(visible ? "▼" : "▶");
+    }
+
+    public boolean isCollapsed() {
+        return !contentPanel.isVisible();
     }
 
     public void addField(FieldAction action) {
@@ -384,6 +505,9 @@ public class StepEditorPanel extends BorderPane {
         if (step instanceof CreateStep) {
             ((CreateStep)step).setProjectKey(projField.getText());
             ((CreateStep)step).setIssueType(typeField.getText());
+            if (parentField != null) {
+                ((CreateStep)step).setParentIssueKey(parentField.getText());
+            }
         }
         if (step instanceof LinkStep) {
             LinkStep ls = (LinkStep) step;
@@ -406,6 +530,21 @@ public class StepEditorPanel extends BorderPane {
             ws.setTimeSpent(timeSpentField.getText());
             ws.setComment(commentField.getText());
             ws.setStarted(startedField.getText());
+            if (worklogPromptCheck != null) ws.setPromptAtRuntime(worklogPromptCheck.isSelected());
+            if (worklogPerIssueCheck != null) ws.setPromptPerIssue(worklogPerIssueCheck.isSelected());
+        }
+        if (step instanceof AttachmentStep) {
+            AttachmentStep as = (AttachmentStep) step;
+            as.setTargetIssueToken(targetIssueField.getText());
+            if (attachmentPathField != null) as.setFilePath(attachmentPathField.getText());
+            if (attachmentPromptCheck != null) as.setPromptAtRuntime(attachmentPromptCheck.isSelected());
+        }
+        if (step instanceof CommentStep) {
+            CommentStep cs = (CommentStep) step;
+            cs.setTargetIssueToken(targetIssueField.getText());
+            if (commentBodyArea != null) cs.setCommentBody(commentBodyArea.getText());
+            if (commentPromptCheck != null) cs.setPromptAtRuntime(commentPromptCheck.isSelected());
+            if (commentPerIssueCheck != null) cs.setPromptPerIssue(commentPerIssueCheck.isSelected());
         }
         
         step.getFieldActions().clear();

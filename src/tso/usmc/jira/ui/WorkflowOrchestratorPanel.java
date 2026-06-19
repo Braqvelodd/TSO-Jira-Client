@@ -235,12 +235,36 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
         center.setTop(header);
         
         // Editor Steps
+        HBox stepsHeader = new HBox(10);
+        stepsHeader.setAlignment(Pos.CENTER_LEFT);
+        stepsHeader.setPadding(new Insets(5, 0, 5, 0));
+        
+        Label stepsTitleLabel = new Label("Recipe Steps");
+        stepsTitleLabel.setStyle("-fx-font-weight: bold; -fx-font-size: 13px;");
+        
+        Region stepsSpacer = new Region();
+        HBox.setHgrow(stepsSpacer, Priority.ALWAYS);
+        
+        Button expandAllBtn = new Button("Expand All");
+        Button collapseAllBtn = new Button("Collapse All");
+        expandAllBtn.setMinWidth(Region.USE_PREF_SIZE);
+        collapseAllBtn.setMinWidth(Region.USE_PREF_SIZE);
+        expandAllBtn.setOnAction(e -> setAllStepsCollapsed(false));
+        collapseAllBtn.setOnAction(e -> setAllStepsCollapsed(true));
+        
+        stepsHeader.getChildren().addAll(stepsTitleLabel, stepsSpacer, expandAllBtn, collapseAllBtn);
+        
         ScrollPane stepsScroll = new ScrollPane();
         stepsScroll.setContent(stepsContainer);
         stepsScroll.setFitToWidth(true);
         stepsContainer.setMinWidth(Region.USE_PREF_SIZE);
-        center.setCenter(stepsScroll);
-        BorderPane.setMargin(stepsScroll, new Insets(10, 0, 10, 0));
+        
+        VBox stepsWrapper = new VBox(5);
+        stepsWrapper.getChildren().addAll(stepsHeader, stepsScroll);
+        VBox.setVgrow(stepsScroll, Priority.ALWAYS);
+        
+        center.setCenter(stepsWrapper);
+        BorderPane.setMargin(stepsWrapper, new Insets(10, 0, 10, 0));
         
         // Editor Footer
         HBox footer = new HBox(10);
@@ -249,9 +273,30 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
         Button addUpdateBtn = new Button("Add Update");
         Button addCreateBtn = new Button("Add Create");
         Button addLinkBtn = new Button("Add Link");
-        Button addAssetBtn = new Button("Add Asset (Links/Att/Sub)");
+        Button addAssetBtn = new Button("Copy Assets (Links/Att/Sub)");
         Button addWorklogBtn = new Button("Add Worklog");
-        footer.getChildren().addAll(addTransBtn, addUpdateBtn, addCreateBtn, addLinkBtn, addAssetBtn, addWorklogBtn);
+        Button addAttachmentBtn = new Button("Add Attachment");
+        Button addCommentBtn = new Button("Add Comment");
+        
+        addTransBtn.setMinWidth(Region.USE_PREF_SIZE);
+        addUpdateBtn.setMinWidth(Region.USE_PREF_SIZE);
+        addCreateBtn.setMinWidth(Region.USE_PREF_SIZE);
+        addLinkBtn.setMinWidth(Region.USE_PREF_SIZE);
+        addAssetBtn.setMinWidth(Region.USE_PREF_SIZE);
+        addWorklogBtn.setMinWidth(Region.USE_PREF_SIZE);
+        addAttachmentBtn.setMinWidth(Region.USE_PREF_SIZE);
+        addCommentBtn.setMinWidth(Region.USE_PREF_SIZE);
+        
+        addTransBtn.getStyleClass().add("btn-transition");
+        addUpdateBtn.getStyleClass().add("btn-update");
+        addCreateBtn.getStyleClass().add("btn-create");
+        addLinkBtn.getStyleClass().add("btn-link");
+        addAssetBtn.getStyleClass().add("btn-asset");
+        addWorklogBtn.getStyleClass().add("btn-worklog");
+        addAttachmentBtn.getStyleClass().add("btn-attachment");
+        addCommentBtn.getStyleClass().add("btn-comment");
+        
+        footer.getChildren().addAll(addTransBtn, addUpdateBtn, addCreateBtn, addLinkBtn, addAssetBtn, addWorklogBtn, addAttachmentBtn, addCommentBtn);
         center.setBottom(footer);
 
         // Split Editor and Tokens
@@ -285,6 +330,8 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
         addLinkBtn.setOnAction(e -> addStep(new LinkStep()));
         addAssetBtn.setOnAction(e -> addStep(new AssetStep()));
         addWorklogBtn.setOnAction(e -> addStep(new WorklogStep()));
+        addAttachmentBtn.setOnAction(e -> addStep(new AttachmentStep()));
+        addCommentBtn.setOnAction(e -> addStep(new CommentStep()));
 
         tokenSearchField.textProperty().addListener((obs, oldVal, newVal) -> filterTokens());
 
@@ -410,6 +457,7 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
 
         runnerTable.getColumns().addAll(keyCol, summaryCol, statusCol, assigneeCol);
         runnerTable.getSelectionModel().setSelectionMode(SelectionMode.MULTIPLE);
+        runnerTable.getSelectionModel().getSelectedItems().addListener((javafx.collections.ListChangeListener<RunnerIssueRow>) c -> updateRunnerInputs());
         
         runnerTable.setRowFactory(tv -> {
             TableRow<RunnerIssueRow> row = new TableRow<>();
@@ -553,6 +601,10 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
                 val = ((PromptChoicePanel) comp).getValue();
             } else if (comp instanceof AssetOptionsPromptPanel) {
                 val = ((AssetOptionsPromptPanel) comp).getValue();
+            } else if (comp instanceof FilePromptPanel) {
+                val = ((FilePromptPanel) comp).getValue();
+            } else if (comp instanceof TextArea) {
+                val = ((TextArea) comp).getText();
             }
             promptValues.put(label, val);
         }
@@ -660,9 +712,97 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
                         AssetStep as = (AssetStep) step;
                         if (as.isPromptOptions()) {
                             String label = "Asset Options (" + step.getLabel() + ")";
-                            AssetOptionsPromptPanel panel = new AssetOptionsPromptPanel(as.isCopyAttachments(), as.isCopyLinks(), as.isCopySubTasks());
+                            AssetOptionsPromptPanel panel = new AssetOptionsPromptPanel(as.isCopyAttachments(), as.isCopyLinks(), as.isCopySubTasks(), as.getSubTaskFields());
                             addInputRow(label, panel, labels);
                             promptFields.put(label.replaceAll("\\[.*?\\]", "").trim(), panel);
+                        }
+                    }
+                    
+                    if (step instanceof AttachmentStep) {
+                        AttachmentStep as = (AttachmentStep) step;
+                        if (as.isPromptAtRuntime()) {
+                            String label = "Attachment File (" + step.getLabel() + ")";
+                            String defaultPath = as.getFilePath();
+                            if (defaultPath != null && !defaultPath.trim().isEmpty() && contextIssue != null) {
+                                defaultPath = TokenEngine.replaceTokens(defaultPath, contextIssue);
+                            }
+                            FilePromptPanel panel = new FilePromptPanel(mainFrame.getPrimaryStage(), defaultPath);
+                            addInputRow(label, panel, labels);
+                            promptFields.put(label.replaceAll("\\[.*?\\]", "").trim(), panel);
+                        }
+                    }
+                    
+                    if (step instanceof CommentStep) {
+                        CommentStep cs = (CommentStep) step;
+                        if (cs.isPromptAtRuntime()) {
+                            if (cs.isPromptPerIssue()) {
+                                List<RunnerIssueRow> selectedRows = runnerTable.getSelectionModel().getSelectedItems();
+                                if (selectedRows.isEmpty() && contextIssue != null) {
+                                    String key = contextIssue.optString("key");
+                                    String label = "Comment (" + step.getLabel() + ") for " + key;
+                                    TextArea area = new TextArea();
+                                    area.setPrefRowCount(3);
+                                    area.setWrapText(true);
+                                    if (cs.getCommentBody() != null) {
+                                        String resolvedDefault = TokenEngine.replaceTokens(cs.getCommentBody(), contextIssue);
+                                        area.setText(resolvedDefault);
+                                    }
+                                    addInputRow(label, area, labels);
+                                    promptFields.put(label, area);
+                                } else {
+                                    for (RunnerIssueRow row : selectedRows) {
+                                        String key = row.getKey();
+                                        String label = "Comment (" + step.getLabel() + ") for " + key;
+                                        TextArea area = new TextArea();
+                                        area.setPrefRowCount(3);
+                                        area.setWrapText(true);
+                                        if (cs.getCommentBody() != null) {
+                                            int rIdx = runnerTable.getItems().indexOf(row);
+                                            JSONObject issueContext = (rIdx >= 0 && rIdx < currentSearchIssues.size()) ? currentSearchIssues.get(rIdx) : contextIssue;
+                                            String resolvedDefault = TokenEngine.replaceTokens(cs.getCommentBody(), issueContext);
+                                            area.setText(resolvedDefault);
+                                        }
+                                        addInputRow(label, area, labels);
+                                        promptFields.put(label, area);
+                                    }
+                                }
+                            } else {
+                                String label = "Comment (" + step.getLabel() + ")";
+                                TextArea area = new TextArea();
+                                area.setPrefRowCount(3);
+                                area.setWrapText(true);
+                                if (cs.getCommentBody() != null && !cs.getCommentBody().trim().isEmpty()) {
+                                    String resolvedDefault = cs.getCommentBody();
+                                    if (contextIssue != null) {
+                                        resolvedDefault = TokenEngine.replaceTokens(resolvedDefault, contextIssue);
+                                    }
+                                    area.setText(resolvedDefault);
+                                }
+                                addInputRow(label, area, labels);
+                                promptFields.put(label, area);
+                            }
+                        }
+                    }
+
+                    if (step instanceof WorklogStep) {
+                        WorklogStep ws = (WorklogStep) step;
+                        if (ws.isPromptAtRuntime()) {
+                            if (ws.isPromptPerIssue()) {
+                                List<RunnerIssueRow> selectedRows = runnerTable.getSelectionModel().getSelectedItems();
+                                if (selectedRows.isEmpty() && contextIssue != null) {
+                                    String key = contextIssue.optString("key");
+                                    addWorklogPromptsForIssue(labels, ws, key, contextIssue);
+                                } else {
+                                    for (RunnerIssueRow row : selectedRows) {
+                                        String key = row.getKey();
+                                        int rIdx = runnerTable.getItems().indexOf(row);
+                                        JSONObject issueContext = (rIdx >= 0 && rIdx < currentSearchIssues.size()) ? currentSearchIssues.get(rIdx) : contextIssue;
+                                        addWorklogPromptsForIssue(labels, ws, key, issueContext);
+                                    }
+                                }
+                            } else {
+                                addWorklogPromptsOnce(labels, ws, contextIssue);
+                            }
                         }
                     }
                     
@@ -702,6 +842,56 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
         
         addInputRow(label, input, labels);
         promptFields.put(cleanLabel, input);
+    }
+
+    private void addWorklogPromptsForIssue(Set<String> labels, WorklogStep ws, String key, JSONObject issueContext) {
+        String timeSpentLabel = "Time Spent (" + ws.getLabel() + ") for " + key;
+        String commentLabel = "Comment (" + ws.getLabel() + ") for " + key;
+        
+        TextField tsField = new TextField();
+        tsField.setPrefWidth(200);
+        UiUtils.setupExpandedView(tsField);
+        if (ws.getTimeSpent() != null) {
+            tsField.setText(TokenEngine.replaceTokens(ws.getTimeSpent(), issueContext));
+        }
+        addInputRow(timeSpentLabel, tsField, labels);
+        promptFields.put(timeSpentLabel, tsField);
+        
+        TextArea commentArea = new TextArea();
+        commentArea.setPrefRowCount(3);
+        commentArea.setWrapText(true);
+        if (ws.getComment() != null) {
+            commentArea.setText(TokenEngine.replaceTokens(ws.getComment(), issueContext));
+        }
+        addInputRow(commentLabel, commentArea, labels);
+        promptFields.put(commentLabel, commentArea);
+    }
+
+    private void addWorklogPromptsOnce(Set<String> labels, WorklogStep ws, JSONObject contextIssue) {
+        String timeSpentLabel = "Time Spent (" + ws.getLabel() + ")";
+        String commentLabel = "Comment (" + ws.getLabel() + ")";
+        
+        TextField tsField = new TextField();
+        tsField.setPrefWidth(200);
+        UiUtils.setupExpandedView(tsField);
+        if (ws.getTimeSpent() != null) {
+            String defTs = ws.getTimeSpent();
+            if (contextIssue != null) defTs = TokenEngine.replaceTokens(defTs, contextIssue);
+            tsField.setText(defTs);
+        }
+        addInputRow(timeSpentLabel, tsField, labels);
+        promptFields.put(timeSpentLabel, tsField);
+        
+        TextArea commentArea = new TextArea();
+        commentArea.setPrefRowCount(3);
+        commentArea.setWrapText(true);
+        if (ws.getComment() != null) {
+            String defComment = ws.getComment();
+            if (contextIssue != null) defComment = TokenEngine.replaceTokens(defComment, contextIssue);
+            commentArea.setText(defComment);
+        }
+        addInputRow(commentLabel, commentArea, labels);
+        promptFields.put(commentLabel, commentArea);
     }
 
     private JSONObject findFieldMeta(String fieldId, JSONObject contextIssue) {
@@ -811,6 +1001,7 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
                 atf.setPrefWidth(200);
                 atf.setSuggestions(options);
                 atf.setAutocompleteEnabled(true);
+                UiUtils.setupExpandedView(atf.getTextField());
                 String resolvedValue = staticOptions;
                 if (contextIssue != null && staticOptions != null && staticOptions.contains("{{")) {
                     resolvedValue = TokenEngine.replaceTokens(staticOptions, contextIssue);
@@ -882,6 +1073,7 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
                                     atf.setPrefWidth(200);
                                     atf.setSuggestions(options);
                                     atf.setAutocompleteEnabled(mainFrame.getJiraConfig().isAutocompleteEnabled());
+                                    UiUtils.setupExpandedView(atf.getTextField());
                                     result = atf;
                                 }
                             }
@@ -947,6 +1139,7 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
                                         if (contextIssue != null) resolved = TokenEngine.replaceTokens(val, contextIssue);
                                         TextField tf = new TextField(resolved);
                                         tf.setPrefWidth(200);
+                                        UiUtils.setupExpandedView(tf);
                                         result = tf;
                                     }
                                 }
@@ -968,6 +1161,7 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
             }
             TextField tf = new TextField(resolvedValue != null ? resolvedValue : "");
             tf.setPrefWidth(200);
+            UiUtils.setupExpandedView(tf);
             result = tf;
         }
 
@@ -1033,6 +1227,14 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
         List<String> typeOpts = resolveAndSplitOptions(typeVal, contextIssue);
         if (typeOpts.size() > 1) {
             addDynamicPrompt(labels, "Issue Type (" + cs.getLabel() + ")", typeVal, "issuetype", contextIssue);
+        }
+
+        String parentVal = cs.getParentIssueKey();
+        if (parentVal != null) {
+            List<String> parentOpts = resolveAndSplitOptions(parentVal, contextIssue);
+            if (parentOpts.size() > 1) {
+                addDynamicPrompt(labels, "Parent Issue (" + cs.getLabel() + ")", parentVal, "parent", contextIssue);
+            }
         }
     }
 
@@ -1110,7 +1312,8 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
 
     private static class AssetOptionsPromptPanel extends HBox {
         private final CheckBox att, links, sub;
-        AssetOptionsPromptPanel(boolean a, boolean l, boolean s) {
+        private final TextField fieldsField;
+        AssetOptionsPromptPanel(boolean a, boolean l, boolean s, String defaultFields) {
             setSpacing(10);
             setAlignment(Pos.CENTER_LEFT);
             att = new CheckBox("Attachments");
@@ -1119,10 +1322,68 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
             links.setSelected(l);
             sub = new CheckBox("Sub-tasks");
             sub.setSelected(s);
-            getChildren().addAll(att, links, sub);
+            
+            fieldsField = new TextField(defaultFields != null ? defaultFields : "");
+            fieldsField.setPrefWidth(150);
+            fieldsField.setDisable(!s);
+            sub.setOnAction(e -> fieldsField.setDisable(!sub.isSelected()));
+            
+            getChildren().addAll(att, links, sub, new Label("Fields:"), fieldsField);
         }
         public String getValue() {
-            return att.isSelected() + "," + links.isSelected() + "," + sub.isSelected();
+            String fieldsText = fieldsField.getText().trim();
+            return att.isSelected() + "," + links.isSelected() + "," + sub.isSelected() + "," + fieldsText;
+        }
+    }
+
+    private static class FilePromptPanel extends HBox {
+        private final TextField pathField = new TextField();
+        private final Button browseBtn = new Button("Browse...");
+        
+        FilePromptPanel(javafx.stage.Window ownerWindow, String defaultPath) {
+            setSpacing(5);
+            setAlignment(Pos.CENTER_LEFT);
+            pathField.setEditable(false);
+            pathField.setPrefWidth(250);
+            if (defaultPath != null) {
+                pathField.setText(defaultPath);
+            }
+            
+            browseBtn.setOnAction(e -> {
+                FileChooser fc = new FileChooser();
+                fc.setTitle("Select Attachment File");
+                File file = fc.showOpenDialog(ownerWindow);
+                if (file != null) {
+                    pathField.setText(file.getAbsolutePath());
+                }
+            });
+
+            // Drag-and-drop file support in runtime prompt
+            setOnDragOver(e -> {
+                if (e.getDragboard().hasFiles()) {
+                    e.acceptTransferModes(TransferMode.COPY);
+                }
+                e.consume();
+            });
+            setOnDragDropped(e -> {
+                Dragboard db = e.getDragboard();
+                boolean success = false;
+                if (db.hasFiles()) {
+                    List<File> files = db.getFiles();
+                    if (!files.isEmpty()) {
+                        pathField.setText(files.get(0).getAbsolutePath());
+                        success = true;
+                    }
+                }
+                e.setDropCompleted(success);
+                e.consume();
+            });
+            
+            getChildren().addAll(pathField, browseBtn);
+        }
+        
+        public String getValue() {
+            return pathField.getText();
         }
     }
 
@@ -1576,6 +1837,14 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
         jqlField.setText("");
         stepsContainer.getChildren().clear();
         recipeList.getSelectionModel().clearSelection();
+    }
+
+    private void setAllStepsCollapsed(boolean collapse) {
+        for (Node c : stepsContainer.getChildren()) {
+            if (c instanceof StepEditorPanel) {
+                ((StepEditorPanel) c).setCollapsed(collapse);
+            }
+        }
     }
 
     private void deleteRecipe() {

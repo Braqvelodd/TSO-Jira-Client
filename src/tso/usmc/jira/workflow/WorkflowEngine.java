@@ -160,8 +160,17 @@ public class WorkflowEngine {
             fields.put("project", new JSONObject().put("key", proj));
             fields.put("issuetype", new JSONObject().put("name", type));
 
+            String parentLog = "";
+            if (cs.getParentIssueKey() != null && !cs.getParentIssueKey().trim().isEmpty()) {
+                String parentKey = resolveStepProperty(cs.getParentIssueKey(), "Parent Issue (" + step.getLabel() + ")", prompts, issue);
+                if (parentKey != null && !parentKey.trim().isEmpty()) {
+                    fields.put("parent", new JSONObject().put("key", parentKey));
+                    parentLog = " under parent " + parentKey;
+                }
+            }
+
             if (dryRun) {
-                listener.onLog("  > [DRY RUN] Would create issue in " + proj + " (" + type + ")");
+                listener.onLog("  > [DRY RUN] Would create issue in " + proj + " (" + type + ")" + parentLog);
                 listener.onLog("  > [DRY RUN] Fields: " + fields.keySet());
                 // Mock last_key for subsequent steps in dry run
                 String mockKey = proj + "-MOCK";
@@ -169,7 +178,7 @@ public class WorkflowEngine {
                 executionVars.put("last.key", mockKey);
                 executionVars.put("last.id", "10000");
             } else {
-                if (verboseLogging) listener.onLog("  > Creating issue in " + proj + " (" + type + ")...");
+                if (verboseLogging) listener.onLog("  > Creating issue in " + proj + " (" + type + ")" + parentLog + "...");
                 JSONObject respJson = issueService.createIssue(fields);
                 String newKey = respJson.getString("key");
                 executionVars.put("last_key", newKey);
@@ -280,6 +289,7 @@ public class WorkflowEngine {
             }
 
             boolean doAtt = as.isCopyAttachments(), doLinks = as.isCopyLinks(), doSub = as.isCopySubTasks();
+            String csvFields = as.getSubTaskFields();
             if (as.isPromptOptions()) {
                 String p = prompts.get("Asset Options (" + step.getLabel() + ")");
                 if (p != null && p.contains(",")) {
@@ -288,25 +298,38 @@ public class WorkflowEngine {
                         doAtt = Boolean.parseBoolean(parts[0]);
                         doLinks = Boolean.parseBoolean(parts[1]);
                         doSub = Boolean.parseBoolean(parts[2]);
+                        if (parts.length >= 4) {
+                            csvFields = parts[3];
+                        }
                     }
                 }
             }
 
             if (doAtt) copyAttachments(sourceData, targetKey);
             if (doLinks) copyLinks(sourceData, targetKey);
-            if (doSub) copySubTasks(sourceData, targetKey, as);
+            if (doSub) copySubTasks(sourceData, targetKey, csvFields);
         } else if (step instanceof WorklogStep) {
             WorklogStep ws = (WorklogStep) step;
             String targetKey = JiraUtils.cleanIssueKey(resolveTokens(ws.getTargetIssueToken(), issue));
             if (targetKey == null || targetKey.trim().isEmpty()) return;
 
-            String timeSpent = resolveStepProperty(ws.getTimeSpent(), "Time Spent (" + step.getLabel() + ")", prompts, issue);
+            String timeSpentPromptKey = "Time Spent (" + step.getLabel() + ")";
+            String commentPromptKey = "Comment (" + step.getLabel() + ")";
+            String startedPromptKey = "Started (" + step.getLabel() + ")";
+
+            if (ws.isPromptAtRuntime() && ws.isPromptPerIssue()) {
+                timeSpentPromptKey = "Time Spent (" + step.getLabel() + ") for " + targetKey;
+                commentPromptKey = "Comment (" + step.getLabel() + ") for " + targetKey;
+                startedPromptKey = "Started (" + step.getLabel() + ") for " + targetKey;
+            }
+
+            String timeSpent = resolveStepProperty(ws.getTimeSpent(), timeSpentPromptKey, prompts, issue);
+            String comment = resolveStepProperty(ws.getComment(), commentPromptKey, prompts, issue);
+            String started = resolveStepProperty(ws.getStarted(), startedPromptKey, prompts, issue);
             
             if (dryRun) {
-                listener.onLog("  > [DRY RUN] Would add " + timeSpent + " worklog to " + targetKey);
+                listener.onLog("  > [DRY RUN] Would add " + timeSpent + " worklog to " + targetKey + (comment != null && !comment.trim().isEmpty() ? " with comment: \"" + comment + "\"" : ""));
             } else {
-                String comment = resolveStepProperty(ws.getComment(), "Comment (" + step.getLabel() + ")", prompts, issue);
-                String started = resolveStepProperty(ws.getStarted(), "Started (" + step.getLabel() + ")", prompts, issue);
                 started = resolveTokens(started, issue);
                 started = JiraUtils.formatJiraDateTime(started);
 
@@ -317,6 +340,75 @@ public class WorkflowEngine {
 
                 apiService.executeRequest(baseUrl + "/rest/api/2/issue/" + targetKey + "/worklog", "POST", body.toString(4));
                 listener.onLog("  > Added Worklog to " + targetKey + " (" + timeSpent + ")");
+            }
+        } else if (step instanceof AttachmentStep) {
+            AttachmentStep as = (AttachmentStep) step;
+            String targetKey = JiraUtils.cleanIssueKey(resolveTokens(as.getTargetIssueToken(), issue));
+            if (targetKey != null && !targetKey.trim().isEmpty()) {
+                String filePath = "";
+                if (as.isPromptAtRuntime()) {
+                    String promptLabel = "Attachment File (" + step.getLabel() + ")";
+                    if (prompts != null && prompts.containsKey(promptLabel)) {
+                        filePath = prompts.get(promptLabel);
+                    }
+                } else {
+                    filePath = resolveTokens(as.getFilePath(), issue);
+                }
+
+                if (filePath == null || filePath.trim().isEmpty()) {
+                    throw new Exception("Attachment Step: No file selected or file path is empty.");
+                }
+
+                java.io.File file = new java.io.File(filePath);
+                if (!dryRun && !file.exists()) {
+                    throw new Exception("Attachment Step: File not found: " + file.getAbsolutePath());
+                }
+
+                if (dryRun) {
+                    listener.onLog("  > [DRY RUN] Would upload attachment '" + file.getName() + "' to " + targetKey);
+                } else {
+                    if (verboseLogging) listener.onLog("  > Uploading attachment '" + file.getName() + "' to " + targetKey + "...");
+                    apiService.uploadAttachment(baseUrl + "/rest/api/2/issue/" + targetKey + "/attachments", file, file.getName());
+                    listener.onLog("  > Uploaded attachment '" + file.getName() + "' to " + targetKey);
+                }
+            }
+        } else if (step instanceof CommentStep) {
+            CommentStep cs = (CommentStep) step;
+            String targetKey = JiraUtils.cleanIssueKey(resolveTokens(cs.getTargetIssueToken(), issue));
+            if (targetKey != null && !targetKey.trim().isEmpty()) {
+                String commentText = "";
+                if (cs.isPromptAtRuntime()) {
+                    if (cs.isPromptPerIssue()) {
+                        String perIssueLabel = "Comment (" + step.getLabel() + ") for " + targetKey;
+                        if (prompts != null && prompts.containsKey(perIssueLabel)) {
+                            commentText = prompts.get(perIssueLabel);
+                        } else {
+                            commentText = resolveTokens(cs.getCommentBody(), issue);
+                        }
+                    } else {
+                        String promptLabel = "Comment (" + step.getLabel() + ")";
+                        if (prompts != null && prompts.containsKey(promptLabel)) {
+                            commentText = prompts.get(promptLabel);
+                            commentText = resolveTokens(commentText, issue);
+                        } else {
+                            commentText = resolveTokens(cs.getCommentBody(), issue);
+                        }
+                    }
+                } else {
+                    commentText = resolveTokens(cs.getCommentBody(), issue);
+                }
+
+                if (commentText == null || commentText.trim().isEmpty()) {
+                    throw new Exception("Comment Step: Comment body is empty.");
+                }
+
+                if (dryRun) {
+                    listener.onLog("  > [DRY RUN] Would add comment to " + targetKey + ": \"" + commentText + "\"");
+                } else {
+                    if (verboseLogging) listener.onLog("  > Adding comment to " + targetKey + "...");
+                    issueService.addComment(targetKey, commentText);
+                    listener.onLog("  > Added comment to " + targetKey);
+                }
             }
         }
     }
@@ -330,7 +422,7 @@ public class WorkflowEngine {
         return value;
     }
 
-    private void copySubTasks(JSONObject sourceIssue, String targetParentKey, AssetStep as) throws Exception {
+    private void copySubTasks(JSONObject sourceIssue, String targetParentKey, String csvFields) throws Exception {
         String sourceKey = sourceIssue.getString("key");
         String subtaskUrl = baseUrl + "/rest/api/2/issue/" + sourceKey + "/subtask";
         String subtaskResp = apiService.executeRequest(subtaskUrl, "GET", null);
@@ -353,7 +445,7 @@ public class WorkflowEngine {
             newSubFields.put("parent", new JSONObject().put("key", targetParentKey));
             newSubFields.put("issuetype", subFields.getJSONObject("issuetype"));
             
-            String csv = as.getSubTaskFields();
+            String csv = csvFields;
             if (csv != null && !csv.trim().isEmpty()) copySubTaskFields(subFields, newSubFields, csv.split(","));
 
             try {
@@ -526,11 +618,16 @@ public class WorkflowEngine {
     }
 
     private String resolveValue(FieldAction fa, JSONObject issue, Map<String, String> prompts) {
-        if (fa.getMode() == FieldAction.MappingMode.SET) return resolveTokens(fa.getValue().toString(), issue);
-        if (fa.getMode() == FieldAction.MappingMode.PROMPT) {
+        String val = "";
+        if (fa.getMode() == FieldAction.MappingMode.SET) {
+            val = resolveTokens(fa.getValue().toString(), issue);
+        } else if (fa.getMode() == FieldAction.MappingMode.PROMPT) {
             String label = fa.getPromptLabel(), clean = label.replaceAll("\\[.*?\\]", "").trim();
-            if (prompts.containsKey(clean)) return prompts.get(clean);
+            if (prompts.containsKey(clean)) val = prompts.get(clean);
         }
-        return "";
+        if (val != null) {
+            val = val.replace("\\n", "\n").replace("\\r", "\r");
+        }
+        return val;
     }
 }

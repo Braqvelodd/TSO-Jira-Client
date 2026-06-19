@@ -6,6 +6,7 @@ import org.json.JSONObject;
 public class CreateStep extends WorkflowStep {
     private String projectKey;
     private String issueType;
+    private String parentIssueKey;
 
     public CreateStep() {
         super(StepType.CREATE);
@@ -16,6 +17,9 @@ public class CreateStep extends WorkflowStep {
 
     public String getIssueType() { return issueType; }
     public void setIssueType(String issueType) { this.issueType = issueType; }
+
+    public String getParentIssueKey() { return parentIssueKey; }
+    public void setParentIssueKey(String parentIssueKey) { this.parentIssueKey = parentIssueKey; }
 
     @Override
     public void validate() throws Exception {
@@ -35,6 +39,7 @@ public class CreateStep extends WorkflowStep {
         json.put("label", label);
         json.put("projectKey", projectKey);
         json.put("issueType", issueType);
+        if (parentIssueKey != null) json.put("parentIssueKey", parentIssueKey);
 
         // Condition fields
         if (conditionToken != null) json.put("conditionToken", conditionToken);
@@ -53,6 +58,7 @@ public class CreateStep extends WorkflowStep {
         CreateStep step = new CreateStep();
         step.setProjectKey(json.optString("projectKey"));
         step.setIssueType(json.optString("issueType"));
+        step.setParentIssueKey(json.optString("parentIssueKey", null));
         return step;
     }
 }

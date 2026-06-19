@@ -20,7 +20,12 @@ public class UiUtils {
                 ButtonType okButtonType = new ButtonType("OK", ButtonBar.ButtonData.OK_DONE);
                 dialog.getDialogPane().getButtonTypes().addAll(okButtonType, ButtonType.CANCEL);
                 
-                TextArea textArea = new TextArea(field.getText());
+                String initialText = field.getText();
+                if (initialText != null) {
+                    initialText = initialText.replace("\\n", "\n").replace("\\r", "\r");
+                }
+                
+                TextArea textArea = new TextArea(initialText);
                 textArea.setWrapText(true);
                 textArea.setPrefRowCount(15);
                 textArea.setPrefColumnCount(50);
@@ -33,7 +38,11 @@ public class UiUtils {
                 
                 dialog.setResultConverter(dialogButton -> {
                     if (dialogButton == okButtonType) {
-                        return textArea.getText();
+                        String resultText = textArea.getText();
+                        if (resultText != null) {
+                            resultText = resultText.replace("\n", "\\n").replace("\r", "\\r");
+                        }
+                        return resultText;
                     }
                     return null;
                 });
