@@ -56,7 +56,29 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
     
     // UI Elements - Runner
     private final ComboBox<String> runnerRecipeCombo = new ComboBox<>();
-    private final TextField runnerJqlField = new TextField();
+    private final TextField runnerJqlField = new TextField() {
+        @Override
+        public void paste() {
+            Clipboard clipboard = Clipboard.getSystemClipboard();
+            if (clipboard.hasString()) {
+                String text = clipboard.getString();
+                if (isIssueKeyList(text)) {
+                    String[] parts = text.split("[\\r\\n,;\\s]+");
+                    List<String> keys = new ArrayList<>();
+                    for (String p : parts) {
+                        String trimmed = p.trim();
+                        if (!trimmed.isEmpty()) {
+                            keys.add(trimmed);
+                        }
+                    }
+                    String formatted = String.join(", ", keys);
+                    replaceSelection(formatted);
+                    return;
+                }
+            }
+            super.paste();
+        }
+    };
     private final Button searchBtn = new Button("Search Issues");
     private final TableView<RunnerIssueRow> runnerTable = new TableView<>();
     private final GridPane runnerInputsPanel = new GridPane();
@@ -504,7 +526,28 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
     }
 
     private void executeRunnerSearch() {
-        String finalJql = runnerJqlField.getText().trim();
+        String rawText = runnerJqlField.getText();
+        if (rawText == null) rawText = "";
+        
+        rawText = rawText.replace("\\n", "\n").replace("\\r", "\r");
+        
+        if (isIssueKeyList(rawText)) {
+            String[] parts = rawText.split("[\\r\\n,;\\s]+");
+            List<String> keys = new ArrayList<>();
+            for (String p : parts) {
+                String trimmed = p.trim();
+                if (!trimmed.isEmpty()) {
+                    keys.add(trimmed);
+                }
+            }
+            if (!keys.isEmpty()) {
+                rawText = String.join(", ", keys);
+                final String formattedKeys = rawText;
+                Platform.runLater(() -> runnerJqlField.setText(formattedKeys));
+            }
+        }
+        
+        String finalJql = rawText.trim();
         if (finalJql.isEmpty()) return;
 
         if (!finalJql.contains(" ") && !finalJql.contains("=") && !finalJql.contains("(")) {
@@ -1882,6 +1925,20 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
             }
         }
         return false;
+    }
+
+    private boolean isIssueKeyList(String text) {
+        if (text == null || text.trim().isEmpty()) return false;
+        String[] parts = text.split("[\\r\\n,;\\s]+");
+        if (parts.length == 0) return false;
+        for (String p : parts) {
+            String trimmed = p.trim();
+            if (trimmed.isEmpty()) continue;
+            if (!trimmed.matches("(?i)[a-z0-9]+-\\d+")) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private void loadRecipe(String name) {
