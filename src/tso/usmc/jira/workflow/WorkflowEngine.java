@@ -39,6 +39,11 @@ public class WorkflowEngine {
     private final Map<String, JSONObject> jsonContexts = new HashMap<>();
     private boolean verboseLogging = false;
     private boolean dryRun = false;
+    private boolean suppressSummaryLogging = false;
+
+    public void setSuppressSummaryLogging(boolean suppress) {
+        this.suppressSummaryLogging = suppress;
+    }
 
     public WorkflowEngine(JiraApiService apiService, JiraIssueService issueService, MetadataCacheService metadataService, String baseUrl, WorkflowProgressListener listener) {
         this.apiService = apiService;
@@ -59,9 +64,10 @@ public class WorkflowEngine {
     public List<ExecutionResult> execute(WorkflowRecipe recipe, List<JSONObject> issues, Map<String, String> promptValues) {
         List<ExecutionResult> results = new ArrayList<>();
         try {
-            Map<String, JSONObject> metaSnap = metadataService != null ? metadataService.getDiskCache() : new HashMap<>();
             String mode = dryRun ? "[DRY RUN - VALIDATE ONLY]" : "[LIVE EXECUTION]";
-            listener.onLog(mode + " Starting workflow: " + recipe.getRecipeName() + " on " + issues.size() + " issues.");
+            if (!suppressSummaryLogging) {
+                listener.onLog(mode + " Starting workflow: " + recipe.getRecipeName() + " on " + issues.size() + " issues.");
+            }
 
             for (JSONObject issue : issues) {
                 long start = System.currentTimeMillis();
@@ -118,8 +124,10 @@ public class WorkflowEngine {
                 finalRes.errors.addAll(result.errors);
                 results.add(finalRes);
             }
-            listener.onLog(mode + " Workflow Execution Complete.");
-            listener.onComplete();
+            if (!suppressSummaryLogging) {
+                listener.onLog(mode + " Workflow Execution Complete.");
+                listener.onComplete();
+            }
         } catch (Exception e) {
             listener.onError("Fatal error during workflow execution", e);
         }

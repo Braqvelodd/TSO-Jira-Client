@@ -28,6 +28,8 @@ import javafx.scene.input.TransferMode;
 import javafx.stage.FileChooser;
 
 import java.io.IOException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.PrintWriter;
@@ -636,10 +638,50 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
                     return;
                 }
                 
-                WorkflowEngine engine = new WorkflowEngine(mainFrame.getService(), mainFrame.getIssueService(), mainFrame.getMetadataService(), mainFrame.getBaseUrl(), this);
-                engine.setVerboseLogging(verboseLogCheck.isSelected());
-                engine.setDryRun(dryRunCheck.isSelected());
-                lastResults = engine.execute(recipe, issuesToProcess, promptValues);
+                final int threads = mainFrame.getJiraConfig().getParallelThreads();
+                String mode = dryRunCheck.isSelected() ? "[DRY RUN - VALIDATE ONLY]" : "[LIVE EXECUTION]";
+                onLog(mode + " Starting workflow: " + recipe.getRecipeName() + " on " + issuesToProcess.size() + " issues using " + threads + " parallel threads.");
+                
+                List<WorkflowEngine.ExecutionResult> results = Collections.synchronizedList(new ArrayList<>());
+                
+                if (threads > 1 && issuesToProcess.size() > 1) {
+                    ExecutorService executor = Executors.newFixedThreadPool(threads);
+                    List<java.util.concurrent.Future<?>> futures = new ArrayList<>();
+                    
+                    for (JSONObject issue : issuesToProcess) {
+                        final WorkflowRecipe finalRecipe = recipe;
+                        futures.add(executor.submit(() -> {
+                            try {
+                                WorkflowEngine engine = new WorkflowEngine(mainFrame.getService(), mainFrame.getIssueService(), mainFrame.getMetadataService(), mainFrame.getBaseUrl(), this);
+                                engine.setVerboseLogging(verboseLogCheck.isSelected());
+                                engine.setDryRun(dryRunCheck.isSelected());
+                                engine.setSuppressSummaryLogging(true);
+                                List<WorkflowEngine.ExecutionResult> res = engine.execute(finalRecipe, Collections.singletonList(issue), promptValues);
+                                results.addAll(res);
+                            } catch (Exception ex) {
+                                onError("Error processing issue " + issue.optString("key"), ex);
+                            }
+                        }));
+                    }
+                    
+                    for (java.util.concurrent.Future<?> f : futures) {
+                        try {
+                            f.get();
+                        } catch (Exception e) {
+                            // ignore
+                        }
+                    }
+                    executor.shutdown();
+                } else {
+                    WorkflowEngine engine = new WorkflowEngine(mainFrame.getService(), mainFrame.getIssueService(), mainFrame.getMetadataService(), mainFrame.getBaseUrl(), this);
+                    engine.setVerboseLogging(verboseLogCheck.isSelected());
+                    engine.setDryRun(dryRunCheck.isSelected());
+                    results.addAll(engine.execute(recipe, issuesToProcess, promptValues));
+                }
+                
+                lastResults = results;
+                onLog(mode + " Workflow Execution Complete.");
+                onComplete();
 
             } catch (Exception e) {
                 onError("FATAL ERROR", e);
