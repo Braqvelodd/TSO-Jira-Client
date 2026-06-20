@@ -141,8 +141,7 @@ The **Workflow Orchestrator** is the core automation center of the client. Power
 
 ### Step Mapping Modes:
 When a field is updated or created in a step, it uses one of three modes:
-*   `STATIC`: Sends a hardcoded value (e.g. `High`). Array fields like components or multiple select lists can use comma-separated values (e.g. `App, DB`), which are converted automatically into the required JIRA JSON formats.
-*   `VARIABLE`: References contextual tokens to dynamically inject data.
+*   `STATIC`: Sends a hardcoded value (e.g. `High`). Array fields like components or multiple select lists can use comma-separated values (e.g. `App, DB`), which are converted automatically into the required JIRA JSON formats.  References contextual tokens to dynamically inject data.
 *   `PROMPT`: Requests user input once in the **Runner** tab before executing the batch.
 
 ### Dynamic Prompt Tags:
