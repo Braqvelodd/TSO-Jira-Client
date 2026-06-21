@@ -1050,6 +1050,11 @@ public class JqlRunnerPanel extends BorderPane implements tso.usmc.jira.util.Con
     private void populateActionsMenu() {
         actionsBtn.getItems().clear();
 
+        MenuItem manageFuncsItem = new MenuItem("Manage Custom JQL Functions...");
+        manageFuncsItem.setOnAction(e -> showManageCustomFunctionsDialog());
+        actionsBtn.getItems().add(manageFuncsItem);
+        actionsBtn.getItems().add(new SeparatorMenuItem());
+
         int keyColumnIndex = findKeyColumnIndex();
         if (keyColumnIndex == -1) {
             MenuItem item = new MenuItem("Error: No 'key' column");
@@ -1165,6 +1170,16 @@ public class JqlRunnerPanel extends BorderPane implements tso.usmc.jira.util.Con
                 }
             });
             actionsBtn.getItems().add(bulkActionItem);
+        }
+    }
+
+    private void showManageCustomFunctionsDialog() {
+        try {
+            JqlExecutionEngine engine = new JqlExecutionEngine(mainFrame.getService());
+            JqlCustomFunctionsDialog dialog = new JqlCustomFunctionsDialog(mainFrame.getPrimaryStage(), engine);
+            dialog.showAndWait();
+        } catch (Exception e) {
+            showAlert(Alert.AlertType.ERROR, "Initialization Error", "Failed to initialize JQL Execution Engine: " + e.getMessage());
         }
     }
 }

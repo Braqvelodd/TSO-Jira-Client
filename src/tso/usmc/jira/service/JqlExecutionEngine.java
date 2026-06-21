@@ -1,7 +1,10 @@
 package tso.usmc.jira.service;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
 import tso.usmc.jira.util.JiraApiException;
+import java.io.*;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Matcher;
@@ -9,8 +12,9 @@ import java.util.regex.Pattern;
 
 /**
  * Orchestrator that implements the Multi-Pass JQL Execution Engine.
- * It detects custom relational JQL tokens (e.g., parentsOf) and coordinates
+ * It detects custom relational JQL tokens (e.g., parentsOf, childrenOf) and coordinates
  * multiple API requests to produce final query results using standard Jira APIs.
+ * Supports loading dynamic configuration-driven custom JQL strategies at runtime.
  */
 public class JqlExecutionEngine {
 
@@ -19,8 +23,10 @@ public class JqlExecutionEngine {
 
     public JqlExecutionEngine(JiraApiService apiService) {
         this.apiService = apiService;
-        // Register default out-of-the-box functions
+        // Register hardcoded default fallbacks
         registerFunction(new ParentsOfFunction());
+        // Load configurable functions from the custom_functions.json config file
+        loadCustomFunctions();
     }
 
     /**
@@ -33,15 +39,149 @@ public class JqlExecutionEngine {
     }
 
     /**
+     * Unregisters a JQL function by name.
+     */
+    public void removeFunction(String name) {
+        if (name != null) {
+            registeredFunctions.removeIf(f -> f.getFunctionName().equalsIgnoreCase(name.trim()));
+        }
+    }
+
+    /**
+     * Returns a copy of the list of currently registered JQL functions.
+     */
+    public List<CustomJqlFunction> getRegisteredFunctions() {
+        return new ArrayList<>(registeredFunctions);
+    }
+
+    /**
+     * Loads custom dynamic functions from `custom_functions.json`.
+     * Automatically generates a default configurations file if none exists.
+     */
+    public void loadCustomFunctions() {
+        File configDir = new File(System.getProperty("user.home"), ".JiraApiClient");
+        if (!configDir.exists()) {
+            configDir.mkdirs();
+        }
+        File file = new File(configDir, "custom_functions.json");
+        if (!file.exists()) {
+            writeDefaultCustomFunctions(file);
+        }
+
+        try {
+            StringBuilder sb = new StringBuilder();
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(new FileInputStream(file), StandardCharsets.UTF_8))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    sb.append(line).append("\n");
+                }
+            }
+
+            JSONArray arr = new JSONArray(sb.toString());
+            for (int i = 0; i < arr.length(); i++) {
+                JSONObject obj = arr.getJSONObject(i);
+                String name = obj.getString("name");
+                
+                JSONArray fieldsArr = obj.getJSONArray("firstPassFields");
+                List<String> firstPassFields = new ArrayList<>();
+                for (int j = 0; j < fieldsArr.length(); j++) {
+                    firstPassFields.add(fieldsArr.getString(j));
+                }
+
+                JSONArray pathsArr = obj.getJSONArray("jsonPaths");
+                List<String> jsonPaths = new ArrayList<>();
+                for (int j = 0; j < pathsArr.length(); j++) {
+                    jsonPaths.add(pathsArr.getString(j));
+                }
+
+                String template = obj.optString("outputTemplate", "key in ({{KEYS}})");
+
+                // Override any duplicate names with the new dynamic config configuration
+                removeFunction(name);
+                registerFunction(new ConfigurableJqlFunction(name, firstPassFields, jsonPaths, template));
+            }
+        } catch (Exception e) {
+            System.err.println("Failed to load custom JQL functions: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Saves the current configurable custom JQL functions to `custom_functions.json`.
+     */
+    public void saveCustomFunctions() {
+        File configDir = new File(System.getProperty("user.home"), ".JiraApiClient");
+        if (!configDir.exists()) {
+            configDir.mkdirs();
+        }
+        File file = new File(configDir, "custom_functions.json");
+
+        try {
+            JSONArray arr = new JSONArray();
+            for (CustomJqlFunction func : registeredFunctions) {
+                if (func instanceof ConfigurableJqlFunction) {
+                    ConfigurableJqlFunction cf = (ConfigurableJqlFunction) func;
+                    JSONObject obj = new JSONObject();
+                    obj.put("name", cf.getFunctionName());
+                    obj.put("firstPassFields", new JSONArray(cf.getFirstPassFields()));
+                    obj.put("jsonPaths", new JSONArray(cf.getJsonPaths()));
+                    obj.put("outputTemplate", cf.getOutputTemplate());
+                    arr.put(obj);
+                }
+            }
+
+            try (BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(file), StandardCharsets.UTF_8))) {
+                writer.write(arr.toString(2));
+            }
+        } catch (Exception e) {
+            System.err.println("Failed to save custom JQL functions: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Seeds default relational patterns into the config file.
+     */
+    private void writeDefaultCustomFunctions(File file) {
+        try {
+            JSONArray arr = new JSONArray();
+
+            // parentsOf definition
+            JSONObject p = new JSONObject();
+            p.put("name", "parentsOf");
+            p.put("firstPassFields", new JSONArray(new String[]{"parent"}));
+            p.put("jsonPaths", new JSONArray(new String[]{"issues[*].fields.parent.key"}));
+            p.put("outputTemplate", "key in ({{KEYS}})");
+            arr.put(p);
+
+            // childrenOf definition
+            JSONObject c = new JSONObject();
+            c.put("name", "childrenOf");
+            c.put("firstPassFields", new JSONArray(new String[]{"subtasks"}));
+            c.put("jsonPaths", new JSONArray(new String[]{"issues[*].fields.subtasks[*].key"}));
+            c.put("outputTemplate", "key in ({{KEYS}})");
+            arr.put(c);
+
+            // linkedIssuesOf definition
+            JSONObject l = new JSONObject();
+            l.put("name", "linkedIssuesOf");
+            l.put("firstPassFields", new JSONArray(new String[]{"issuelinks"}));
+            l.put("jsonPaths", new JSONArray(new String[]{
+                "issues[*].fields.issuelinks[*].outwardIssue.key", 
+                "issues[*].fields.issuelinks[*].inwardIssue.key"
+            }));
+            l.put("outputTemplate", "key in ({{KEYS}})");
+            arr.put(l);
+
+            try (BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(file), StandardCharsets.UTF_8))) {
+                writer.write(arr.toString(2));
+            }
+        } catch (Exception e) {
+            System.err.println("Failed to write default custom functions: " + e.getMessage());
+        }
+    }
+
+    /**
      * Executes a JQL query. If custom JQL tokens are detected, it performs a multi-pass
      * resolution first. Otherwise, it executes a single-pass standard search.
-     *
-     * @param baseUrl The base URL of the Jira instance (e.g., https://jira.domain)
-     * @param jql The query string which may contain custom or standard JQL functions
-     * @param fields The list of fields requested by the user/UI (nullable)
-     * @param maxResults The maximum number of results to return
-     * @return The raw JSON response from the final search execution
-     * @throws Exception if request execution fails
      */
     public String executeJql(String baseUrl, String jql, List<String> fields, int maxResults) throws Exception {
         if (jql == null || jql.trim().isEmpty()) {
