@@ -50,43 +50,48 @@ public class JqlCustomFunctionsDialog extends Dialog<Void> {
         VBox.setVgrow(listView, Priority.ALWAYS);
         leftPane.getChildren().addAll(new Label("Custom Functions:"), listView);
 
-        GridPane formGrid = new GridPane();
-        formGrid.setHgap(10);
-        formGrid.setVgap(10);
-        formGrid.setPadding(new Insets(10));
+        VBox rightPane = new VBox(10);
+        rightPane.setPadding(new Insets(10));
+        
+        Label settingsLabel = new Label("Function Settings:");
+        settingsLabel.setStyle("-fx-font-weight: bold;");
 
-        // Setup form inputs
-        formGrid.add(new Label("Function Name:"), 0, 0);
+        VBox nameBox = new VBox(4);
         nameField.setPromptText("e.g., childrenOf");
-        GridPane.setHgrow(nameField, Priority.ALWAYS);
-        formGrid.add(nameField, 1, 0);
+        nameField.setMaxWidth(Double.MAX_VALUE);
+        nameBox.getChildren().addAll(new Label("Function Name:"), nameField);
 
-        formGrid.add(new Label("First-Pass Fields:"), 0, 1);
+        VBox fieldsBox = new VBox(4);
         fieldsField.setPromptText("e.g., subtasks, parent (comma-separated)");
-        formGrid.add(fieldsField, 1, 1);
+        fieldsField.setMaxWidth(Double.MAX_VALUE);
+        fieldsBox.getChildren().addAll(new Label("First-Pass Fields:"), fieldsField);
 
-        formGrid.add(new Label("JSON Extraction Paths:"), 0, 2);
-        pathsArea.setPromptText("e.g., fields.subtasks[*].key\n(One path per line)");
+        VBox pathsBox = new VBox(4);
+        pathsArea.setPromptText("e.g., issues[*].fields.subtasks[*].key\n(One path per line)");
         pathsArea.setPrefRowCount(4);
-        formGrid.add(pathsArea, 1, 2);
+        pathsArea.setMaxWidth(Double.MAX_VALUE);
+        VBox.setVgrow(pathsArea, Priority.ALWAYS);
+        pathsBox.getChildren().addAll(new Label("JSON Extraction Paths:"), pathsArea);
+        VBox.setVgrow(pathsBox, Priority.ALWAYS);
 
-        formGrid.add(new Label("JQL Output Template:"), 0, 3);
+        VBox templateBox = new VBox(4);
         templateField.setPromptText("e.g., key in ({{KEYS}})");
-        formGrid.add(templateField, 1, 3);
+        templateField.setMaxWidth(Double.MAX_VALUE);
+        templateBox.getChildren().addAll(new Label("JQL Output Template:"), templateField);
 
         HBox buttonBox = new HBox(8);
+        buttonBox.setPadding(new Insets(5, 0, 0, 0));
         buttonBox.getChildren().addAll(newBtn, saveBtn, deleteBtn);
-        formGrid.add(buttonBox, 1, 4);
 
-        VBox rightPane = new VBox(8);
-        rightPane.setPadding(new Insets(10));
-        rightPane.getChildren().addAll(new Label("Function Settings:"), formGrid);
+        rightPane.getChildren().addAll(settingsLabel, nameBox, fieldsBox, pathsBox, templateBox, buttonBox);
+        VBox.setVgrow(rightPane, Priority.ALWAYS);
 
         splitPane.getItems().addAll(leftPane, rightPane);
 
         getDialogPane().setContent(splitPane);
-        getDialogPane().setPrefWidth(680);
-        getDialogPane().setPrefHeight(420);
+        getDialogPane().setPrefWidth(720);
+        getDialogPane().setPrefHeight(500);
+        setResizable(true);
 
         // Wire selections & buttons
         listView.getSelectionModel().selectedItemProperty().addListener((obs, oldVal, newVal) -> {
