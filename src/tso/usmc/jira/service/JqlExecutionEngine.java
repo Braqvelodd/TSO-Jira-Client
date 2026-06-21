@@ -23,8 +23,6 @@ public class JqlExecutionEngine {
 
     public JqlExecutionEngine(JiraApiService apiService) {
         this.apiService = apiService;
-        // Register hardcoded default fallbacks
-        registerFunction(new ParentsOfFunction());
         // Load configurable functions from the custom_functions.json config file
         loadCustomFunctions();
     }
