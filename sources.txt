@@ -52,4 +52,6 @@ src\tso\usmc\jira\ui\ThemeSettingsPanel.java
 src\tso\usmc\jira\util\ThemeManager.java
 src\tso\usmc\jira\workflow\AttachmentStep.java
 src\tso\usmc\jira\workflow\CommentStep.java
-
+src\tso\usmc\jira\service\CustomJqlFunction.java
+src\tso\usmc\jira\service\ParentsOfFunction.java
+src\tso\usmc\jira\service\JqlExecutionEngine.java

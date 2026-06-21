@@ -2,6 +2,7 @@ package tso.usmc.jira.ui;
 
 import tso.usmc.jira.app.JiraApiClientGui;
 import tso.usmc.jira.service.JqlAutocompleteService;
+import tso.usmc.jira.service.JqlExecutionEngine;
 import tso.usmc.jira.util.JsonUtils;
 import tso.usmc.jira.util.ExecutionService;
 
@@ -409,20 +410,20 @@ public class JqlRunnerPanel extends BorderPane implements tso.usmc.jira.util.Con
 
         ExecutionService.submit(() -> {
             try {
-                JSONObject payload = new JSONObject();
-                payload.put("jql", jql);
-                
+                List<String> fields = new ArrayList<>();
                 String fieldsText = fieldsField.getText().trim();
                 if (!fieldsText.isEmpty()) {
-                    payload.put("fields", fieldsText.split("\\s*,\\s*"));
+                    for (String f : fieldsText.split("\\s*,\\s*")) {
+                        fields.add(f);
+                    }
                 }
-                
-                payload.put("maxResults", 500);
 
-                String rawResponse = mainFrame.getService().executeRequest(
-                    mainFrame.getBaseUrl() + "/rest/api/2/search",
-                    "POST",
-                    payload.toString()
+                JqlExecutionEngine engine = new JqlExecutionEngine(mainFrame.getService());
+                String rawResponse = engine.executeJql(
+                    mainFrame.getBaseUrl(),
+                    jql,
+                    fields.isEmpty() ? null : fields,
+                    500
                 );
 
                 JSONObject responseJson = new JSONObject(rawResponse);
