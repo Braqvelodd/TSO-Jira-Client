@@ -109,6 +109,7 @@ public class CommentSummarizerPanel extends BorderPane {
         cancelTask();
         issueKeyField.setText("");
         summaryPane.getEngine().loadContent("");
+        mainFrame.getThemeManager().applyThemeToWebView(summaryPane);
         rawCommentsArea.setText("");
         statusLabel.setText(" Ready");
         summarizeButton.setDisable(false);
@@ -156,6 +157,7 @@ public class CommentSummarizerPanel extends BorderPane {
                     progressPanel.setManaged(false);
                     summaryPane.getEngine().loadContent("<html><body style='color:red;'><h3>LLM Initialization Failed</h3>" +
                             "<p>Error: " + e.getMessage() + "</p></body></html>");
+                    mainFrame.getThemeManager().applyThemeToWebView(summaryPane);
                 });
             }
         });
@@ -175,6 +177,7 @@ public class CommentSummarizerPanel extends BorderPane {
         summarizeButton.setDisable(true);
         cancelButton.setDisable(false);
         summaryPane.getEngine().loadContent("<html><body><h3>Processing " + issueKey + "...</h3><p>Fetching data and running local AI model.</p></body></html>");
+        mainFrame.getThemeManager().applyThemeToWebView(summaryPane);
         rawCommentsArea.setText("");
         statusLabel.setText(" Fetching comments from Jira...");
 
@@ -254,6 +257,7 @@ public class CommentSummarizerPanel extends BorderPane {
         Platform.runLater(() -> {
             String title = partial ? "AI Summary (Generating...)" : "AI Summary";
             summaryPane.getEngine().loadContent("<html><body><h3>" + title + "</h3><p>" + text.replace("\n", "<br>") + "</p></body></html>");
+            mainFrame.getThemeManager().applyThemeToWebView(summaryPane);
         });
     }
 }

@@ -476,6 +476,7 @@ public class IssueViewPanel extends BorderPane {
         // Wrap description html in HTML/Body tag to apply dark/light styles from theme stylesheet
         String docStyle = "html, body { font-family: 'Segoe UI', Arial, sans-serif; line-height: 1.5; padding: 2px; }";
         descriptionWebView.getEngine().loadContent("<html><head><style>" + docStyle + "</style></head><body>" + descriptionHtml + "</body></html>");
+        mainFrame.getThemeManager().applyThemeToWebView(descriptionWebView);
 
         // --- Attachments ---
         attachmentsFlowPane.getChildren().clear();
@@ -629,6 +630,7 @@ public class IssueViewPanel extends BorderPane {
         }
         html.append("</body></html>");
         commentsWebView.getEngine().loadContent(html.toString());
+        mainFrame.getThemeManager().applyThemeToWebView(commentsWebView);
 
         // --- Status Badge & Colors ---
         JSONObject statusObj = fields.optJSONObject("status");

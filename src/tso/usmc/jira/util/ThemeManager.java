@@ -13,50 +13,61 @@ public class ThemeManager {
         this.config = config;
     }
 
+    public String getThemeStylesheetUrl() {
+        String activeTheme = config.getTheme();
+        if ("default".equals(activeTheme)) {
+            return getClass().getResource("/themes/default.css").toExternalForm();
+        } else if ("dark".equals(activeTheme)) {
+            return getClass().getResource("/themes/dark.css").toExternalForm();
+        } else if ("glass".equals(activeTheme)) {
+            return getClass().getResource("/themes/glass.css").toExternalForm();
+        } else if ("custom".equals(activeTheme)) {
+            return getClass().getResource("/themes/custom.css").toExternalForm();
+        } else if ("css".equals(activeTheme)) {
+            try {
+                File cssFile = new File(config.getThemeCssFilePath());
+                if (cssFile.exists()) {
+                    return cssFile.toURI().toURL().toExternalForm();
+                }
+            } catch (Exception e) {
+                System.err.println("Error resolving custom CSS: " + e.getMessage());
+            }
+        }
+        return null;
+    }
+
     public void applyTheme(Scene scene) {
         if (scene == null) return;
         scene.getStylesheets().clear();
 
         String activeTheme = config.getTheme();
-        String stylesheetUrl = null;
-
-        if ("default".equals(activeTheme)) {
-            stylesheetUrl = getClass().getResource("/themes/default.css").toExternalForm();
-            scene.getStylesheets().add(stylesheetUrl);
-            scene.getRoot().setStyle(""); // Clear inline styles
-        } else if ("dark".equals(activeTheme)) {
-            stylesheetUrl = getClass().getResource("/themes/dark.css").toExternalForm();
-            scene.getStylesheets().add(stylesheetUrl);
-            scene.getRoot().setStyle("");
-        } else if ("glass".equals(activeTheme)) {
-            stylesheetUrl = getClass().getResource("/themes/glass.css").toExternalForm();
-            scene.getStylesheets().add(stylesheetUrl);
-            scene.getRoot().setStyle("");
-        } else if ("custom".equals(activeTheme)) {
-            stylesheetUrl = getClass().getResource("/themes/custom.css").toExternalForm();
-            scene.getStylesheets().add(stylesheetUrl);
-            // Programmatically set the custom accent color variable
-            String accentColor = config.getThemeAccentColor();
-            scene.getRoot().setStyle("-custom-accent: " + accentColor + ";");
-        } else if ("css".equals(activeTheme)) {
-            try {
-                File cssFile = new File(config.getThemeCssFilePath());
-                if (cssFile.exists()) {
-                    stylesheetUrl = cssFile.toURI().toURL().toExternalForm();
-                    scene.getStylesheets().add(stylesheetUrl);
-                }
-                // Set the custom accent color variable so that if the custom CSS
-                // file uses -custom-accent, JavaFX can resolve it correctly.
-                String accentColor = config.getThemeAccentColor();
-                scene.getRoot().setStyle("-custom-accent: " + accentColor + ";");
-            } catch (Exception e) {
-                System.err.println("Error applying custom CSS: " + e.getMessage());
-            }
-        }
+        String stylesheetUrl = getThemeStylesheetUrl();
 
         if (stylesheetUrl != null) {
+            scene.getStylesheets().add(stylesheetUrl);
+            if ("custom".equals(activeTheme) || "css".equals(activeTheme)) {
+                String accentColor = config.getThemeAccentColor();
+                scene.getRoot().setStyle("-custom-accent: " + accentColor + ";");
+            } else {
+                scene.getRoot().setStyle(""); // Clear inline styles
+            }
+
             String webViewStylesheetUrl = getThemeStylesheetAsDataUri(activeTheme, stylesheetUrl);
             applyThemeToWebViews(scene.getRoot(), webViewStylesheetUrl);
+        }
+    }
+
+    public void applyThemeToWebView(WebView webView) {
+        if (webView == null) return;
+        String activeTheme = config.getTheme();
+        String stylesheetUrl = getThemeStylesheetUrl();
+        if (stylesheetUrl != null) {
+            String webViewStylesheetUrl = getThemeStylesheetAsDataUri(activeTheme, stylesheetUrl);
+            try {
+                webView.getEngine().setUserStyleSheetLocation(webViewStylesheetUrl);
+            } catch (Exception e) {
+                System.err.println("Error setting webview stylesheet: " + e.getMessage());
+            }
         }
     }
 
