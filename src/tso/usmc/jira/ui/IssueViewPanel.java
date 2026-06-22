@@ -647,7 +647,7 @@ public class IssueViewPanel extends BorderPane {
         }
 
         StringBuilder html = new StringBuilder();
-        html.append("<html><head><style>body { font-family: 'Segoe UI', Arial, sans-serif; padding: 5px; margin: 0; background-color: transparent; }</style></head><body>");
+        html.append("<html><head><style>body { font-family: 'Segoe UI', Arial, sans-serif; padding: 5px; margin: 0; }</style></head><body>");
 
         if (commentsArray == null || commentsArray.length() == 0) {
             html.append("<div style='color: gray; font-style: italic; font-size:12px; padding:10px;'>No comments on this issue.</div>");
