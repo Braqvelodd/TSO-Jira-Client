@@ -490,7 +490,7 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
             row.setOnMouseClicked(event -> {
                 if (event.getClickCount() == 2 && (!row.isEmpty())) {
                     RunnerIssueRow rowData = row.getItem();
-                    JiraUtils.browseIssue(mainFrame.getBaseUrl(), rowData.getKey());
+                    mainFrame.loadAndShowIssue(rowData.getKey());
                 }
             });
             return row;

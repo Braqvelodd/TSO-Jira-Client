@@ -35,6 +35,7 @@ public class JiraApiClientGui extends Application implements ConfigChangeListene
     private TaskBuilderPanel taskBuilderPanel;
     private WorkflowOrchestratorPanel workflowOrchestratorPanel;
     private BulkActionPanel bulkActionPanel;
+    private IssueViewPanel issueViewPanel;
     private final Label statusLabel = new Label(" Ready");
     private ThemeManager themeManager;
     private Stage primaryStage;
@@ -122,6 +123,8 @@ public class JiraApiClientGui extends Application implements ConfigChangeListene
         // Standard tabs
         tabs.getTabs().add(new Tab("Raw API Call", new RawApiPanel(this)));
         tabs.getTabs().add(new Tab("JQL Runner", new JqlRunnerPanel(this)));
+        this.issueViewPanel = new IssueViewPanel(this);
+        tabs.getTabs().add(new Tab("Issue Viewer", this.issueViewPanel));
 
         if (jiraConfig.isTabEnabled("Reports")) {
             tabs.getTabs().add(new Tab("Reports", new ReportPanel(this)));
@@ -185,6 +188,15 @@ public class JiraApiClientGui extends Application implements ConfigChangeListene
     public TaskBuilderPanel getTaskBuilderPanel() { return this.taskBuilderPanel; }
     public WorkflowOrchestratorPanel getWorkflowOrchestratorPanel() { return this.workflowOrchestratorPanel; }
     public BulkActionPanel getBulkActionPanel() { return this.bulkActionPanel; }
+    public IssueViewPanel getIssueViewPanel() { return this.issueViewPanel; }
+    
+    public void loadAndShowIssue(String issueKey) {
+        if (issueViewPanel != null) {
+            issueViewPanel.loadIssue(issueKey);
+            showPanel("Issue Viewer");
+        }
+    }
+    
     public JiraConfig getJiraConfig() { return this.jiraConfig; }
     public ThemeManager getThemeManager() { return this.themeManager; }
     public Stage getPrimaryStage() { return this.primaryStage; }
