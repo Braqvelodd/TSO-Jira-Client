@@ -241,7 +241,7 @@ public class JqlRunnerPanel extends BorderPane implements tso.usmc.jira.util.Con
                     if (keyCol != -1 && keyCol < rowData.size()) {
                         String key = rowData.get(keyCol);
                         if (key != null && !key.isEmpty()) {
-                            tso.usmc.jira.util.JiraUtils.browseIssue(mainFrame.getBaseUrl(), key);
+                            mainFrame.loadAndShowIssue(key);
                         }
                     }
                 }

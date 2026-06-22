@@ -13,6 +13,7 @@ src\tso\usmc\jira\ui\JiraUserAutocompleteTextArea.java
 src\tso\usmc\jira\ui\JiraUserAutocompleteTextField.java
 src\tso\usmc\jira\ui\JqlRunnerPanel.java
 src\tso\usmc\jira\ui\RawApiPanel.java
+src\tso\usmc\jira\ui\IssueViewPanel.java
 src\tso\usmc\jira\ui\ReconciliationPanel.java
 src\tso\usmc\jira\ui\ReportPanel.java
 src\tso\usmc\jira\ui\UiUtils.java
