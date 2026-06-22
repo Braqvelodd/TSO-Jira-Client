@@ -123,8 +123,10 @@ public class JiraApiClientGui extends Application implements ConfigChangeListene
         // Standard tabs
         tabs.getTabs().add(new Tab("Raw API Call", new RawApiPanel(this)));
         tabs.getTabs().add(new Tab("JQL Runner", new JqlRunnerPanel(this)));
-        this.issueViewPanel = new IssueViewPanel(this);
-        tabs.getTabs().add(new Tab("Issue Viewer", this.issueViewPanel));
+        if (jiraConfig.isTabEnabled("IssueViewer")) {
+            this.issueViewPanel = new IssueViewPanel(this);
+            tabs.getTabs().add(new Tab("Issue Viewer", this.issueViewPanel));
+        }
 
         if (jiraConfig.isTabEnabled("Reports")) {
             tabs.getTabs().add(new Tab("Reports", new ReportPanel(this)));
@@ -194,6 +196,8 @@ public class JiraApiClientGui extends Application implements ConfigChangeListene
         if (issueViewPanel != null) {
             issueViewPanel.loadIssue(issueKey);
             showPanel("Issue Viewer");
+        } else {
+            tso.usmc.jira.util.JiraUtils.browseIssue(getBaseUrl(), issueKey);
         }
     }
     
