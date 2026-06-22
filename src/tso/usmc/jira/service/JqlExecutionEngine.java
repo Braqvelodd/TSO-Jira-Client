@@ -219,10 +219,20 @@ public class JqlExecutionEngine {
             // Step C: Construct the final standard JQL fragment from first pass results
             String resolvedFragment = strategy.buildFinalJql(firstPassJson);
 
+            // Reconstruct replacement based on the matched user's field and operator prefix if present
+            String replacement = resolvedFragment;
+            if (match.hasOperatorPrefix) {
+                int firstParen = resolvedFragment.indexOf('(');
+                if (firstParen != -1) {
+                    String parenPart = resolvedFragment.substring(firstParen);
+                    replacement = match.field + " " + match.operator + " " + parenPart;
+                }
+            }
+
             // Replace the matched token expression in the current JQL
             String prefix = currentJql.substring(0, match.start);
             String suffix = currentJql.substring(match.end);
-            currentJql = prefix + resolvedFragment + suffix;
+            currentJql = prefix + replacement + suffix;
         }
 
         // Step D: Execute final API call using the resolved JQL query
@@ -311,16 +321,24 @@ public class JqlExecutionEngine {
             }
         }
 
-        // Check for preceding "[field] in" pattern to replace it in full
+        // Check for preceding "[field] [operator]" pattern to replace it in full (e.g. key not in, issue in)
         int replaceStart = earliestIndex;
+        boolean hasOperatorPrefix = false;
+        String field = "";
+        String operator = "";
+
         String prefix = query.substring(0, earliestIndex);
-        Pattern prefixPattern = Pattern.compile("\\b(\\w+)\\s+(?i:in)\\s*$");
+        Pattern prefixPattern = Pattern.compile("\\b(\\w+)\\s+(not\\s+in|in|=|!=)\\s*$", Pattern.CASE_INSENSITIVE);
         Matcher m = prefixPattern.matcher(prefix);
         if (m.find()) {
             replaceStart = m.start();
+            hasOperatorPrefix = true;
+            field = m.group(1);
+            operator = m.group(2);
         }
 
-        return new FunctionMatch(replaceStart, endIdx + 1, innerJql, matchedFunction);
+        return new FunctionMatch(replaceStart, endIdx + 1, innerJql, matchedFunction, 
+                                 hasOperatorPrefix, field, operator);
     }
 
     /**
@@ -331,12 +349,19 @@ public class JqlExecutionEngine {
         final int end;
         final String innerJql;
         final CustomJqlFunction function;
+        final boolean hasOperatorPrefix;
+        final String field;
+        final String operator;
 
-        FunctionMatch(int start, int end, String innerJql, CustomJqlFunction function) {
+        FunctionMatch(int start, int end, String innerJql, CustomJqlFunction function, 
+                      boolean hasOperatorPrefix, String field, String operator) {
             this.start = start;
             this.end = end;
             this.innerJql = innerJql;
             this.function = function;
+            this.hasOperatorPrefix = hasOperatorPrefix;
+            this.field = field;
+            this.operator = operator;
         }
     }
 }
