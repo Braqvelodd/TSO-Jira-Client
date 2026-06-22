@@ -52,6 +52,9 @@ public class IssueViewPanel extends BorderPane {
     private final VBox descriptionCard = new VBox(5);
     private final WebView descriptionWebView = new WebView();
     
+    private final VBox subtasksCard = new VBox(5);
+    private final VBox subtasksVBox = new VBox(5);
+    
     private final VBox attachmentsCard = new VBox(10);
     private final FlowPane attachmentsFlowPane = new FlowPane(10, 10);
     
@@ -154,6 +157,16 @@ public class IssueViewPanel extends BorderPane {
         descriptionWebView.setMinHeight(100);
         descriptionCard.getChildren().addAll(descTitle, descriptionWebView);
         leftPaneContent.getChildren().add(descriptionCard);
+
+        // 2b. Sub-tasks Card
+        subtasksCard.getStyleClass().add("card");
+        Label subtasksTitle = new Label("Sub-tasks");
+        subtasksTitle.getStyleClass().add("card-title");
+        subtasksVBox.setPadding(new Insets(5, 0, 5, 0));
+        subtasksCard.getChildren().addAll(subtasksTitle, subtasksVBox);
+        subtasksCard.setVisible(false);
+        subtasksCard.setManaged(false);
+        leftPaneContent.getChildren().add(subtasksCard);
 
         // 3. Attachments Card
         attachmentsCard.getStyleClass().add("card");
@@ -324,6 +337,10 @@ public class IssueViewPanel extends BorderPane {
         
         descriptionWebView.getEngine().loadContent("");
         
+        subtasksVBox.getChildren().clear();
+        subtasksCard.setVisible(false);
+        subtasksCard.setManaged(false);
+
         attachmentsFlowPane.getChildren().clear();
         attachmentsCard.setVisible(false);
         attachmentsCard.setManaged(false);
@@ -401,7 +418,7 @@ public class IssueViewPanel extends BorderPane {
                 // 1. Fetch Issue Data with renderedFields expanded
                 JiraApiService service = mainFrame.getService();
                 String url = mainFrame.getBaseUrl() + "/rest/api/2/issue/" + issueKey 
-                        + "?expand=renderedFields,names&fields=*all,attachment,issuelinks,comment";
+                        + "?expand=renderedFields,names&fields=*all,attachment,issuelinks,comment,subtasks";
                 String response = service.executeRequest(url, "GET", null);
                 JSONObject root = new JSONObject(response);
                 
@@ -477,6 +494,56 @@ public class IssueViewPanel extends BorderPane {
         String docStyle = "html, body { font-family: 'Segoe UI', Arial, sans-serif; line-height: 1.5; padding: 2px; }";
         descriptionWebView.getEngine().loadContent("<html><head><style>" + docStyle + "</style></head><body>" + descriptionHtml + "</body></html>");
         mainFrame.getThemeManager().applyThemeToWebView(descriptionWebView);
+
+        // --- Sub-tasks ---
+        subtasksVBox.getChildren().clear();
+        JSONArray subtasksArray = fields.optJSONArray("subtasks");
+        if (subtasksArray != null && subtasksArray.length() > 0) {
+            subtasksCard.setVisible(true);
+            subtasksCard.setManaged(true);
+            
+            for (int i = 0; i < subtasksArray.length(); i++) {
+                JSONObject sub = subtasksArray.getJSONObject(i);
+                String subKey = sub.getString("key");
+                JSONObject subFields = sub.getJSONObject("fields");
+                String subSummary = subFields.optString("summary", "");
+                
+                JSONObject subStatus = subFields.optJSONObject("status");
+                String subStatusName = subStatus != null ? subStatus.optString("name", "Unknown") : "Unknown";
+                JSONObject subStatusCat = subStatus != null ? subStatus.optJSONObject("statusCategory") : null;
+                String subColorName = subStatusCat != null ? subStatusCat.optString("colorName", "gray") : "gray";
+
+                HBox subRow = new HBox(10);
+                subRow.setAlignment(Pos.CENTER_LEFT);
+
+                Hyperlink subLink = new Hyperlink(subKey);
+                subLink.setOnAction(e -> {
+                    issueKeySearchField.setText(subKey);
+                    loadIssue(subKey);
+                });
+
+                Label subStatusBadge = new Label(subStatusName);
+                String subBadgeStyle = "-fx-font-size: 10px; -fx-padding: 2px 6px; -fx-background-radius: 3px; -fx-text-fill: white;";
+                if ("green".equalsIgnoreCase(subColorName)) {
+                    subBadgeStyle += "-fx-background-color: #10b981;";
+                } else if ("yellow".equalsIgnoreCase(subColorName) || "blue".equalsIgnoreCase(subColorName)) {
+                    subBadgeStyle += "-fx-background-color: #f59e0b;";
+                } else {
+                    subBadgeStyle += "-fx-background-color: #64748b;";
+                }
+                subStatusBadge.setStyle(subBadgeStyle);
+
+                Label subSumLabel = new Label(" - " + subSummary);
+                subSumLabel.setStyle("-fx-font-size: 11px;");
+                subSumLabel.setWrapText(true);
+
+                subRow.getChildren().addAll(subLink, subStatusBadge, subSumLabel);
+                subtasksVBox.getChildren().add(subRow);
+            }
+        } else {
+            subtasksCard.setVisible(false);
+            subtasksCard.setManaged(false);
+        }
 
         // --- Attachments ---
         attachmentsFlowPane.getChildren().clear();
@@ -729,6 +796,12 @@ public class IssueViewPanel extends BorderPane {
         createdLabel.setText(formatDateString(fields.optString("created")));
         updatedLabel.setText(formatDateString(fields.optString("updated")));
         resolvedLabel.setText(formatDateString(fields.optString("resolutiondate")));
+
+        // Force layout pass to ensure newly managed cards (attachments, subtasks, links) are drawn correctly in the ScrollPane
+        Platform.runLater(() -> {
+            leftPaneContent.requestLayout();
+            splitPane.requestLayout();
+        });
     }
 
     private String formatDateString(String jiraDateStr) {
