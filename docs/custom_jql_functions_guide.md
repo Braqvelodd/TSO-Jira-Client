@@ -83,7 +83,50 @@ Given the first-pass response:
 
 ---
 
-## 4. How to Add Custom Functions at Runtime
+## 4. Query Execution Modes & Usage Patterns
+
+The Multi-Pass JQL engine provides extensive flexibility in how custom functions can be combined, overridden, negated, and even nested.
+
+### Mode A: Shorthand Function Calls
+If you don't prefix the custom function with a field name or operator, the engine automatically assumes the default output template (which defaults to `key in (...)`):
+*   `parentsOf("status = Done")`
+    resolves to: `key in (KEY-100, KEY-101)`
+
+### Mode B: Embedded JQL Clauses
+You can combine custom tokens with standard standard JQL filters using logical operators (`AND`, `OR`):
+*   `project = PROJ AND assignee = admin AND parentsOf("status = Done")`
+    resolves to: `project = PROJ AND assignee = admin AND key in (KEY-100, KEY-101)`
+
+### Mode C: Field / Operator Overrides (Dynamic Rewriting)
+If the engine detects a field and an operator preceding the custom function, it dynamically overrides the strategy's default template. It replaces the function call with the resolved key array while preserving your specified field and operator.
+This supports:
+1.  **Negating Operators (`not in`, `!=`):**
+    *   `key not in parentsOf("status = Done")`
+        resolves to: `key not in (KEY-100, KEY-101)`
+    *   `key != parentsOf("key = TSO-123")`
+        resolves to: `key != (PARENT-50)`
+2.  **Custom Field References:**
+    *   `issue in parentsOf("status = Done")`
+        resolves to: `issue in (KEY-100, KEY-101)`
+    *   `parent in childrenOf("key = TSO-50")`
+        resolves to: `parent in (SUB-1, SUB-2)`
+
+### Mode D: Multiple Custom Functions
+You can use multiple different custom functions in a single query. The engine scans and resolves them sequentially (left-to-right) in multiple passes:
+*   `parentsOf("status = Open") AND childrenOf("assignee = admin")`
+    resolves to: `key in (PARENT-1) AND key in (CHILD-1, CHILD-2)`
+
+### Mode E: Nested / Recursive Functions
+Because the orchestrator evaluates queries recursively, you can nest custom functions inside each other. The inner query resolves first, and its output is fed into the outer query:
+*   `parentsOf("key in childrenOf('status = Done')")`
+    1.  First, the engine resolves `childrenOf('status = Done')` to get a list of subtask keys (e.g., `SUB-1`, `SUB-2`).
+    2.  The query becomes `parentsOf("key in (SUB-1, SUB-2)")`.
+    3.  Next, the engine queries those subtask issues to extract their parents, and resolves the outer query.
+    4.  Final Result: `key in (PARENT-1)`
+
+---
+
+## 5. How to Add Custom Functions at Runtime
 
 ### Method A: Using the Graphical Interface (Recommended)
 
@@ -104,7 +147,7 @@ Open `%USERPROFILE%\.JiraApiClient\custom_functions.json` in a text editor, add 
 
 ---
 
-## 5. Useful Function Presets
+## 6. Useful Function Presets
 
 Here are configurations you can add to implement common relationship queries:
 
