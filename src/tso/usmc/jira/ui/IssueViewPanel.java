@@ -580,13 +580,7 @@ public class IssueViewPanel extends BorderPane {
         }
 
         StringBuilder html = new StringBuilder();
-        html.append("<html><head><style>");
-        html.append("body { font-family: 'Segoe UI', Arial, sans-serif; padding: 5px; margin: 0; background-color: transparent; }");
-        html.append(".comment-card { border: 1px solid #475569; border-radius: 8px; padding: 10px; margin-bottom: 10px; background-color: rgba(30, 41, 59, 0.1); }");
-        html.append(".comment-header { font-weight: bold; font-size: 12px; margin-bottom: 5px; color: -fx-accent; }");
-        html.append(".comment-date { font-weight: normal; font-size: 11px; margin-left: 10px; color: #64748b; }");
-        html.append(".comment-body { font-size: 13px; line-height: 1.4; }");
-        html.append("</style></head><body>");
+        html.append("<html><head><style>body { font-family: 'Segoe UI', Arial, sans-serif; padding: 5px; margin: 0; background-color: transparent; }</style></head><body>");
 
         if (commentsArray == null || commentsArray.length() == 0) {
             html.append("<div style='color: gray; font-style: italic; font-size:12px; padding:10px;'>No comments on this issue.</div>");

@@ -209,3 +209,30 @@ th {
     -fx-effect: dropshadow(three-pass-box, rgba(16, 185, 129, 0.4), 8, 0, 0, 0);
 }
 
+/* WebView Comment Cards Styling */
+.comment-card {
+    border: 1px solid #334155;
+    border-radius: 8px;
+    padding: 10px;
+    margin-bottom: 10px;
+    background-color: #1e293b;
+}
+.comment-header {
+    font-weight: bold;
+    font-size: 12px;
+    margin-bottom: 5px;
+    color: #3b82f6;
+}
+.comment-date {
+    font-weight: normal;
+    font-size: 11px;
+    margin-left: 10px;
+    color: #94a3b8;
+}
+.comment-body {
+    font-size: 13px;
+    line-height: 1.4;
+    color: #f8fafc;
+}
+
+
