@@ -20,7 +20,7 @@ import javax.swing.JOptionPane;
  * Loads and provides access to configuration settings from the JiraConfig.ini file.
  */
 public class JiraConfig {
-    private static final String CURRENT_CONFIG_VERSION = "1.4";
+    private static final String CURRENT_CONFIG_VERSION = "1.5";
     private static final String CURRENT_CONSTANTS_VERSION = "1.5";
     private final Properties properties = new Properties();
     private final File configFile;

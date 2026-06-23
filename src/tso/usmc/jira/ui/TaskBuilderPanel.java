@@ -41,6 +41,16 @@ public class TaskBuilderPanel extends BorderPane {
 
     private boolean isUpdating = false;
 
+    // Configurable Keyboard Shortcuts
+    private KeyCombination keyDuplicateDown;
+    private KeyCombination keyDuplicateUp;
+    private KeyCombination keyMoveDown;
+    private KeyCombination keyMoveUp;
+    private KeyCombination keyComment;
+    private KeyCombination keyDelete;
+    private KeyCombination keyBold;
+    private KeyCombination keyItalic;
+
     // UI Components
     private final TextField parentField = new TextField();
     private final ComboBox<String> defTypeField = new ComboBox<>();
@@ -718,7 +728,7 @@ public class TaskBuilderPanel extends BorderPane {
         }
         
         for (JiraTask currentTask : taskListModel) {
-            if (selectedSummaries.contains(currentTask.summary) || selectedSummaries.isEmpty()) {
+            if (selectedSummaries.contains(currentTask.summary)) {
                 taskList.getSelectionModel().select(currentTask);
             }
         }
@@ -911,34 +921,100 @@ public class TaskBuilderPanel extends BorderPane {
         Platform.runLater(() -> resultsTable.getItems().add(new ExecutionResultRow(s, st, l))); 
     }
     
-    private void setupInputAreaKeyBindings() {
-        inputArea.setOnKeyPressed(event -> {
-            KeyCode code = event.getCode();
-            boolean ctrl = event.isControlDown();
-            boolean alt = event.isAltDown();
+    private KeyCombination parseKeyCombination(String text, String defaultCombo) {
+        if (text == null || text.trim().isEmpty()) {
+            return KeyCombination.valueOf(defaultCombo);
+        }
+        String cleaned = text.trim().replaceAll("\\s+", "");
+        String[] parts = cleaned.split("\\+");
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < parts.length; i++) {
+            String part = parts[i];
+            if (i > 0) sb.append("+");
             
-            if (ctrl && alt && code == KeyCode.DOWN) {
+            if (part.equalsIgnoreCase("ctrl") || part.equalsIgnoreCase("control") || part.equalsIgnoreCase("cntrl")) {
+                sb.append("Ctrl");
+            } else if (part.equalsIgnoreCase("alt")) {
+                sb.append("Alt");
+            } else if (part.equalsIgnoreCase("shift")) {
+                sb.append("Shift");
+            } else if (part.equalsIgnoreCase("meta") || part.equalsIgnoreCase("shortcut")) {
+                sb.append("Meta");
+            } else {
+                String key = part;
+                if (key.equals("/")) key = "Slash";
+                else if (key.equals("\\")) key = "Back_Slash";
+                else if (key.equals(";")) key = "Semicolon";
+                else if (key.equals(",")) key = "Comma";
+                else if (key.equals(".")) key = "Period";
+                else if (key.equals("-")) key = "Minus";
+                else if (key.equals("=")) key = "Equals";
+                else if (key.equals("[")) key = "Open_Bracket";
+                else if (key.equals("]")) key = "Close_Bracket";
+                else if (key.equals("`")) key = "Back_Quote";
+                else if (key.equals("'")) key = "Quote";
+                else if (key.equals("+")) key = "Plus";
+                else if (key.equals("*")) key = "Asterisk";
+                
+                if (key.length() > 1) {
+                    key = key.substring(0, 1).toUpperCase() + key.substring(1).toLowerCase();
+                } else {
+                    key = key.toUpperCase();
+                }
+                sb.append(key);
+            }
+        }
+        try {
+            return KeyCombination.valueOf(sb.toString());
+        } catch (Exception e) {
+            System.err.println("Invalid key combination: " + text + " (parsed as: " + sb + "). Using default: " + defaultCombo);
+            try {
+                return KeyCombination.valueOf(defaultCombo);
+            } catch (Exception ex) {
+                return null;
+            }
+        }
+    }
+
+    private void loadKeybinds() {
+        tso.usmc.jira.util.JiraConfig config = mainFrame.getJiraConfig();
+        keyDuplicateDown = parseKeyCombination(config.getProperty("keybind.taskbuilder.duplicate.down"), "Ctrl+Alt+Down");
+        keyDuplicateUp = parseKeyCombination(config.getProperty("keybind.taskbuilder.duplicate.up"), "Ctrl+Alt+Up");
+        keyMoveDown = parseKeyCombination(config.getProperty("keybind.taskbuilder.move.down"), "Alt+Down");
+        keyMoveUp = parseKeyCombination(config.getProperty("keybind.taskbuilder.move.up"), "Alt+Up");
+        keyComment = parseKeyCombination(config.getProperty("keybind.taskbuilder.comment"), "Ctrl+Slash");
+        keyDelete = parseKeyCombination(config.getProperty("keybind.taskbuilder.delete"), "Ctrl+D");
+        keyBold = parseKeyCombination(config.getProperty("keybind.taskbuilder.bold"), "Ctrl+B");
+        keyItalic = parseKeyCombination(config.getProperty("keybind.taskbuilder.italic"), "Ctrl+I");
+    }
+
+    private void setupInputAreaKeyBindings() {
+        loadKeybinds();
+        mainFrame.getJiraConfig().addConfigChangeListener(this::loadKeybinds);
+
+        inputArea.setOnKeyPressed(event -> {
+            if (keyDuplicateDown != null && keyDuplicateDown.match(event)) {
                 duplicateLines(true);
                 event.consume();
-            } else if (ctrl && alt && code == KeyCode.UP) {
+            } else if (keyDuplicateUp != null && keyDuplicateUp.match(event)) {
                 duplicateLines(false);
                 event.consume();
-            } else if (!ctrl && alt && code == KeyCode.DOWN) {
+            } else if (keyMoveDown != null && keyMoveDown.match(event)) {
                 moveLines(true);
                 event.consume();
-            } else if (!ctrl && alt && code == KeyCode.UP) {
+            } else if (keyMoveUp != null && keyMoveUp.match(event)) {
                 moveLines(false);
                 event.consume();
-            } else if (ctrl && code == KeyCode.SLASH) {
+            } else if (keyComment != null && keyComment.match(event)) {
                 toggleComments();
                 event.consume();
-            } else if (ctrl && code == KeyCode.D) {
+            } else if (keyDelete != null && keyDelete.match(event)) {
                 deleteLines();
                 event.consume();
-            } else if (ctrl && code == KeyCode.B) {
+            } else if (keyBold != null && keyBold.match(event)) {
                 toggleFormat("*");
                 event.consume();
-            } else if (ctrl && code == KeyCode.I) {
+            } else if (keyItalic != null && keyItalic.match(event)) {
                 toggleFormat("{_}");
                 event.consume();
             }
@@ -1015,6 +1091,11 @@ public class TaskBuilderPanel extends BorderPane {
                 textToMove += "\n";
             }
 
+            int caretPos = inputArea.getCaretPosition();
+            int anchorPos = inputArea.getAnchor();
+            int caretOffset = caretPos - lineStart;
+            int anchorOffset = anchorPos - lineStart;
+
             if (down) {
                 if (selectionEnd >= docLen) return;
                 int nextLineEnd = getRowEnd(text, selectionEnd);
@@ -1027,7 +1108,7 @@ public class TaskBuilderPanel extends BorderPane {
 
                 inputArea.replaceText(lineStart, nextSelectionEnd, nextLine + textToMove);
                 int newStart = lineStart + nextLine.length();
-                inputArea.selectRange(newStart, newStart + textToMove.length() - (textToMove.endsWith("\n") ? 1 : 0));
+                inputArea.selectRange(newStart + anchorOffset, newStart + caretOffset);
             } else {
                 if (lineStart <= 0) return;
                 int prevLineStart = getRowStart(text, lineStart - 1);
@@ -1038,7 +1119,8 @@ public class TaskBuilderPanel extends BorderPane {
                 }
 
                 inputArea.replaceText(prevLineStart, selectionEnd, textToMove + prevLine);
-                inputArea.selectRange(prevLineStart, prevLineStart + textToMove.length() - (textToMove.endsWith("\n") ? 1 : 0));
+                int newStart = prevLineStart;
+                inputArea.selectRange(newStart + anchorOffset, newStart + caretOffset);
             }
         } catch (Exception ex) { ex.printStackTrace(); }
     }
