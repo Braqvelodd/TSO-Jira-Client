@@ -173,6 +173,9 @@
 .badge-comment {
     -fx-background-color: rgba(99, 102, 241, 0.7);
 }
+.badge-notify {
+    -fx-background-color: rgba(20, 184, 166, 0.7);
+}
 
 /* List Action Buttons (Up/Down/Delete) */
 .list-action-btn {

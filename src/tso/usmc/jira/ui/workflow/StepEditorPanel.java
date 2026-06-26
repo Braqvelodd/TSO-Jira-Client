@@ -11,6 +11,7 @@ import tso.usmc.jira.workflow.LinkStep;
 import tso.usmc.jira.workflow.WorklogStep;
 import tso.usmc.jira.workflow.AttachmentStep;
 import tso.usmc.jira.workflow.CommentStep;
+import tso.usmc.jira.workflow.NotifyStep;
 import org.json.JSONObject;
 import tso.usmc.jira.ui.UiUtils;
 import tso.usmc.jira.ui.AutocompleteTextField;
@@ -59,6 +60,19 @@ public class StepEditorPanel extends BorderPane {
     private TextArea commentBodyArea;
     private CheckBox commentPromptCheck;
     private CheckBox commentPerIssueCheck;
+    private TextField notifySubjectField;
+    private TextArea notifyBodyArea;
+    private TextField notifyToUsersField;
+    private TextField notifyToGroupsField;
+    private CheckBox notifyToAssigneeCheck;
+    private CheckBox notifyToReporterCheck;
+    private CheckBox notifyToWatchersCheck;
+    private CheckBox notifyToVotersCheck;
+    private CheckBox notifyPromptSubjectCheck;
+    private CheckBox notifyPromptBodyCheck;
+    private CheckBox notifyPromptUsersCheck;
+    private CheckBox notifyPromptGroupsCheck;
+    private CheckBox notifyPerIssueCheck;
     private CheckBox worklogPromptCheck;
     private CheckBox worklogPerIssueCheck;
     private TextField inwardField;
@@ -308,6 +322,80 @@ public class StepEditorPanel extends BorderPane {
             
             header.getChildren().addAll(commentPromptCheck, commentPerIssueCheck);
         }
+        
+        if (step instanceof NotifyStep) {
+            NotifyStep ns = (NotifyStep) step;
+            targetIssueField = new TextField(ns.getTargetIssueToken());
+            targetIssueField.setPrefColumnCount(10);
+            UiUtils.setupExpandedView(targetIssueField);
+            header.getChildren().add(createPair("Target Issue:", targetIssueField));
+            
+            notifyPromptSubjectCheck = new CheckBox("Prompt Subj?");
+            notifyPromptSubjectCheck.setSelected(ns.isPromptSubject());
+            
+            notifyPromptBodyCheck = new CheckBox("Prompt Body?");
+            notifyPromptBodyCheck.setSelected(ns.isPromptBody());
+            
+            notifyPromptUsersCheck = new CheckBox("Prompt Users?");
+            notifyPromptUsersCheck.setSelected(ns.isPromptUsers());
+            
+            notifyPromptGroupsCheck = new CheckBox("Prompt Grps?");
+            notifyPromptGroupsCheck.setSelected(ns.isPromptGroups());
+            
+            boolean anyPrompt = ns.isPromptSubject() || ns.isPromptBody() || ns.isPromptUsers() || ns.isPromptGroups() || ns.isPromptAtRuntime();
+            // Fallback for backwards compatibility: if promptAtRuntime is true but all sub-flags are false, check all of them
+            if (ns.isPromptAtRuntime() && !ns.isPromptSubject() && !ns.isPromptBody() && !ns.isPromptUsers() && !ns.isPromptGroups()) {
+                notifyPromptSubjectCheck.setSelected(true);
+                notifyPromptBodyCheck.setSelected(true);
+                notifyPromptUsersCheck.setSelected(true);
+                notifyPromptGroupsCheck.setSelected(true);
+                ns.setPromptSubject(true);
+                ns.setPromptBody(true);
+                ns.setPromptUsers(true);
+                ns.setPromptGroups(true);
+                anyPrompt = true;
+            }
+            
+            notifyPerIssueCheck = new CheckBox("Per-Issue?");
+            notifyPerIssueCheck.setSelected(ns.isPromptPerIssue());
+            notifyPerIssueCheck.setDisable(!anyPrompt);
+            
+            Runnable updatePromptState = () -> {
+                boolean active = notifyPromptSubjectCheck.isSelected() || notifyPromptBodyCheck.isSelected() || 
+                                 notifyPromptUsersCheck.isSelected() || notifyPromptGroupsCheck.isSelected();
+                ns.setPromptAtRuntime(active);
+                notifyPerIssueCheck.setDisable(!active);
+            };
+            
+            notifyPromptSubjectCheck.setOnAction(e -> {
+                ns.setPromptSubject(notifyPromptSubjectCheck.isSelected());
+                updatePromptState.run();
+            });
+            notifyPromptBodyCheck.setOnAction(e -> {
+                ns.setPromptBody(notifyPromptBodyCheck.isSelected());
+                updatePromptState.run();
+            });
+            notifyPromptUsersCheck.setOnAction(e -> {
+                ns.setPromptUsers(notifyPromptUsersCheck.isSelected());
+                updatePromptState.run();
+            });
+            notifyPromptGroupsCheck.setOnAction(e -> {
+                ns.setPromptGroups(notifyPromptGroupsCheck.isSelected());
+                updatePromptState.run();
+            });
+            
+            notifyPerIssueCheck.setOnAction(e -> {
+                ns.setPromptPerIssue(notifyPerIssueCheck.isSelected());
+            });
+            
+            header.getChildren().addAll(
+                notifyPromptSubjectCheck, 
+                notifyPromptBodyCheck, 
+                notifyPromptUsersCheck, 
+                notifyPromptGroupsCheck, 
+                notifyPerIssueCheck
+            );
+        }
 
         // Step Rearrangement Buttons
         HBox movePanel = new HBox(2);
@@ -379,6 +467,45 @@ public class StepEditorPanel extends BorderPane {
             fieldsContainer.getChildren().add(commentBodyBox);
         }
         
+        if (step instanceof NotifyStep) {
+            NotifyStep ns = (NotifyStep) step;
+            
+            VBox notifyContainer = new VBox(8);
+            notifyContainer.setPadding(new Insets(5));
+            
+            notifySubjectField = new TextField(ns.getSubject());
+            UiUtils.setupExpandedView(notifySubjectField);
+            notifyContainer.getChildren().addAll(new Label("Subject (supports tokens):"), notifySubjectField);
+            
+            notifyBodyArea = new TextArea(ns.getTextBody());
+            notifyBodyArea.setPrefRowCount(4);
+            notifyBodyArea.setWrapText(true);
+            notifyContainer.getChildren().addAll(new Label("Body (supports tokens):"), notifyBodyArea);
+            
+            notifyToUsersField = new TextField(ns.getToUsers());
+            UiUtils.setupExpandedView(notifyToUsersField);
+            notifyContainer.getChildren().addAll(new Label("To Users / Teams (comma-separated, e.g. user1, @team.alpha, {{fields.assignee.name}}):"), notifyToUsersField);
+            
+            notifyToGroupsField = new TextField(ns.getToGroups());
+            UiUtils.setupExpandedView(notifyToGroupsField);
+            notifyContainer.getChildren().addAll(new Label("To Groups (comma-separated):"), notifyToGroupsField);
+            
+            HBox standardRecipients = new HBox(15);
+            standardRecipients.setAlignment(Pos.CENTER_LEFT);
+            notifyToAssigneeCheck = new CheckBox("Assignee");
+            notifyToAssigneeCheck.setSelected(ns.isToAssignee());
+            notifyToReporterCheck = new CheckBox("Reporter");
+            notifyToReporterCheck.setSelected(ns.isToReporter());
+            notifyToWatchersCheck = new CheckBox("Watchers");
+            notifyToWatchersCheck.setSelected(ns.isToWatchers());
+            notifyToVotersCheck = new CheckBox("Voters");
+            notifyToVotersCheck.setSelected(ns.isToVoters());
+            standardRecipients.getChildren().addAll(new Label("Standard Recipients:"), notifyToAssigneeCheck, notifyToReporterCheck, notifyToWatchersCheck, notifyToVotersCheck);
+            notifyContainer.getChildren().add(standardRecipients);
+            
+            fieldsContainer.getChildren().add(notifyContainer);
+        }
+        
         contentPanel.getChildren().add(fieldsContainer);
 
         // Footer (Add Field/Link)
@@ -390,7 +517,7 @@ public class StepEditorPanel extends BorderPane {
             Button addLinkBtn = new Button("+ Add Link");
             addLinkBtn.setOnAction(e -> addLinkAction(new LinkAction()));
             footer.getChildren().add(addLinkBtn);
-        } else if (step.getType() != WorkflowStep.StepType.ASSET && step.getType() != WorkflowStep.StepType.WORKLOG && step.getType() != WorkflowStep.StepType.ATTACHMENT && step.getType() != WorkflowStep.StepType.COMMENT) {
+        } else if (step.getType() != WorkflowStep.StepType.ASSET && step.getType() != WorkflowStep.StepType.WORKLOG && step.getType() != WorkflowStep.StepType.ATTACHMENT && step.getType() != WorkflowStep.StepType.COMMENT && step.getType() != WorkflowStep.StepType.NOTIFY) {
             Button addFieldBtn = new Button("+ Add Field");
             addFieldBtn.setOnAction(e -> addField(new FieldAction("", FieldAction.MappingMode.SET, "", "")));
             footer.getChildren().add(addFieldBtn);
@@ -562,6 +689,28 @@ public class StepEditorPanel extends BorderPane {
             if (commentBodyArea != null) cs.setCommentBody(commentBodyArea.getText());
             if (commentPromptCheck != null) cs.setPromptAtRuntime(commentPromptCheck.isSelected());
             if (commentPerIssueCheck != null) cs.setPromptPerIssue(commentPerIssueCheck.isSelected());
+        }
+        if (step instanceof NotifyStep) {
+            NotifyStep ns = (NotifyStep) step;
+            ns.setTargetIssueToken(targetIssueField.getText());
+            if (notifySubjectField != null) ns.setSubject(notifySubjectField.getText());
+            if (notifyBodyArea != null) ns.setTextBody(notifyBodyArea.getText());
+            if (notifyToUsersField != null) ns.setToUsers(notifyToUsersField.getText());
+            if (notifyToGroupsField != null) ns.setToGroups(notifyToGroupsField.getText());
+            if (notifyToAssigneeCheck != null) ns.setToAssignee(notifyToAssigneeCheck.isSelected());
+            if (notifyToReporterCheck != null) ns.setToReporter(notifyToReporterCheck.isSelected());
+            if (notifyToWatchersCheck != null) ns.setToWatchers(notifyToWatchersCheck.isSelected());
+            if (notifyToVotersCheck != null) ns.setToVoters(notifyToVotersCheck.isSelected());
+            if (notifyPromptSubjectCheck != null) ns.setPromptSubject(notifyPromptSubjectCheck.isSelected());
+            if (notifyPromptBodyCheck != null) ns.setPromptBody(notifyPromptBodyCheck.isSelected());
+            if (notifyPromptUsersCheck != null) ns.setPromptUsers(notifyPromptUsersCheck.isSelected());
+            if (notifyPromptGroupsCheck != null) ns.setPromptGroups(notifyPromptGroupsCheck.isSelected());
+            if (notifyPerIssueCheck != null) ns.setPromptPerIssue(notifyPerIssueCheck.isSelected());
+            boolean active = (notifyPromptSubjectCheck != null && notifyPromptSubjectCheck.isSelected()) ||
+                             (notifyPromptBodyCheck != null && notifyPromptBodyCheck.isSelected()) ||
+                             (notifyPromptUsersCheck != null && notifyPromptUsersCheck.isSelected()) ||
+                             (notifyPromptGroupsCheck != null && notifyPromptGroupsCheck.isSelected());
+            ns.setPromptAtRuntime(active);
         }
         
         step.getFieldActions().clear();

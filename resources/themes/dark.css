@@ -144,6 +144,9 @@
 .badge-comment {
     -fx-background-color: #4f46e5;
 }
+.badge-notify {
+    -fx-background-color: #0d9488;
+}
 
 /* List Action Buttons (Up/Down/Delete) */
 .list-action-btn {

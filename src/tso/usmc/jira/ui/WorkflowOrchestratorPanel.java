@@ -303,6 +303,7 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
         Button addWorklogBtn = new Button("Add Worklog");
         Button addAttachmentBtn = new Button("Add Attachment");
         Button addCommentBtn = new Button("Add Comment");
+        Button addNotifyBtn = new Button("Add Notify");
         
         addTransBtn.setMinWidth(Region.USE_PREF_SIZE);
         addUpdateBtn.setMinWidth(Region.USE_PREF_SIZE);
@@ -312,6 +313,7 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
         addWorklogBtn.setMinWidth(Region.USE_PREF_SIZE);
         addAttachmentBtn.setMinWidth(Region.USE_PREF_SIZE);
         addCommentBtn.setMinWidth(Region.USE_PREF_SIZE);
+        addNotifyBtn.setMinWidth(Region.USE_PREF_SIZE);
         
         addTransBtn.getStyleClass().add("btn-transition");
         addUpdateBtn.getStyleClass().add("btn-update");
@@ -321,8 +323,9 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
         addWorklogBtn.getStyleClass().add("btn-worklog");
         addAttachmentBtn.getStyleClass().add("btn-attachment");
         addCommentBtn.getStyleClass().add("btn-comment");
+        addNotifyBtn.getStyleClass().add("btn-notify");
         
-        footer.getChildren().addAll(addTransBtn, addUpdateBtn, addCreateBtn, addLinkBtn, addAssetBtn, addWorklogBtn, addAttachmentBtn, addCommentBtn);
+        footer.getChildren().addAll(addTransBtn, addUpdateBtn, addCreateBtn, addLinkBtn, addAssetBtn, addWorklogBtn, addAttachmentBtn, addCommentBtn, addNotifyBtn);
         center.setBottom(footer);
 
         // Split Editor and Tokens
@@ -358,6 +361,7 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
         addWorklogBtn.setOnAction(e -> addStep(new WorklogStep()));
         addAttachmentBtn.setOnAction(e -> addStep(new AttachmentStep()));
         addCommentBtn.setOnAction(e -> addStep(new CommentStep()));
+        addNotifyBtn.setOnAction(e -> addStep(new NotifyStep()));
 
         tokenSearchField.textProperty().addListener((obs, oldVal, newVal) -> filterTokens());
 
@@ -926,6 +930,28 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
                         }
                     }
                     
+                    if (step instanceof NotifyStep) {
+                        NotifyStep ns = (NotifyStep) step;
+                        if (ns.isPromptAtRuntime()) {
+                            if (ns.isPromptPerIssue()) {
+                                List<RunnerIssueRow> selectedRows = runnerTable.getSelectionModel().getSelectedItems();
+                                if (selectedRows.isEmpty() && contextIssue != null) {
+                                    String key = contextIssue.optString("key");
+                                    addNotifyPromptsForIssue(labels, ns, key, contextIssue);
+                                } else {
+                                    for (RunnerIssueRow row : selectedRows) {
+                                        String key = row.getKey();
+                                        int rIdx = runnerTable.getItems().indexOf(row);
+                                        JSONObject issueContext = (rIdx >= 0 && rIdx < currentSearchIssues.size()) ? currentSearchIssues.get(rIdx) : contextIssue;
+                                        addNotifyPromptsForIssue(labels, ns, key, issueContext);
+                                    }
+                                }
+                            } else {
+                                addNotifyPromptsOnce(labels, ns, contextIssue);
+                            }
+                        }
+                    }
+                    
                     for (FieldAction fa : step.getFieldActions().values()) {
                         if (fa.getMode() == FieldAction.MappingMode.PROMPT) {
                             addDynamicPrompt(labels, fa.getPromptLabel(), fa.getValue() != null ? fa.getValue().toString() : null, fa.getFieldId(), contextIssue);
@@ -1012,6 +1038,136 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
         }
         addInputRow(commentLabel, commentArea, labels);
         promptFields.put(commentLabel, commentArea);
+    }
+
+    private void addNotifyPromptsForIssue(Set<String> labels, NotifyStep ns, String key, JSONObject issueContext) {
+        String subLabel = "Subject (" + ns.getLabel() + ") for " + key;
+        String bodyLabel = "Body (" + ns.getLabel() + ") for " + key;
+        String usersLabel = "To Users (" + ns.getLabel() + ") for " + key;
+        String groupsLabel = "To Groups (" + ns.getLabel() + ") for " + key;
+
+        boolean s = ns.isPromptSubject();
+        boolean b = ns.isPromptBody();
+        boolean u = ns.isPromptUsers();
+        boolean g = ns.isPromptGroups();
+        if (!s && !b && !u && !g) {
+            s = true; b = true; u = true; g = true; // Backwards compatibility fallback
+        }
+
+        if (s) {
+            TextField subField = new TextField();
+            subField.setPrefWidth(200);
+            UiUtils.setupExpandedView(subField);
+            if (ns.getSubject() != null) {
+                subField.setText(TokenEngine.replaceTokens(ns.getSubject(), issueContext));
+            }
+            addInputRow(subLabel, subField, labels);
+            promptFields.put(subLabel, subField);
+        }
+
+        if (b) {
+            TextArea bodyArea = new TextArea();
+            bodyArea.setPrefRowCount(3);
+            bodyArea.setWrapText(true);
+            if (ns.getTextBody() != null) {
+                bodyArea.setText(TokenEngine.replaceTokens(ns.getTextBody(), issueContext));
+            }
+            addInputRow(bodyLabel, bodyArea, labels);
+            promptFields.put(bodyLabel, bodyArea);
+        }
+
+        if (u) {
+            JiraUserAutocompleteTextField usersField = new JiraUserAutocompleteTextField(20);
+            usersField.setService(getAutocompleteService());
+            usersField.setAutocompleteEnabled(mainFrame.getJiraConfig().isAutocompleteEnabled());
+            usersField.setPrefWidth(200);
+            UiUtils.setupExpandedView(usersField);
+            if (ns.getToUsers() != null) {
+                usersField.setText(TokenEngine.replaceTokens(ns.getToUsers(), issueContext));
+            }
+            addInputRow(usersLabel, usersField, labels);
+            promptFields.put(usersLabel, usersField);
+        }
+
+        if (g) {
+            TextField groupsField = new TextField();
+            groupsField.setPrefWidth(200);
+            UiUtils.setupExpandedView(groupsField);
+            if (ns.getToGroups() != null) {
+                groupsField.setText(TokenEngine.replaceTokens(ns.getToGroups(), issueContext));
+            }
+            addInputRow(groupsLabel, groupsField, labels);
+            promptFields.put(groupsLabel, groupsField);
+        }
+    }
+
+    private void addNotifyPromptsOnce(Set<String> labels, NotifyStep ns, JSONObject contextIssue) {
+        String subLabel = "Subject (" + ns.getLabel() + ")";
+        String bodyLabel = "Body (" + ns.getLabel() + ")";
+        String usersLabel = "To Users (" + ns.getLabel() + ")";
+        String groupsLabel = "To Groups (" + ns.getLabel() + ")";
+
+        boolean s = ns.isPromptSubject();
+        boolean b = ns.isPromptBody();
+        boolean u = ns.isPromptUsers();
+        boolean g = ns.isPromptGroups();
+        if (!s && !b && !u && !g) {
+            s = true; b = true; u = true; g = true; // Backwards compatibility fallback
+        }
+
+        if (s) {
+            TextField subField = new TextField();
+            subField.setPrefWidth(200);
+            UiUtils.setupExpandedView(subField);
+            if (ns.getSubject() != null) {
+                String def = ns.getSubject();
+                if (contextIssue != null) def = TokenEngine.replaceTokens(def, contextIssue);
+                subField.setText(def);
+            }
+            addInputRow(subLabel, subField, labels);
+            promptFields.put(subLabel, subField);
+        }
+
+        if (b) {
+            TextArea bodyArea = new TextArea();
+            bodyArea.setPrefRowCount(3);
+            bodyArea.setWrapText(true);
+            if (ns.getTextBody() != null) {
+                String def = ns.getTextBody();
+                if (contextIssue != null) def = TokenEngine.replaceTokens(def, contextIssue);
+                bodyArea.setText(def);
+            }
+            addInputRow(bodyLabel, bodyArea, labels);
+            promptFields.put(bodyLabel, bodyArea);
+        }
+
+        if (u) {
+            JiraUserAutocompleteTextField usersField = new JiraUserAutocompleteTextField(20);
+            usersField.setService(getAutocompleteService());
+            usersField.setAutocompleteEnabled(mainFrame.getJiraConfig().isAutocompleteEnabled());
+            usersField.setPrefWidth(200);
+            UiUtils.setupExpandedView(usersField);
+            if (ns.getToUsers() != null) {
+                String def = ns.getToUsers();
+                if (contextIssue != null) def = TokenEngine.replaceTokens(def, contextIssue);
+                usersField.setText(def);
+            }
+            addInputRow(usersLabel, usersField, labels);
+            promptFields.put(usersLabel, usersField);
+        }
+
+        if (g) {
+            TextField groupsField = new TextField();
+            groupsField.setPrefWidth(200);
+            UiUtils.setupExpandedView(groupsField);
+            if (ns.getToGroups() != null) {
+                String def = ns.getToGroups();
+                if (contextIssue != null) def = TokenEngine.replaceTokens(def, contextIssue);
+                groupsField.setText(def);
+            }
+            addInputRow(groupsLabel, groupsField, labels);
+            promptFields.put(groupsLabel, groupsField);
+        }
     }
 
     private JSONObject findFieldMeta(String fieldId, JSONObject contextIssue) {

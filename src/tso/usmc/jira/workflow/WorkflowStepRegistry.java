@@ -22,6 +22,7 @@ public class WorkflowStepRegistry {
         register("ASSET", AssetStep::fromJson);
         register("ATTACHMENT", AttachmentStep::fromJson);
         register("COMMENT", CommentStep::fromJson);
+        register("NOTIFY", NotifyStep::fromJson);
         register("CLONE", AssetStep::fromJson); // Legacy alias
         
         // Custom handling for legacy REMOTE_LINK format

@@ -424,6 +424,123 @@ public class WorkflowEngine {
                     listener.onLog("  > Added comment to " + targetKey);
                 }
             }
+        } else if (step instanceof NotifyStep) {
+            NotifyStep ns = (NotifyStep) step;
+            String targetKey = JiraUtils.cleanIssueKey(resolveTokens(ns.getTargetIssueToken(), issue));
+            if (targetKey != null && !targetKey.trim().isEmpty()) {
+                String sub = "";
+                String bodyText = "";
+                String usersStr = "";
+                String groupsStr = "";
+
+                if (ns.isPromptAtRuntime()) {
+                    if (ns.isPromptPerIssue()) {
+                        String subLabel = "Subject (" + step.getLabel() + ") for " + targetKey;
+                        String bodyLabel = "Body (" + step.getLabel() + ") for " + targetKey;
+                        String usersLabel = "To Users (" + step.getLabel() + ") for " + targetKey;
+                        String groupsLabel = "To Groups (" + step.getLabel() + ") for " + targetKey;
+
+                        sub = prompts.containsKey(subLabel) ? prompts.get(subLabel) : resolveTokens(ns.getSubject(), issue);
+                        bodyText = prompts.containsKey(bodyLabel) ? prompts.get(bodyLabel) : resolveTokens(ns.getTextBody(), issue);
+                        usersStr = prompts.containsKey(usersLabel) ? prompts.get(usersLabel) : resolveTokens(ns.getToUsers(), issue);
+                        groupsStr = prompts.containsKey(groupsLabel) ? prompts.get(groupsLabel) : resolveTokens(ns.getToGroups(), issue);
+                    } else {
+                        String subLabel = "Subject (" + step.getLabel() + ")";
+                        String bodyLabel = "Body (" + step.getLabel() + ")";
+                        String usersLabel = "To Users (" + step.getLabel() + ")";
+                        String groupsLabel = "To Groups (" + step.getLabel() + ")";
+
+                        sub = prompts.containsKey(subLabel) ? prompts.get(subLabel) : resolveTokens(ns.getSubject(), issue);
+                        bodyText = prompts.containsKey(bodyLabel) ? prompts.get(bodyLabel) : resolveTokens(ns.getTextBody(), issue);
+                        usersStr = prompts.containsKey(usersLabel) ? prompts.get(usersLabel) : resolveTokens(ns.getToUsers(), issue);
+                        groupsStr = prompts.containsKey(groupsLabel) ? prompts.get(groupsLabel) : resolveTokens(ns.getToGroups(), issue);
+
+                        // Resolve tokens since it was prompted once for the batch but can contain issue-specific tokens
+                        sub = resolveTokens(sub, issue);
+                        bodyText = resolveTokens(bodyText, issue);
+                        usersStr = resolveTokens(usersStr, issue);
+                        groupsStr = resolveTokens(groupsStr, issue);
+                    }
+                } else {
+                    sub = resolveTokens(ns.getSubject(), issue);
+                    bodyText = resolveTokens(ns.getTextBody(), issue);
+                    usersStr = resolveTokens(ns.getToUsers(), issue);
+                    groupsStr = resolveTokens(ns.getToGroups(), issue);
+                }
+
+                if (sub == null) sub = "";
+                if (bodyText == null) bodyText = "";
+
+                if (dryRun) {
+                    listener.onLog("  > [DRY RUN] Would send Jira notification for " + targetKey + " with Subject: \"" + sub + "\"");
+                } else {
+                    if (verboseLogging) listener.onLog("  > Formulating notification for " + targetKey + "...");
+
+                    JSONObject notifyPayload = new JSONObject();
+                    notifyPayload.put("subject", sub);
+                    notifyPayload.put("textBody", bodyText);
+
+                    JSONObject toObj = new JSONObject();
+                    toObj.put("assignee", ns.isToAssignee());
+                    toObj.put("reporter", ns.isToReporter());
+                    toObj.put("watchers", ns.isToWatchers());
+                    toObj.put("voters", ns.isToVoters());
+
+                    // Custom Users (with custom team support)
+                    JSONArray usersArr = new JSONArray();
+                    if (usersStr != null && !usersStr.trim().isEmpty()) {
+                        for (String user : usersStr.split("\\s*,\\s*")) {
+                            String u = user.trim();
+                            if (u.isEmpty()) continue;
+
+                            String teamKey = u;
+                            if (teamKey.startsWith("@")) teamKey = teamKey.substring(1);
+                            if (teamKey.startsWith("team.")) teamKey = teamKey.substring(5);
+
+                            String members = (issueService != null && issueService.getJiraConfig() != null)
+                                    ? issueService.getJiraConfig().getTeamProperty(teamKey, "members")
+                                    : null;
+                            if (members != null && !members.trim().isEmpty()) {
+                                for (String m : members.split(",")) {
+                                    String memberTrimmed = m.trim();
+                                    if (!memberTrimmed.isEmpty()) {
+                                        usersArr.put(new JSONObject().put("name", memberTrimmed));
+                                    }
+                                }
+                            } else {
+                                usersArr.put(new JSONObject().put("name", u));
+                            }
+                        }
+                    }
+                    if (usersArr.length() > 0) {
+                        toObj.put("users", usersArr);
+                    }
+
+                    // Custom Groups
+                    JSONArray groupsArr = new JSONArray();
+                    if (groupsStr != null && !groupsStr.trim().isEmpty()) {
+                        for (String grp : groupsStr.split("\\s*,\\s*")) {
+                            String g = grp.trim();
+                            if (!g.isEmpty()) {
+                                groupsArr.put(new JSONObject().put("name", g));
+                            }
+                        }
+                    }
+                    if (groupsArr.length() > 0) {
+                        toObj.put("groups", groupsArr);
+                    }
+
+                    notifyPayload.put("to", toObj);
+
+                    String notifyUrl = baseUrl + "/rest/api/2/issue/" + targetKey + "/notify";
+                    try {
+                        apiService.executeRequest(notifyUrl, "POST", notifyPayload.toString());
+                        listener.onLog("  > Sent Notification for " + targetKey + " (Subject: " + sub + ")");
+                    } catch (Exception ex) {
+                        listener.onLog("  > [WARNING] Notification failed for " + targetKey + ": " + ex.getMessage());
+                    }
+                }
+            }
         }
     }
 

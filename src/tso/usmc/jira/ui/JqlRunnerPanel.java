@@ -968,6 +968,20 @@ public class JqlRunnerPanel extends BorderPane implements tso.usmc.jira.util.Con
             if (step instanceof tso.usmc.jira.workflow.AssetStep) {
                 if (((tso.usmc.jira.workflow.AssetStep) step).isPromptOptions()) return true;
             }
+            if (step instanceof tso.usmc.jira.workflow.NotifyStep) {
+                tso.usmc.jira.workflow.NotifyStep ns = (tso.usmc.jira.workflow.NotifyStep) step;
+                if (ns.isPromptAtRuntime()) return true;
+                String sub = ns.getSubject();
+                String body = ns.getTextBody();
+                String users = ns.getToUsers();
+                String groups = ns.getToGroups();
+                if ((sub != null && (sub.contains(",") || sub.contains("[config:") || sub.contains("[choice:"))) ||
+                    (body != null && (body.contains(",") || body.contains("[config:") || body.contains("[choice:"))) ||
+                    (users != null && (users.contains(",") || users.contains("[config:") || users.contains("[choice:"))) ||
+                    (groups != null && (groups.contains(",") || groups.contains("[config:") || groups.contains("[choice:")))) {
+                    return true;
+                }
+            }
             for (tso.usmc.jira.workflow.FieldAction fa : step.getFieldActions().values()) {
                 if (fa.getMode() == tso.usmc.jira.workflow.FieldAction.MappingMode.PROMPT) {
                     return true;

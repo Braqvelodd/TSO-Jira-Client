@@ -23,6 +23,10 @@ public class JiraIssueService {
         this.config = config;
     }
 
+    public JiraConfig getJiraConfig() {
+        return config;
+    }
+
     /**
      * Transitions an issue to a new status.
      * @param issueKey The Jira issue key (e.g., TSO-123)

@@ -57,3 +57,4 @@ src\tso\usmc\jira\service\CustomJqlFunction.java
 src\tso\usmc\jira\service\JqlExecutionEngine.java
 src\tso\usmc\jira\service\ConfigurableJqlFunction.java
 src\tso\usmc\jira\ui\JqlCustomFunctionsDialog.java
+src\tso\usmc\jira\workflow\NotifyStep.java

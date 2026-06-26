@@ -6,7 +6,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 public abstract class WorkflowStep {
-    public enum StepType { TRANSITION, UPDATE, ASSET, CREATE, LINK, WORKLOG, ATTACHMENT, COMMENT }
+    public enum StepType { TRANSITION, UPDATE, ASSET, CREATE, LINK, WORKLOG, ATTACHMENT, COMMENT, NOTIFY }
 
     protected String stepId;
     protected String label;
