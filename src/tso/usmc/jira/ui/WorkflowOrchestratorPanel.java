@@ -295,37 +295,27 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
         // Editor Footer
         HBox footer = new HBox(10);
         footer.setAlignment(Pos.CENTER_LEFT);
-        Button addTransBtn = new Button("Add Transition");
-        Button addUpdateBtn = new Button("Add Update");
-        Button addCreateBtn = new Button("Add Create");
-        Button addLinkBtn = new Button("Add Link");
-        Button addAssetBtn = new Button("Copy Assets (Links/Att/Sub)");
-        Button addWorklogBtn = new Button("Add Worklog");
-        Button addAttachmentBtn = new Button("Add Attachment");
-        Button addCommentBtn = new Button("Add Comment");
-        Button addNotifyBtn = new Button("Add Notify");
         
-        addTransBtn.setMinWidth(Region.USE_PREF_SIZE);
-        addUpdateBtn.setMinWidth(Region.USE_PREF_SIZE);
-        addCreateBtn.setMinWidth(Region.USE_PREF_SIZE);
-        addLinkBtn.setMinWidth(Region.USE_PREF_SIZE);
-        addAssetBtn.setMinWidth(Region.USE_PREF_SIZE);
-        addWorklogBtn.setMinWidth(Region.USE_PREF_SIZE);
-        addAttachmentBtn.setMinWidth(Region.USE_PREF_SIZE);
-        addCommentBtn.setMinWidth(Region.USE_PREF_SIZE);
-        addNotifyBtn.setMinWidth(Region.USE_PREF_SIZE);
+        MenuButton addStepMenu = new MenuButton("+ Add Step");
+        addStepMenu.getStyleClass().add("primary-button");
+        addStepMenu.setMinWidth(Region.USE_PREF_SIZE);
+
+        MenuItem addTransItem = new MenuItem("Transition");
+        MenuItem addUpdateItem = new MenuItem("Update");
+        MenuItem addCreateItem = new MenuItem("Create");
+        MenuItem addLinkItem = new MenuItem("Link");
+        MenuItem addAssetItem = new MenuItem("Copy Assets (Links/Att/Sub)");
+        MenuItem addWorklogItem = new MenuItem("Worklog");
+        MenuItem addAttachmentItem = new MenuItem("Attachment");
+        MenuItem addCommentItem = new MenuItem("Comment");
+        MenuItem addNotifyItem = new MenuItem("Notify");
         
-        addTransBtn.getStyleClass().add("btn-transition");
-        addUpdateBtn.getStyleClass().add("btn-update");
-        addCreateBtn.getStyleClass().add("btn-create");
-        addLinkBtn.getStyleClass().add("btn-link");
-        addAssetBtn.getStyleClass().add("btn-asset");
-        addWorklogBtn.getStyleClass().add("btn-worklog");
-        addAttachmentBtn.getStyleClass().add("btn-attachment");
-        addCommentBtn.getStyleClass().add("btn-comment");
-        addNotifyBtn.getStyleClass().add("btn-notify");
+        addStepMenu.getItems().addAll(
+            addTransItem, addUpdateItem, addCreateItem, addLinkItem, addAssetItem,
+            addWorklogItem, addAttachmentItem, addCommentItem, addNotifyItem
+        );
         
-        footer.getChildren().addAll(addTransBtn, addUpdateBtn, addCreateBtn, addLinkBtn, addAssetBtn, addWorklogBtn, addAttachmentBtn, addCommentBtn, addNotifyBtn);
+        footer.getChildren().add(addStepMenu);
         center.setBottom(footer);
 
         // Split Editor and Tokens
@@ -353,15 +343,15 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
         saveBtn.setOnAction(e -> saveRecipe());
         fetchMetaBtn.setOnAction(e -> fetchLiveMetadata());
         
-        addTransBtn.setOnAction(e -> addStep(new TransitionStep()));
-        addUpdateBtn.setOnAction(e -> addStep(new UpdateStep()));
-        addCreateBtn.setOnAction(e -> addStep(new CreateStep()));
-        addLinkBtn.setOnAction(e -> addStep(new LinkStep()));
-        addAssetBtn.setOnAction(e -> addStep(new AssetStep()));
-        addWorklogBtn.setOnAction(e -> addStep(new WorklogStep()));
-        addAttachmentBtn.setOnAction(e -> addStep(new AttachmentStep()));
-        addCommentBtn.setOnAction(e -> addStep(new CommentStep()));
-        addNotifyBtn.setOnAction(e -> addStep(new NotifyStep()));
+        addTransItem.setOnAction(e -> addStep(new TransitionStep()));
+        addUpdateItem.setOnAction(e -> addStep(new UpdateStep()));
+        addCreateItem.setOnAction(e -> addStep(new CreateStep()));
+        addLinkItem.setOnAction(e -> addStep(new LinkStep()));
+        addAssetItem.setOnAction(e -> addStep(new AssetStep()));
+        addWorklogItem.setOnAction(e -> addStep(new WorklogStep()));
+        addAttachmentItem.setOnAction(e -> addStep(new AttachmentStep()));
+        addCommentItem.setOnAction(e -> addStep(new CommentStep()));
+        addNotifyItem.setOnAction(e -> addStep(new NotifyStep()));
 
         tokenSearchField.textProperty().addListener((obs, oldVal, newVal) -> filterTokens());
 

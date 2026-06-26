@@ -119,6 +119,12 @@ public class StepEditorPanel extends BorderPane {
         });
         header.getChildren().add(collapseBtn);
 
+        Button removeBtn = new Button("X");
+        removeBtn.getStyleClass().addAll("list-action-btn", "action-btn-delete");
+        removeBtn.setMinSize(22, 22); removeBtn.setMaxSize(22, 22);
+        removeBtn.setOnAction(e -> onRemove.run());
+        header.getChildren().add(removeBtn);
+
         labelField = new TextField(step.getLabel());
         labelField.setPrefColumnCount(20);
         UiUtils.setupExpandedView(labelField);
@@ -397,27 +403,6 @@ public class StepEditorPanel extends BorderPane {
             );
         }
 
-        // Step Rearrangement Buttons
-        HBox movePanel = new HBox(2);
-        movePanel.setAlignment(Pos.CENTER_LEFT);
-        Button stepUpBtn = new Button("^");
-        Button stepDownBtn = new Button("v");
-        stepUpBtn.setMinSize(22, 22); stepUpBtn.setMaxSize(22, 22);
-        stepDownBtn.setMinSize(22, 22); stepDownBtn.setMaxSize(22, 22);
-        stepUpBtn.getStyleClass().addAll("list-action-btn", "action-btn-up");
-        stepDownBtn.getStyleClass().addAll("list-action-btn", "action-btn-down");
-        
-        stepUpBtn.setOnAction(e -> stepListener.onMoveUp(this));
-        stepDownBtn.setOnAction(e -> stepListener.onMoveDown(this));
-        movePanel.getChildren().addAll(stepUpBtn, stepDownBtn);
-        header.getChildren().add(movePanel);
-
-        Button removeBtn = new Button("X");
-        removeBtn.getStyleClass().addAll("list-action-btn", "action-btn-delete");
-        removeBtn.setMinSize(22, 22); removeBtn.setMaxSize(22, 22);
-        removeBtn.setOnAction(e -> onRemove.run());
-        header.getChildren().add(removeBtn);
-        
         setTop(header);
 
         // Content Wrapper
