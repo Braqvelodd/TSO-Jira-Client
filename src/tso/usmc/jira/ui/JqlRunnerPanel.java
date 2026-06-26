@@ -423,7 +423,7 @@ public class JqlRunnerPanel extends BorderPane implements tso.usmc.jira.util.Con
                     mainFrame.getBaseUrl(),
                     jql,
                     fields.isEmpty() ? null : fields,
-                    500
+                    jiraConfig.getJqlMaxResults()
                 );
 
                 JSONObject responseJson = new JSONObject(rawResponse);
@@ -517,7 +517,7 @@ public class JqlRunnerPanel extends BorderPane implements tso.usmc.jira.util.Con
                         }
                         resultsTable.getItems().add(rowValues);
                     }
-                    statusLabel.setText("Success! Found " + issues.length() + " issues. (Max 500 displayed)");
+                    statusLabel.setText("Success! Found " + issues.length() + " issues. (Max " + jiraConfig.getJqlMaxResults() + " displayed)");
                 });
 
             } catch (Exception ex) {
@@ -725,7 +725,7 @@ public class JqlRunnerPanel extends BorderPane implements tso.usmc.jira.util.Con
             epicKey = epicKey.trim();
             String searchUrl = mainFrame.getBaseUrl() + "/rest/api/2/search?jql=" + 
                               java.net.URLEncoder.encode("\"Epic Link\" = " + epicKey, "UTF-8") + 
-                              "&fields=key&maxResults=500";
+                              "&fields=key&maxResults=" + jiraConfig.getJqlMaxResults();
             String searchResp = mainFrame.getService().executeRequest(searchUrl, "GET", null);
             JSONObject searchJson = new JSONObject(searchResp);
             JSONArray issuesArray = searchJson.optJSONArray("issues");
@@ -747,7 +747,7 @@ public class JqlRunnerPanel extends BorderPane implements tso.usmc.jira.util.Con
             String jql = "parent in (" + String.join(",", keysToQuery) + ")";
             String searchUrl = mainFrame.getBaseUrl() + "/rest/api/2/search?jql=" + 
                               java.net.URLEncoder.encode(jql, "UTF-8") + 
-                              "&fields=summary,issuetype,comment&maxResults=500";
+                              "&fields=summary,issuetype,comment&maxResults=" + jiraConfig.getJqlMaxResults();
             String searchResp = mainFrame.getService().executeRequest(searchUrl, "GET", null);
             JSONObject searchJson = new JSONObject(searchResp);
             JSONArray subTasksArray = searchJson.optJSONArray("issues");

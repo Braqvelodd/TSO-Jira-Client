@@ -1016,5 +1016,17 @@ public class JiraConfig {
         }
         return val.replace(",", "\n").trim();
     }
+
+    public int getJqlMaxResults() {
+        String val = getProperty("jql.max_results");
+        if (val == null || val.trim().isEmpty()) {
+            return 500;
+        }
+        try {
+            return Integer.parseInt(val.trim());
+        } catch (NumberFormatException e) {
+            return 500;
+        }
+    }
 }
 

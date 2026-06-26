@@ -554,6 +554,7 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
         String finalJql = rawText.trim();
         if (finalJql.isEmpty()) return;
 
+        int limit = mainFrame.getJiraConfig().getJqlMaxResults();
         if (isIssueKeyList(finalJql)) {
             String[] parts = finalJql.split("[\\r\\n,;\\s]+");
             List<String> keys = new ArrayList<>();
@@ -565,18 +566,38 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
             }
             if (keys.size() > 1) {
                 finalJql = "key in (" + String.join(", ", keys) + ")";
+                limit = Math.max(limit, keys.size());
             } else if (keys.size() == 1) {
                 finalJql = "key = " + keys.get(0);
             }
         } else if (!finalJql.contains(" ") && !finalJql.contains("=") && !finalJql.contains("(")) {
             if (finalJql.contains(",")) {
+                String[] parts = finalJql.split(",");
+                int count = 0;
+                for (String p : parts) {
+                    if (!p.trim().isEmpty()) count++;
+                }
+                limit = Math.max(limit, count);
                 finalJql = "key in (" + finalJql + ")";
             } else {
                 finalJql = "key = " + finalJql;
             }
+        } else {
+            java.util.regex.Pattern p = java.util.regex.Pattern.compile("(?i)\\b(key|issuekey|id)\\s+in\\s*\\(([^)]+)\\)");
+            java.util.regex.Matcher m = p.matcher(finalJql);
+            if (m.find()) {
+                String keysStr = m.group(2);
+                String[] parts = keysStr.split(",");
+                int count = 0;
+                for (String part : parts) {
+                    if (!part.trim().isEmpty()) count++;
+                }
+                limit = Math.max(limit, count);
+            }
         }
 
         final String jql = finalJql;
+        final int maxResults = limit;
         onLog("Searching: " + jql);
         runnerTable.getItems().clear();
         currentSearchIssues.clear();
@@ -584,7 +605,7 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
         ExecutionService.submit(() -> {
             try {
                 String encodedJql = java.net.URLEncoder.encode(jql, "UTF-8");
-                String searchUrl = mainFrame.getBaseUrl() + "/rest/api/2/search?jql=" + encodedJql + "&expand=names,renderedFields&fields=*all,attachment,issuelinks";
+                String searchUrl = mainFrame.getBaseUrl() + "/rest/api/2/search?jql=" + encodedJql + "&expand=names,renderedFields&fields=*all,attachment,issuelinks&maxResults=" + maxResults;
                 String searchResp = mainFrame.getService().executeRequest(searchUrl, "GET", null);
                 JSONArray issues = new JSONObject(searchResp).getJSONArray("issues");
                 
