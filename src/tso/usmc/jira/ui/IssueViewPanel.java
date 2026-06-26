@@ -385,7 +385,7 @@ public class IssueViewPanel extends BorderPane {
     private void initializeAutocomplete() {
         ExecutionService.submit(() -> {
             try {
-                JqlAutocompleteService autocompleteService = new JqlAutocompleteService(mainFrame.getService(), mainFrame.getBaseUrl());
+                JqlAutocompleteService autocompleteService = new JqlAutocompleteService(mainFrame.getService(), mainFrame.getBaseUrl(), mainFrame.getJiraConfig());
                 boolean enabled = mainFrame.getJiraConfig().isAutocompleteEnabled();
                 Platform.runLater(() -> {
                     assigneeField.setService(autocompleteService);

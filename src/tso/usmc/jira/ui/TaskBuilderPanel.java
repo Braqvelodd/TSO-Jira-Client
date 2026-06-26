@@ -889,7 +889,24 @@ public class TaskBuilderPanel extends BorderPane {
                                     notifyPayload.put("textBody", "A new issue has been created that you were listed to be notified about.\n\nSummary: " + t.summary + "\nLink: " + link);
                                     JSONArray usersToNotify = new JSONArray();
                                     for (String user : t.notify.split("\\s*,\\s*")) {
-                                        if (!user.trim().isEmpty()) usersToNotify.put(new JSONObject().put("name", user.trim()));
+                                        String u = user.trim();
+                                        if (u.isEmpty()) continue;
+                                        
+                                        String teamKey = u;
+                                        if (teamKey.startsWith("@")) teamKey = teamKey.substring(1);
+                                        if (teamKey.startsWith("team.")) teamKey = teamKey.substring(5);
+                                        
+                                        String members = mainFrame.getJiraConfig().getTeamProperty(teamKey, "members");
+                                        if (members != null && !members.trim().isEmpty()) {
+                                            for (String m : members.split(",")) {
+                                                String memberTrimmed = m.trim();
+                                                if (!memberTrimmed.isEmpty()) {
+                                                    usersToNotify.put(new JSONObject().put("name", memberTrimmed));
+                                                }
+                                            }
+                                        } else {
+                                            usersToNotify.put(new JSONObject().put("name", u));
+                                        }
                                     }
                                     notifyPayload.put("to", new JSONObject().put("users", usersToNotify));
                                     mainFrame.getService().executeRequest(mainFrame.getBaseUrl() + "/rest/api/2/issue/" + key + "/notify", "POST", notifyPayload.toString());
@@ -1217,7 +1234,7 @@ public class TaskBuilderPanel extends BorderPane {
     private void ensureAutocompleteServiceInitialized() {
         if (jqlAutocompleteService != null) return;
         try {
-            this.jqlAutocompleteService = new JqlAutocompleteService(mainFrame.getService(), mainFrame.getBaseUrl());
+            this.jqlAutocompleteService = new JqlAutocompleteService(mainFrame.getService(), mainFrame.getBaseUrl(), mainFrame.getJiraConfig());
             boolean enabled = mainFrame.getJiraConfig().isAutocompleteEnabled();
             this.inputArea.setService(jqlAutocompleteService);
             this.inputArea.setAutocompleteEnabled(enabled);

@@ -906,6 +906,25 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
                             }
                         }
                     }
+
+                    if (step instanceof TransitionStep) {
+                        TransitionStep ts = (TransitionStep) step;
+                        String status = ts.getTargetStatus();
+                        if (status != null && status.contains(",")) {
+                            String label = "Transition (" + step.getLabel() + ")";
+                            String[] options = status.split("\\s*,\\s*");
+                            ComboBox<String> combo = new ComboBox<>();
+                            for (String opt : options) {
+                                String trimmed = opt.trim();
+                                if (!trimmed.isEmpty()) combo.getItems().add(trimmed);
+                            }
+                            if (!combo.getItems().isEmpty()) {
+                                combo.getSelectionModel().select(0);
+                            }
+                            addInputRow(label, combo, labels);
+                            promptFields.put(label, combo);
+                        }
+                    }
                     
                     for (FieldAction fa : step.getFieldActions().values()) {
                         if (fa.getMode() == FieldAction.MappingMode.PROMPT) {
@@ -1914,7 +1933,7 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
     public JqlAutocompleteService getAutocompleteService() {
         if (jqlAutocompleteService == null) {
             try {
-                jqlAutocompleteService = new JqlAutocompleteService(mainFrame.getService(), mainFrame.getBaseUrl());
+                jqlAutocompleteService = new JqlAutocompleteService(mainFrame.getService(), mainFrame.getBaseUrl(), mainFrame.getJiraConfig());
             } catch (Exception e) {
                 // ignore
             }

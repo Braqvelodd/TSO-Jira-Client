@@ -3,6 +3,7 @@ package tso.usmc.jira.service;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import tso.usmc.jira.util.JiraUtils;
+import tso.usmc.jira.util.JiraConfig;
 import java.util.List;
 
 /**
@@ -13,11 +14,13 @@ public class JiraIssueService {
     private final JiraApiService apiService;
     private final String baseUrl;
     private final MetadataCacheService metadataService;
+    private final JiraConfig config;
 
-    public JiraIssueService(JiraApiService apiService, String baseUrl, MetadataCacheService metadataService) {
+    public JiraIssueService(JiraApiService apiService, String baseUrl, MetadataCacheService metadataService, JiraConfig config) {
         this.apiService = apiService;
         this.baseUrl = baseUrl;
         this.metadataService = metadataService;
+        this.config = config;
     }
 
     /**
@@ -39,6 +42,7 @@ public class JiraIssueService {
         JSONObject body = new JSONObject();
         body.put("transition", new JSONObject().put("id", tid));
         if (fields != null && fields.length() > 0) {
+            JiraUtils.expandTeamMentionsInJson(fields, config);
             body.put("fields", fields);
         }
 
@@ -50,6 +54,9 @@ public class JiraIssueService {
      */
     public void updateIssue(String issueKey, JSONObject fields) throws Exception {
         String url = baseUrl + "/rest/api/2/issue/" + issueKey;
+        if (fields != null) {
+            JiraUtils.expandTeamMentionsInJson(fields, config);
+        }
         JSONObject body = new JSONObject().put("fields", fields);
         apiService.executeRequest(url, "PUT", body.toString());
     }
@@ -68,7 +75,8 @@ public class JiraIssueService {
      */
     public void addComment(String issueKey, String comment) throws Exception {
         String url = baseUrl + "/rest/api/2/issue/" + issueKey + "/comment";
-        JSONObject body = new JSONObject().put("body", comment);
+        String expandedComment = JiraUtils.expandTeamMentions(comment, config);
+        JSONObject body = new JSONObject().put("body", expandedComment);
         apiService.executeRequest(url, "POST", body.toString());
     }
 
@@ -90,6 +98,9 @@ public class JiraIssueService {
      */
     public JSONObject createIssue(JSONObject fields) throws Exception {
         String url = baseUrl + "/rest/api/2/issue";
+        if (fields != null) {
+            JiraUtils.expandTeamMentionsInJson(fields, config);
+        }
         String resp = apiService.executeRequest(url, "POST", new JSONObject().put("fields", fields).toString());
         return new JSONObject(resp);
     }

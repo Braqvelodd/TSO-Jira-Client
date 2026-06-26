@@ -5,6 +5,7 @@ import javafx.application.Platform;
 import javafx.geometry.Bounds;
 import javafx.scene.control.*;
 import javafx.scene.input.KeyCode;
+import javafx.scene.input.KeyEvent;
 import javafx.stage.Popup;
 import java.util.List;
 
@@ -49,7 +50,7 @@ public class JiraUserAutocompleteTextArea extends TextArea {
             updatePopup();
         });
 
-        setOnKeyPressed(e -> {
+        addEventFilter(KeyEvent.KEY_PRESSED, e -> {
             if (popup.isShowing()) {
                 if (e.getCode() == KeyCode.DOWN) {
                     int index = suggestionList.getSelectionModel().getSelectedIndex();
@@ -131,7 +132,7 @@ public class JiraUserAutocompleteTextArea extends TextArea {
                 
                 List<String> matches = new java.util.ArrayList<>();
                 if (isUserField) {
-                    matches = service.getUserSuggestions(userInput);
+                    matches = service.getUserSuggestions(userInput, prefix.equals("notify"));
                 } else {
                     String fieldName = null;
                     if (isComponentField) fieldName = "component";

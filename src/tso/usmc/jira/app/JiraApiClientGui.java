@@ -270,7 +270,7 @@ public class JiraApiClientGui extends Application implements ConfigChangeListene
     }
 
     public JiraIssueService getIssueService() throws Exception {
-        if (issueService == null) issueService = new JiraIssueService(getService(), getBaseUrl(), getMetadataService());
+        if (issueService == null) issueService = new JiraIssueService(getService(), getBaseUrl(), getMetadataService(), jiraConfig);
         return issueService;
     }
 

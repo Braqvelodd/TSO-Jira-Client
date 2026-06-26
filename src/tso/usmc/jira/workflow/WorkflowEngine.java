@@ -219,24 +219,30 @@ public class WorkflowEngine {
             String targetKey = JiraUtils.cleanIssueKey(resolveTokens(ts.getTargetIssueToken(), issue));
             if (targetKey == null || targetKey.trim().isEmpty()) return;
 
+            String targetStatus = ts.getTargetStatus();
+            String promptLabel = "Transition (" + step.getLabel() + ")";
+            if (prompts != null && prompts.containsKey(promptLabel)) {
+                targetStatus = prompts.get(promptLabel);
+            }
+
             String transUrl = baseUrl + "/rest/api/2/issue/" + targetKey + "/transitions";
             String transMeta = apiService.executeRequest(transUrl, "GET", null);
-            String tid = JiraUtils.findTransitionIdByName(transMeta, ts.getTargetStatus());
+            String tid = JiraUtils.findTransitionIdByName(transMeta, targetStatus);
             
             if (tid != null) {
                 JSONObject fields = buildFields(step, issue, prompts);
                 if (dryRun) {
-                    listener.onLog("  > [DRY RUN] Transition '" + ts.getTargetStatus() + "' (ID: " + tid + ") IS AVAILABLE for " + targetKey);
+                    listener.onLog("  > [DRY RUN] Transition '" + targetStatus + "' (ID: " + tid + ") IS AVAILABLE for " + targetKey);
                     if (fields.length() > 0) listener.onLog("  > [DRY RUN] Would set fields: " + fields.keySet());
                 } else {
-                    if (verboseLogging) listener.onLog("  > Transitioning " + targetKey + " to " + ts.getTargetStatus() + "...");
-                    issueService.transitionIssue(targetKey, ts.getTargetStatus(), fields);
-                    listener.onLog("  > Transitioned " + targetKey + " to " + ts.getTargetStatus());
+                    if (verboseLogging) listener.onLog("  > Transitioning " + targetKey + " to " + targetStatus + "...");
+                    issueService.transitionIssue(targetKey, targetStatus, fields);
+                    listener.onLog("  > Transitioned " + targetKey + " to " + targetStatus);
                 }
                 executionVars.put("last_key", targetKey);
                 executionVars.put("last.key", targetKey);
             } else {
-                throw new Exception("Transition '" + ts.getTargetStatus() + "' not found on " + targetKey);
+                throw new Exception("Transition '" + targetStatus + "' not found on " + targetKey);
             }
         } else if (step instanceof LinkStep) {
             LinkStep ls = (LinkStep) step;

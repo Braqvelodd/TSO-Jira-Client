@@ -2,12 +2,14 @@ package tso.usmc.jira.service;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
+import tso.usmc.jira.util.JiraConfig;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class JqlAutocompleteService {
     private final JiraApiService apiService;
     private final String baseUrl;
+    private final JiraConfig config;
     
     private List<String> fieldNames = new ArrayList<>();
     private List<String> functionNames = new ArrayList<>();
@@ -18,9 +20,10 @@ public class JqlAutocompleteService {
     private long lastFetchTime = 0;
     private static final long CACHE_DURATION = 1000 * 60 * 60; // 1 hour
 
-    public JqlAutocompleteService(JiraApiService apiService, String baseUrl) {
+    public JqlAutocompleteService(JiraApiService apiService, String baseUrl, JiraConfig config) {
         this.apiService = apiService;
         this.baseUrl = baseUrl;
+        this.config = config;
     }
 
     public synchronized void fetchDataIfNeeded() {
@@ -98,21 +101,46 @@ public class JqlAutocompleteService {
     }
 
     public List<String> getUserSuggestions(String userInput) {
-        String cacheKey = "user:" + userInput;
+        return getUserSuggestions(userInput, false);
+    }
+
+    public List<String> getUserSuggestions(String userInput, boolean includeTeams) {
+        String cacheKey = "user:" + userInput + ":" + includeTeams;
         if (suggestionCache.containsKey(cacheKey)) return suggestionCache.get(cacheKey);
+
+        List<String> suggestions = new ArrayList<>();
+
+        if (includeTeams && config != null) {
+            String[] teamKeys = config.getWorkflowTeamKeys();
+            if (teamKeys != null) {
+                String queryLower = userInput.toLowerCase();
+                for (String key : teamKeys) {
+                    String name = config.getTeamProperty(key, "name");
+                    String nameLower = name != null ? name.toLowerCase() : "";
+                    String keyLower = key.toLowerCase();
+                    
+                    if (keyLower.contains(queryLower) || nameLower.contains(queryLower)) {
+                        suggestions.add("@" + key);
+                        suggestions.add("team." + key);
+                    }
+                }
+            }
+        }
 
         try {
             String raw = apiService.searchUsers(baseUrl, userInput);
             JSONArray results = new JSONArray(raw);
-            List<String> suggestions = new ArrayList<>();
             for (int i = 0; i < results.length(); i++) {
                 JSONObject user = results.getJSONObject(i);
-                // Return username (name) for assignment
                 suggestions.add(user.getString("name"));
             }
             suggestionCache.put(cacheKey, suggestions);
             return suggestions;
         } catch (Exception e) {
+            if (!suggestions.isEmpty()) {
+                suggestionCache.put(cacheKey, suggestions);
+                return suggestions;
+            }
             return Collections.emptyList();
         }
     }

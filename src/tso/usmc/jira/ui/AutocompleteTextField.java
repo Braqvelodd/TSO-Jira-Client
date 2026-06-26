@@ -4,6 +4,7 @@ import javafx.application.Platform;
 import javafx.geometry.Bounds;
 import javafx.scene.control.*;
 import javafx.scene.input.KeyCode;
+import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.AnchorPane;
 import javafx.stage.Popup;
 import java.util.ArrayList;
@@ -82,7 +83,7 @@ public class AutocompleteTextField extends AnchorPane {
             }
         });
 
-        textField.setOnKeyPressed(e -> {
+        textField.addEventFilter(KeyEvent.KEY_PRESSED, e -> {
             if (!popup.isShowing()) return;
 
             if (e.getCode() == KeyCode.DOWN) {
@@ -95,7 +96,7 @@ public class AutocompleteTextField extends AnchorPane {
                 suggestionList.getSelectionModel().select(Math.max(0, index - 1));
                 suggestionList.scrollTo(suggestionList.getSelectionModel().getSelectedIndex());
                 e.consume();
-            } else if (e.getCode() == KeyCode.ENTER) {
+            } else if (e.getCode() == KeyCode.ENTER || e.getCode() == KeyCode.TAB) {
                 selectFromList();
                 e.consume();
             } else if (e.getCode() == KeyCode.ESCAPE) {

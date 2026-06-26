@@ -183,7 +183,7 @@ public class JqlRunnerPanel extends BorderPane implements tso.usmc.jira.util.Con
         if (jqlAutocompleteService != null) return;
         
         try {
-            JqlAutocompleteService service = new JqlAutocompleteService(mainFrame.getService(), mainFrame.getBaseUrl());
+            JqlAutocompleteService service = new JqlAutocompleteService(mainFrame.getService(), mainFrame.getBaseUrl(), mainFrame.getJiraConfig());
             boolean enabled = mainFrame.getJiraConfig().isAutocompleteEnabled();
             this.jqlAutocompleteService = service;
             this.jqlArea.setService(service);
@@ -956,6 +956,11 @@ public class JqlRunnerPanel extends BorderPane implements tso.usmc.jira.util.Con
             }
             if (step instanceof tso.usmc.jira.workflow.AttachmentStep) {
                 if (((tso.usmc.jira.workflow.AttachmentStep) step).isPromptAtRuntime()) return true;
+            }
+            if (step instanceof tso.usmc.jira.workflow.TransitionStep) {
+                tso.usmc.jira.workflow.TransitionStep ts = (tso.usmc.jira.workflow.TransitionStep) step;
+                String status = ts.getTargetStatus();
+                if (status != null && status.contains(",")) return true;
             }
             if (step instanceof tso.usmc.jira.workflow.CommentStep) {
                 if (((tso.usmc.jira.workflow.CommentStep) step).isPromptAtRuntime()) return true;

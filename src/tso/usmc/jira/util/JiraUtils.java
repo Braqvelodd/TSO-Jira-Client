@@ -96,4 +96,71 @@ public class JiraUtils {
         }
         return null;
     }
+
+    /**
+     * Expands team mentions (e.g. @lifeline, [~team.lifeline]) in a text string
+     * to their individual member list mentions (e.g. [~HULL.JAMES.DOUGLAS] [~user1] ...).
+     */
+    public static String expandTeamMentions(String text, JiraConfig config) {
+        if (text == null || text.trim().isEmpty() || config == null) return text;
+        
+        String[] teamKeys = config.getWorkflowTeamKeys();
+        if (teamKeys == null || teamKeys.length == 0) return text;
+        
+        String result = text;
+        for (String teamKey : teamKeys) {
+            String membersStr = config.getTeamProperty(teamKey, "members");
+            if (membersStr == null || membersStr.trim().isEmpty()) continue;
+            
+            // Build the replacement list
+            StringBuilder replacement = new StringBuilder();
+            for (String member : membersStr.split(",")) {
+                String m = member.trim();
+                if (!m.isEmpty()) {
+                    if (replacement.length() > 0) replacement.append(" ");
+                    replacement.append("[~").append(m).append("]");
+                }
+            }
+            
+            if (replacement.length() == 0) continue;
+            
+            String rep = replacement.toString();
+            String escapedKey = java.util.regex.Pattern.quote(teamKey);
+            
+            result = result.replaceAll("(?i)\\[~team\\." + escapedKey + "\\]", rep);
+            result = result.replaceAll("(?i)\\[~" + escapedKey + "\\]", rep);
+            result = result.replaceAll("(?i)@team\\." + escapedKey + "\\b", rep);
+            result = result.replaceAll("(?i)@" + escapedKey + "\\b", rep);
+        }
+        return result;
+    }
+
+    /**
+     * Recursively traverses a JSON structure (JSONObject or JSONArray) and expands team mentions in all string values.
+     */
+    public static void expandTeamMentionsInJson(Object json, JiraConfig config) {
+        if (json == null || config == null) return;
+        
+        if (json instanceof JSONObject) {
+            JSONObject obj = (JSONObject) json;
+            for (String key : new java.util.ArrayList<>(obj.keySet())) {
+                Object val = obj.get(key);
+                if (val instanceof String) {
+                    obj.put(key, expandTeamMentions((String) val, config));
+                } else if (val != null) {
+                    expandTeamMentionsInJson(val, config);
+                }
+            }
+        } else if (json instanceof JSONArray) {
+            JSONArray arr = (JSONArray) json;
+            for (int i = 0; i < arr.length(); i++) {
+                Object val = arr.opt(i);
+                if (val instanceof String) {
+                    arr.put(i, expandTeamMentions((String) val, config));
+                } else if (val != null) {
+                    expandTeamMentionsInJson(val, config);
+                }
+            }
+        }
+    }
 }
