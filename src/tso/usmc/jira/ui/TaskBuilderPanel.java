@@ -909,7 +909,7 @@ public class TaskBuilderPanel extends BorderPane {
                                         }
                                     }
                                     notifyPayload.put("to", new JSONObject().put("users", usersToNotify));
-                                    mainFrame.getService().executeRequest(mainFrame.getBaseUrl() + "/rest/api/2/issue/" + key + "/notify", "POST", notifyPayload.toString());
+                                     mainFrame.getIssueService().notifyIssue(key, notifyPayload.toString());
                                 }
                                 status += " & NOTIFIED";
                             }

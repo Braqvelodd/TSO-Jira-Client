@@ -85,6 +85,14 @@ public class JiraIssueService {
     }
 
     /**
+     * Sends a Jira notification for an issue.
+     */
+    public void notifyIssue(String issueKey, String notifyPayloadJson) throws Exception {
+        String url = baseUrl + "/rest/api/2/issue/" + issueKey + "/notify";
+        apiService.executeRequest(url, "POST", notifyPayloadJson);
+    }
+
+    /**
      * Creates a link between two issues.
      */
     public void linkIssues(String inwardKey, String outwardKey, String linkType) throws Exception {

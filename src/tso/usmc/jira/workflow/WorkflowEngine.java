@@ -532,9 +532,8 @@ public class WorkflowEngine {
 
                     notifyPayload.put("to", toObj);
 
-                    String notifyUrl = baseUrl + "/rest/api/2/issue/" + targetKey + "/notify";
                     try {
-                        apiService.executeRequest(notifyUrl, "POST", notifyPayload.toString());
+                        issueService.notifyIssue(targetKey, notifyPayload.toString());
                         listener.onLog("  > Sent Notification for " + targetKey + " (Subject: " + sub + ")");
                     } catch (Exception ex) {
                         listener.onLog("  > [WARNING] Notification failed for " + targetKey + ": " + ex.getMessage());
