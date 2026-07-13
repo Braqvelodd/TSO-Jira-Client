@@ -110,6 +110,7 @@ All orchestrator steps extend `WorkflowStep` and are dynamically instantiated us
     *   `WORKLOG` -> `WorklogStep.java` (logs time spent and description logs)
     *   `ATTACHMENT` -> `AttachmentStep.java` (uploads binary attachments)
     *   `ASSET` -> `AssetStep.java` (clones properties, fields, attachments from another issue)
+    *   `NOTIFY` -> `NotifyStep.java` (sends email/Jira notifications)
 
 ### C. TokenEngine
 *   **Source File**: [TokenEngine.java](file:///C:/Users/braqv/Documents/work%20projects/TSO-Jira-Client/src/tso/usmc/jira/workflow/TokenEngine.java)

@@ -20,7 +20,7 @@ import javax.swing.JOptionPane;
  * Loads and provides access to configuration settings from the JiraConfig.ini file.
  */
 public class JiraConfig {
-    private static final String CURRENT_CONFIG_VERSION = "1.5";
+    private static final String CURRENT_CONFIG_VERSION = "1.6";
     private static final String CURRENT_CONSTANTS_VERSION = "1.6";
     private final Properties properties = new Properties();
     private final File configFile;
@@ -638,6 +638,22 @@ public class JiraConfig {
             return "https://tso-jira.mcw.usmc.mil"; // Default fallback
         }
         return url.trim();
+    }
+
+    public String getApiAuthMethod() {
+        String method = getProperty("api_auth_method");
+        if (method == null || method.trim().isEmpty()) {
+            return "mTLS";
+        }
+        return method.trim();
+    }
+
+    public String getApiPatToken() {
+        String token = getProperty("api_pat_token");
+        if (token == null) {
+            return "";
+        }
+        return token.trim();
     }
 
     public String getWorkflowJql() {

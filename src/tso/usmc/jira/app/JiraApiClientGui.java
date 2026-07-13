@@ -242,9 +242,22 @@ public class JiraApiClientGui extends Application implements ConfigChangeListene
     }
 
     public JiraApiService getService() throws Exception {
-        String selectedAlias = certComboBox.getSelectionModel().getSelectedItem();
-        if (selectedAlias == null) throw new Exception("No CAC certificate selected.");
-        if (apiService == null) apiService = new JiraApiService(selectedAlias);
+        String authMethod = jiraConfig.getApiAuthMethod();
+        boolean requiresCert = "mTLS".equalsIgnoreCase(authMethod) || "mTLS+PAT".equalsIgnoreCase(authMethod);
+        
+        String selectedAlias = null;
+        if (requiresCert) {
+            selectedAlias = certComboBox.getSelectionModel().getSelectedItem();
+            if (selectedAlias == null) {
+                throw new Exception("No CAC certificate selected.");
+            }
+        }
+
+        if (apiService == null) {
+            apiService = new JiraApiService(jiraConfig, selectedAlias);
+        } else {
+            apiService.updateSslContext(selectedAlias);
+        }
         String verbose = jiraConfig.getProperty("VERBOSE_API_LOGS");
         apiService.setLoggingEnabled("YES".equalsIgnoreCase(verbose));
         return apiService;

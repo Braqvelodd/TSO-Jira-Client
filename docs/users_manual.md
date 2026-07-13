@@ -302,6 +302,38 @@ Adds plain text comments to the issue history feed.
 }
 ```
 
+#### 8. ATTACHMENT
+Uploads a local file to the targeted Jira issue.
+```json
+{
+  "type": "ATTACHMENT",
+  "label": "Upload Log File",
+  "targetIssueToken": "{{issue.key}}",
+  "filePath": "C:/logs/build.log",
+  "promptAtRuntime": false
+}
+```
+
+#### 9. NOTIFY
+Sends a custom Jira notification/email to specific users, groups, or roles.
+```json
+{
+  "type": "NOTIFY",
+  "label": "Notify Team Lead",
+  "targetIssueToken": "{{issue.key}}",
+  "subject": "Status Update: {{key}}",
+  "textBody": "Hi, please review the latest updates on {{key}}.",
+  "toUsers": "@team.lead, developer1",
+  "toGroups": "jira-developers",
+  "toAssignee": true,
+  "toReporter": false,
+  "toWatchers": true,
+  "toVoters": false,
+  "promptAtRuntime": false,
+  "promptPerIssue": false
+}
+```
+
 ### Conditional Branching (Logical Conditions):
 Every step subclass inherits three conditional matching fields. If configured, the engine evaluates the condition check. If it evaluates to `false`, the step is skipped.
 *   `conditionToken`: The token to evaluate (e.g. `{{fields.status.name}}`).
