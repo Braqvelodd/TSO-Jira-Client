@@ -26,3 +26,6 @@ desktop.ini
 
 # Local Tools
 tools/
+
+# Dynamically generated source list
+sources.txt

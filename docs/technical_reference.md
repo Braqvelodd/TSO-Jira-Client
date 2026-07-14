@@ -166,8 +166,9 @@ The application compiles without complex external dependency frameworks like Mav
 ### Compilation Batch Script (`compile and build.bat`)
 The build staging area performs the following actions sequentially:
 1.  **Dependency Handling**: Extracts class files from third-party libraries (specifically `lib/json-20231013.jar`) directly into the `bin/` target output folder using `jar -xf`.
-2.  **Java Compilation**: Compiles the source files listed in `sources.txt` targeting Java 8 using the `--release 8` flag and referencing the external jars and JavaFX libraries:
+2.  **Java Compilation**: Dynamically generates `sources.txt` containing all Java files under `src/`, then compiles the source files targeting Java 8 using the `--release 8` flag and referencing the external jars and JavaFX libraries:
     ```cmd
+    dir /s /b src\*.java > sources.txt
     javac --release 8 -d bin -cp "lib\json-20231013.jar;lib\jfxrt.jar;bin" @sources.txt
     ```
 3.  **Model Reassembly**: If `EMBED_MODEL=YES` is declared, the script calls `copy /b` to merge split GGUF chunks (`lib/model.gguf.part*`) into a cohesive model file at `embedding/models/model.gguf`.

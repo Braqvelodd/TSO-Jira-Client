@@ -54,6 +54,9 @@ cd bin
 cd ..
 
 :: Compile the Java files
+echo Generating sources list (sources.txt)...
+powershell -ExecutionPolicy Bypass -Command "Get-ChildItem -Path src -Filter *.java -Recurse | Resolve-Path -Relative | Out-File -FilePath sources.txt -Encoding ascii"
+
 echo Compiling Java files...
 "%JDK_BIN%\javac" --release 8 -d bin -cp "lib\json-20231013.jar;lib\jfxrt.jar;bin" %SOURCES%
 

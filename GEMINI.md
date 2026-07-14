@@ -36,7 +36,7 @@ The project uses a Windows Batch script for building. It does not use Maven or G
 3.  **What it does:**
     *   Reassembles split GGUF model parts (if `EMBED_MODEL=YES`).
     *   Extracts `org.json` classes into `bin/`.
-    *   Compiles all source files listed in `sources.txt`.
+    *   Compiles all source files under `src/` by automatically generating `sources.txt`.
     *   Bundles everything into `JiraApiClient.jar` with `JiraApiClientGui` as the entry point.
 
 ### Running
@@ -52,7 +52,7 @@ java -jar JiraApiClient.jar
 *   **Configuration:** All settings must be manageable via `JiraConfig.java`. It supports live reloading via a `WatchService`.
 *   **Authentication:** mTLS is strictly handled via `SunMSCAPI` using the "Windows-MY" keystore.
 *   **Error Handling:** Use `JOptionPane` for user-facing errors. Core logic should throw exceptions to be caught by the UI layer.
-*   **Source Management:** Any new `.java` file **MUST** be added to `sources.txt` to be included in the build.
+*   **Source Management:** `sources.txt` is automatically generated dynamically by the build script (`compile and build.bat`). Developers do not need to manually edit it when adding new Java files.
 
 ## Key Features for Gemini to Support
 

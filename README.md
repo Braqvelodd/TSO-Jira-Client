@@ -14,7 +14,7 @@ A specialized, GUI-driven Java application designed for the USMC TSO (Technology
 *   **`resources/`**: Application resources and default configuration templates.
 *   **`embedding/`**: Staging area for AI binaries and models during the build process.
 *   **`compile and build.bat`**: Universal build script for both Home and Work environments.
-*   **`sources.txt`**: Unified manifest of all Java source files required for compilation.
+*   **`sources.txt`**: Dynamically generated manifest of all Java source files required for compilation (auto-generated during build).
 
 ---
 
@@ -34,7 +34,7 @@ Open `compile and build.bat` and ensure your environment is set correctly (`set 
 ```batch
 "compile and build.bat"
 ```
-This script reassembles the model, extracts libraries, compiles the source via `sources.txt`, and generates the `JiraApiClient.jar`.
+This script reassembles the model, extracts libraries, automatically generates `sources.txt`, compiles the source files, and generates the `JiraApiClient.jar`.
 
 ### 4. Run the Application
 ```batch
