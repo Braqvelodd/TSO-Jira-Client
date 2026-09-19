@@ -370,7 +370,7 @@ public class JqlRunnerPanel extends BorderPane implements tso.usmc.jira.util.Con
                 for (String rName : recipes) {
                     try {
                         tso.usmc.jira.workflow.WorkflowRecipe recipe = wm.loadWorkflow(rName);
-                        if (recipe != null && (recipe.getJqlQuery() == null || recipe.getJqlQuery().trim().isEmpty())) {
+                        if (recipe != null) {
                             MenuItem item = new MenuItem(rName);
                             item.setOnAction(al -> {
                                 if (hasPrompts(recipe)) {
@@ -903,7 +903,7 @@ public class JqlRunnerPanel extends BorderPane implements tso.usmc.jira.util.Con
         for (String rName : recipes) {
             try {
                 tso.usmc.jira.workflow.WorkflowRecipe recipe = wm.loadWorkflow(rName);
-                if (recipe != null && (recipe.getJqlQuery() == null || recipe.getJqlQuery().trim().isEmpty())) {
+                if (recipe != null) {
                     MenuItem item = new MenuItem(rName);
                     item.setOnAction(al -> {
                         if (hasPrompts(recipe)) {
@@ -932,6 +932,11 @@ public class JqlRunnerPanel extends BorderPane implements tso.usmc.jira.util.Con
     }
 
     private boolean hasPrompts(tso.usmc.jira.workflow.WorkflowRecipe recipe) {
+        if (recipe.getVariables() != null) {
+            for (tso.usmc.jira.workflow.RecipeVariable var : recipe.getVariables()) {
+                if (var.isPrompt()) return true;
+            }
+        }
         for (tso.usmc.jira.workflow.WorkflowStep step : recipe.getSteps()) {
             if (step instanceof tso.usmc.jira.workflow.CreateStep) {
                 tso.usmc.jira.workflow.CreateStep cs = (tso.usmc.jira.workflow.CreateStep) step;

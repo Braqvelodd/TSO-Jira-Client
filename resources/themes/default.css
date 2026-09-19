@@ -2,6 +2,51 @@
 .root {
     -fx-font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
     -fx-font-size: 13px;
+    -fx-text-base-color: #1f2937;
+}
+
+.label {
+    -fx-text-fill: -fx-text-base-color;
+}
+
+.prompt-label {
+    -fx-text-fill: #1f2937;
+    -fx-font-weight: bold;
+}
+
+.check-box {
+    -fx-text-fill: -fx-text-base-color;
+}
+
+.radio-button {
+    -fx-text-fill: -fx-text-base-color;
+}
+
+/* Form inputs (TextField and TextArea) */
+.text-input {
+    -fx-background-color: #ffffff;
+    -fx-text-fill: #1f2937;
+    -fx-border-color: #d1d5db;
+    -fx-border-width: 1px;
+    -fx-border-radius: 4px;
+    -fx-background-radius: 4px;
+}
+
+.text-area {
+    -fx-background-color: #ffffff;
+    -fx-border-color: #d1d5db;
+    -fx-border-width: 1px;
+    -fx-border-radius: 4px;
+    -fx-background-radius: 4px;
+}
+
+.text-area .content {
+    -fx-background-color: #ffffff;
+    -fx-background-radius: 4px;
+}
+
+.text-input:focused, .text-area:focused {
+    -fx-border-color: #3b82f6;
 }
 
 /* Custom classes for spacing and layout styling */

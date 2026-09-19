@@ -13,18 +13,22 @@ public class TokenEngine {
      * Replaces tokens with values from the issue JSON.
      */
     public static String replaceTokens(String input, JSONObject issueJson) {
-        return replaceTokens(input, issueJson, null);
+        return replaceTokens(input, issueJson, null, false);
     }
 
     /**
      * Replaces tokens with values from the issue JSON and variables.
      */
     public static String replaceTokens(String input, JSONObject issueJson, Map<String, String> variables) {
+        return replaceTokens(input, issueJson, variables, false);
+    }
+
+    public static String replaceTokens(String input, JSONObject issueJson, Map<String, String> variables, boolean preserveUnresolved) {
         Map<String, JSONObject> contexts = new HashMap<>();
         if (issueJson != null) {
             contexts.put("issue", issueJson);
         }
-        return replaceTokens(input, contexts, variables);
+        return replaceTokens(input, contexts, variables, preserveUnresolved);
     }
 
     /**
@@ -33,6 +37,10 @@ public class TokenEngine {
      * If no prefix is used, it defaults to the 'issue' context.
      */
     public static String replaceTokens(String input, Map<String, JSONObject> contexts, Map<String, String> variables) {
+        return replaceTokens(input, contexts, variables, false);
+    }
+
+    public static String replaceTokens(String input, Map<String, JSONObject> contexts, Map<String, String> variables, boolean preserveUnresolved) {
         if (input == null || !input.contains("{{")) return input;
 
         Matcher matcher = TOKEN_PATTERN.matcher(input);
@@ -52,8 +60,14 @@ public class TokenEngine {
                 value = resolveToken(fullContent, contexts, variables);
             }
 
-            // If token is unresolved, we replace it with an empty string to avoid breaking Jira API calls with literal "{{token}}" strings.
-            matcher.appendReplacement(sb, Matcher.quoteReplacement(value != null ? value : ""));
+            if (value != null) {
+                matcher.appendReplacement(sb, Matcher.quoteReplacement(value));
+            } else if (preserveUnresolved) {
+                matcher.appendReplacement(sb, Matcher.quoteReplacement("{{" + fullContent + "}}"));
+            } else {
+                // If token is unresolved, we replace it with an empty string to avoid breaking Jira API calls with literal "{{token}}" strings.
+                matcher.appendReplacement(sb, Matcher.quoteReplacement(""));
+            }
         }
         matcher.appendTail(sb);
         return sb.toString();
@@ -71,6 +85,13 @@ public class TokenEngine {
         }
         if (path.equalsIgnoreCase("today")) {
             return new java.text.SimpleDateFormat("yyyy-MM-dd").format(new java.util.Date());
+        }
+
+        // 2.5 Direct variable check (custom tokens / execution variables take precedence if path is an explicit variable)
+        if (!path.startsWith("issue.") && !path.startsWith("last.") && !path.startsWith("fields.") && variables != null) {
+            if (variables.containsKey(path)) return variables.get(path);
+            if (path.startsWith("var.") && variables.containsKey(path.substring(4))) return variables.get(path.substring(4));
+            if (path.startsWith("variable.") && variables.containsKey(path.substring(9))) return variables.get(path.substring(9));
         }
 
         String value = null;
@@ -97,7 +118,13 @@ public class TokenEngine {
 
         // 4. Check Variables (Prompts/Execution Vars) if not found in JSON or if explicitly requested
         if ((value == null || value.isEmpty() || value.equalsIgnoreCase("null")) && variables != null) {
-            value = variables.get(path);
+            if (variables.containsKey(path)) {
+                value = variables.get(path);
+            } else if (path.startsWith("var.") && variables.containsKey(path.substring(4))) {
+                value = variables.get(path.substring(4));
+            } else if (path.startsWith("variable.") && variables.containsKey(path.substring(9))) {
+                value = variables.get(path.substring(9));
+            }
         }
 
         return value;

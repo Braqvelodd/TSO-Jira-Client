@@ -47,7 +47,12 @@
     -fx-background-radius: 4px;
 }
 
-.text-input:focused {
+.text-area .content {
+    -fx-background-color: #0f172a;
+    -fx-background-radius: 4px;
+}
+
+.text-input:focused, .text-area:focused {
     -fx-border-color: #3b82f6;
 }
 

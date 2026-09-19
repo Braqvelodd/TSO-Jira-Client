@@ -5,6 +5,7 @@ import org.json.JSONObject;
 import tso.usmc.jira.service.JiraApiService;
 import tso.usmc.jira.service.JiraIssueService;
 import tso.usmc.jira.service.MetadataCacheService;
+import tso.usmc.jira.util.JiraApiException;
 import tso.usmc.jira.util.JiraUtils;
 import java.util.*;
 
@@ -35,6 +36,7 @@ public class WorkflowEngine {
     private final String baseUrl;
     private final WorkflowProgressListener listener;
     
+    private WorkflowRecipe currentRecipe;
     private final Map<String, String> executionVars = new HashMap<>();
     private final Map<String, JSONObject> jsonContexts = new HashMap<>();
     private boolean verboseLogging = false;
@@ -62,6 +64,7 @@ public class WorkflowEngine {
     }
 
     public List<ExecutionResult> execute(WorkflowRecipe recipe, List<JSONObject> issues, Map<String, String> promptValues) {
+        this.currentRecipe = recipe;
         List<ExecutionResult> results = new ArrayList<>();
         try {
             String mode = dryRun ? "[DRY RUN - VALIDATE ONLY]" : "[LIVE EXECUTION]";
@@ -84,11 +87,60 @@ public class WorkflowEngine {
                 jsonContexts.put("issue", issue);
 
                 // Load prompt values into context
-                for (String pLabel : promptValues.keySet()) {
-                    String cleanLabel = pLabel.replaceAll("\\[.*?\\]", "").trim();
-                    executionVars.put(cleanLabel + ".value", promptValues.get(pLabel));
-                    if (cleanLabel.startsWith("team.")) {
-                        executionVars.put(cleanLabel, promptValues.get(pLabel));
+                if (promptValues != null) {
+                    for (String pLabel : promptValues.keySet()) {
+                        String cleanLabel = pLabel.replaceAll("\\[.*?\\]", "").trim();
+                        String val = promptValues.get(pLabel);
+                        executionVars.put(cleanLabel + ".value", val);
+                        executionVars.put(cleanLabel, val);
+                        if (pLabel.contains("(") && pLabel.contains(")")) {
+                            int pStart = pLabel.lastIndexOf('(') + 1;
+                            int pEnd = pLabel.lastIndexOf(')');
+                            if (pEnd > pStart) {
+                                String innerToken = pLabel.substring(pStart, pEnd).trim();
+                                if (!innerToken.isEmpty()) {
+                                    executionVars.put(innerToken, val);
+                                    executionVars.put(innerToken + ".value", val);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Load recipe custom variables into context
+                if (recipe.getVariables() != null) {
+                    for (RecipeVariable var : recipe.getVariables()) {
+                        String vName = var.getName();
+                        if (vName == null || vName.trim().isEmpty()) continue;
+
+                        String val = null;
+                        if (var.isPrompt() && promptValues != null) {
+                            if (promptValues.containsKey(vName)) {
+                                val = promptValues.get(vName);
+                            } else if (var.getLabel() != null && promptValues.containsKey(var.getLabel())) {
+                                val = promptValues.get(var.getLabel());
+                            } else {
+                                for (String pk : promptValues.keySet()) {
+                                    String clean = pk.replaceAll("\\[.*?\\]", "").trim();
+                                    if (clean.equalsIgnoreCase(vName) || (var.getLabel() != null && clean.equalsIgnoreCase(var.getLabel()))) {
+                                        val = promptValues.get(pk);
+                                        break;
+                                    }
+                                    if (pk.toLowerCase().contains("(" + vName.toLowerCase() + ")")) {
+                                        val = promptValues.get(pk);
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        if (val == null || val.trim().isEmpty()) {
+                            val = var.getDefaultValue();
+                        }
+                        if (val != null) {
+                            val = TokenEngine.replaceTokens(val, jsonContexts, executionVars);
+                            executionVars.put(vName, val);
+                            executionVars.put(vName + ".value", val);
+                        }
                     }
                 }
 
@@ -107,9 +159,12 @@ public class WorkflowEngine {
                         executeStep(step, issue, promptValues);
                         result.logEntries.add("COMPLETED: " + step.getLabel());
                     } catch (Exception ex) {
-                        String errorMsg = "Error in step '" + step.getLabel() + "': " + ex.getMessage();
-                        listener.onLog("  > " + errorMsg);
-                        result.errors.add(errorMsg);
+                        String detail = extractDetailedErrorMessage(ex);
+                        String errorMsg = "Error in step '" + step.getLabel() + "': " + detail;
+                        for (String line : errorMsg.split("\n")) {
+                            listener.onLog("  > " + line);
+                        }
+                        result.errors.add("Step '" + step.getLabel() + "': " + detail);
                         if (verboseLogging) ex.printStackTrace();
                         
                         if (!dryRun) {
@@ -364,6 +419,9 @@ public class WorkflowEngine {
                     String promptLabel = "Attachment File (" + step.getLabel() + ")";
                     if (prompts != null && prompts.containsKey(promptLabel)) {
                         filePath = prompts.get(promptLabel);
+                        if (filePath != null && filePath.contains("{{")) {
+                            filePath = resolveTokens(filePath, issue);
+                        }
                     }
                 } else {
                     filePath = resolveTokens(as.getFilePath(), issue);
@@ -546,7 +604,11 @@ public class WorkflowEngine {
     private String resolveStepProperty(String value, String promptLabel, Map<String, String> prompts, JSONObject issue) {
         if (value == null) return "";
         if (prompts != null && prompts.containsKey(promptLabel)) {
-            return prompts.get(promptLabel);
+            String pVal = prompts.get(promptLabel);
+            if (pVal != null && pVal.contains("{{")) {
+                return resolveTokens(pVal, issue);
+            }
+            return pVal != null ? pVal : "";
         }
         if (value.contains("{{")) return resolveTokens(value, issue);
         return value;
@@ -660,6 +722,12 @@ public class WorkflowEngine {
             }
 
             JSONObject fieldMeta = metadataService != null ? metadataService.getFieldMetadata(fieldId) : null;
+            if (fieldMeta == null && currentRecipe != null && currentRecipe.getMetadataSnapshot() != null) {
+                JSONObject snap = currentRecipe.getMetadataSnapshot();
+                if (snap.has(fieldId)) {
+                    fieldMeta = snap.optJSONObject(fieldId);
+                }
+            }
             boolean isArray = (fieldMeta != null && fieldMeta.has("schema") && "array".equals(fieldMeta.getJSONObject("schema").optString("type"))) || (fieldId.equals("labels") || fieldId.equals("components") || fieldId.equals("fixVersions") || fieldId.equals("versions"));
 
             if (isArray) {
@@ -684,16 +752,22 @@ public class WorkflowEngine {
             semanticType = "array".equals(schema.optString("type"))
                     ? schema.optString("items")
                     : schema.optString("type");
+        } else if (fieldMeta != null && fieldMeta.has("allowedValues")) {
+            semanticType = "option";
         }
 
         // 2. If metadata is missing, fall back to guessing based on the field ID (safety net).
         if (semanticType == null || semanticType.trim().isEmpty()) {
             source = "FALLBACK";
             if (fieldId.equals("assignee") || fieldId.equals("reporter") || fieldId.contains("user") || fieldId.contains("owner")) semanticType = "user";
-            else if (fieldId.equals("priority") || fieldId.equals("resolution") || fieldId.startsWith("customfield_")) semanticType = "option";
+            else if (fieldId.equals("priority") || fieldId.equals("resolution")) semanticType = "option";
             else if (fieldId.equals("labels")) semanticType = "string";
             else if (fieldId.equals("fixVersions") || fieldId.equals("versions") || fieldId.contains("Version")) semanticType = "version";
             else if (fieldId.equals("components")) semanticType = "component";
+            else if (fieldId.startsWith("customfield_")) {
+                if (fieldMeta != null && fieldMeta.has("allowedValues")) semanticType = "option";
+                else semanticType = "string";
+            }
         }
 
         if (verboseLogging && listener != null) {
@@ -753,11 +827,31 @@ public class WorkflowEngine {
             val = resolveTokens(fa.getValue().toString(), issue);
         } else if (fa.getMode() == FieldAction.MappingMode.PROMPT) {
             String label = fa.getPromptLabel(), clean = label.replaceAll("\\[.*?\\]", "").trim();
-            if (prompts.containsKey(clean)) val = prompts.get(clean);
+            if (prompts != null && prompts.containsKey(clean)) {
+                val = prompts.get(clean);
+            } else if (prompts != null && prompts.containsKey(label)) {
+                val = prompts.get(label);
+            }
+            if (val != null && val.contains("{{")) {
+                val = resolveTokens(val, issue);
+            }
         }
         if (val != null) {
             val = val.replace("\\n", "\n").replace("\\r", "\r");
         }
         return val;
+    }
+
+    private String extractDetailedErrorMessage(Throwable t) {
+        if (t == null) return "Unknown error";
+        Throwable curr = t;
+        while (curr != null) {
+            if (curr instanceof JiraApiException) {
+                return curr.getMessage();
+            }
+            if (curr.getCause() == null || curr.getCause() == curr) break;
+            curr = curr.getCause();
+        }
+        return t.getMessage() != null ? t.getMessage() : t.toString();
     }
 }

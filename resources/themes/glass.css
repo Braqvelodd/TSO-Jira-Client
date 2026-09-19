@@ -72,7 +72,11 @@
     -fx-background-radius: 6px;
 }
 
-.text-input:focused {
+.text-area .content {
+    -fx-background-color: transparent;
+}
+
+.text-input:focused, .text-area:focused {
     -fx-border-color: rgba(59, 130, 246, 0.6);
 }
 

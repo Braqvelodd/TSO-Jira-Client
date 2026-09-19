@@ -106,6 +106,10 @@
     -fx-border-width: 1px;
     -fx-padding: 4px 6px;
 }
+.text-area .content {
+    -fx-background-color: rgba(15, 23, 42, 0.6);
+    -fx-background-radius: 4px;
+}
 /* Table and Lists */
 .table-view, .list-view {
     -fx-background-color: #0f172a;

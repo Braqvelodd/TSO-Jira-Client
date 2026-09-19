@@ -1,6 +1,7 @@
 package tso.usmc.jira.ui;
 
 import tso.usmc.jira.app.JiraApiClientGui;
+import tso.usmc.jira.ui.workflow.RecipeVariablePanel;
 import tso.usmc.jira.ui.workflow.StepEditorPanel;
 import tso.usmc.jira.workflow.*;
 import tso.usmc.jira.service.MetadataCacheService;
@@ -51,6 +52,8 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
     private final Button fetchMetaBtn = new Button("Fetch Metadata");
     private final ProgressBar syncProgress = new ProgressBar();
     private final VBox stepsContainer = new VBox(10);
+    private final VBox variablesContainer = new VBox(3);
+    private final TitledPane variablesPane = new TitledPane();
     private final ListView<String> tokenList = new ListView<>();
     private final TextField tokenSearchField = new TextField();
     
@@ -79,51 +82,25 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
             super.paste();
         }
     };
-    private final Button searchBtn = new Button("Search Issues");
-    private final TableView<RunnerIssueRow> runnerTable = new TableView<>();
     private final GridPane runnerInputsPanel = new GridPane();
     private final Map<String, Node> promptFields = new HashMap<>();
     private final TextArea runnerLog = new TextArea();
     private JqlAutocompleteService jqlAutocompleteService;
-    private final Button runBtn = new Button("Run Workflow on Selected");
+    private final Button runBtn = new Button("Run Workflow");
     private final Button exportReportBtn = new Button("Export Report (CSV)");
     private final CheckBox verboseLogCheck = new CheckBox("Verbose API Logs");
     private final CheckBox dryRunCheck = new CheckBox("Dry Run (Validate only)");
     private final Label statusLabel = new Label("Ready.");
     private TabPane mainTabs;
+    private boolean isUpdatingRunnerInputs = false;
+    private boolean isUpdatingBindings = false;
+    private final List<DynamicPromptBinding> dynamicPromptBindings = new ArrayList<>();
 
     // Results data
-    private final List<JSONObject> currentSearchIssues = new ArrayList<>();
     private List<WorkflowEngine.ExecutionResult> lastResults = new ArrayList<>();
 
     private final Map<String, JSONObject> cachedFullMeta = new HashMap<>();
     private final List<String> allTokens = new ArrayList<>();
-
-    public static class RunnerIssueRow {
-        private final SimpleStringProperty key;
-        private final SimpleStringProperty summary;
-        private final SimpleStringProperty status;
-        private final SimpleStringProperty assignee;
-
-        public RunnerIssueRow(String key, String summary, String status, String assignee) {
-            this.key = new SimpleStringProperty(key);
-            this.summary = new SimpleStringProperty(summary);
-            this.status = new SimpleStringProperty(status);
-            this.assignee = new SimpleStringProperty(assignee);
-        }
-
-        public String getKey() { return key.get(); }
-        public SimpleStringProperty keyProperty() { return key; }
-
-        public String getSummary() { return summary.get(); }
-        public SimpleStringProperty summaryProperty() { return summary; }
-
-        public String getStatus() { return status.get(); }
-        public SimpleStringProperty statusProperty() { return status; }
-
-        public String getAssignee() { return assignee.get(); }
-        public SimpleStringProperty assigneeProperty() { return assignee; }
-    }
 
     public WorkflowOrchestratorPanel(JiraApiClientGui mainFrame) {
         this.mainFrame = mainFrame;
@@ -147,6 +124,21 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
         
         mainTabs.getTabs().addAll(designerTab, runnerTab);
         setCenter(mainTabs);
+
+        mainTabs.getSelectionModel().selectedItemProperty().addListener((obs, oldTab, newTab) -> {
+            if (newTab == runnerTab) {
+                String currentDesignerRecipe = recipeNameField.getText().trim();
+                if (!currentDesignerRecipe.isEmpty() && runnerRecipeCombo.getItems().contains(currentDesignerRecipe)) {
+                    if (!currentDesignerRecipe.equals(runnerRecipeCombo.getSelectionModel().getSelectedItem())) {
+                        runnerRecipeCombo.getSelectionModel().select(currentDesignerRecipe);
+                    } else {
+                        updateRunnerInputs();
+                    }
+                } else {
+                    updateRunnerInputs();
+                }
+            }
+        });
         
         refreshRecipeList();
         updateTokensFromCache();
@@ -238,9 +230,11 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
         header.add(recipeNameField, 1, 0);
         GridPane.setHgrow(recipeNameField, Priority.ALWAYS);
         
-        header.add(new Label("JQL Query:"), 0, 1);
+        header.add(new Label("Default Target Issues:"), 0, 1);
         header.add(jqlField, 1, 1);
         GridPane.setHgrow(jqlField, Priority.ALWAYS);
+        jqlField.setPromptText("Optional: Saved issue keys (e.g. ABC-101, ABC-102). If empty, run from JQL Runner.");
+        jqlField.setTooltip(new Tooltip("Optional default issue keys to execute against. Leave blank if this recipe is initiated from the JQL Runner."));
         
         header.add(new Label("Project Filter / Context Issue:"), 0, 2);
         header.add(contextIssueField, 1, 2);
@@ -257,8 +251,36 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
 
         Button toggleTokensBtn = new Button("Toggle Tokens");
         header.add(toggleTokensBtn, 2, 1);
-        
-        center.setTop(header);
+
+        // Recipe Variables Panel
+        variablesPane.setText("Recipe Variables (0)");
+        variablesPane.setExpanded(false);
+
+        VBox varsBox = new VBox(5);
+        varsBox.setPadding(new Insets(5));
+
+        HBox varsHeader = new HBox(6);
+        varsHeader.setPadding(new Insets(2, 5, 2, 5));
+        Label hDel = new Label(""); hDel.setPrefWidth(22);
+        Label hToken = new Label("Token Placeholder"); hToken.setPrefWidth(145); hToken.setStyle("-fx-font-weight: bold; -fx-font-size: 11px;");
+        Label hPrompt = new Label("Prompt?"); hPrompt.setPrefWidth(65); hPrompt.setStyle("-fx-font-weight: bold; -fx-font-size: 11px;");
+        Label hLabel = new Label("Prompt Question / Label"); hLabel.setPrefWidth(155); hLabel.setStyle("-fx-font-weight: bold; -fx-font-size: 11px;");
+        Label hDefault = new Label("Default / Static Value"); hDefault.setPrefWidth(155); hDefault.setStyle("-fx-font-weight: bold; -fx-font-size: 11px;");
+        Label hOptions = new Label("Dropdown Choices (CSV)"); hOptions.setPrefWidth(140); hOptions.setStyle("-fx-font-weight: bold; -fx-font-size: 11px;");
+        varsHeader.getChildren().addAll(hDel, hToken, hPrompt, hLabel, hDefault, hOptions);
+
+        Button addVarBtn = new Button("+ Add Variable");
+        addVarBtn.setOnAction(e -> {
+            addVariableUI(new RecipeVariable("var" + (variablesContainer.getChildren().size() + 1), "Custom Variable", "", true, ""));
+            variablesPane.setExpanded(true);
+        });
+
+        varsBox.getChildren().addAll(varsHeader, variablesContainer, addVarBtn);
+        variablesPane.setContent(varsBox);
+
+        VBox editorTop = new VBox(5);
+        editorTop.getChildren().addAll(header, variablesPane);
+        center.setTop(editorTop);
         
         // Editor Steps
         HBox stepsHeader = new HBox(10);
@@ -376,10 +398,15 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
 
     public void setRunnerIssueKey(String recipeName, String key) {
         Platform.runLater(() -> {
+            mainFrame.showPanel("Workflow Orchestrator");
             mainTabs.getSelectionModel().select(1);
-            runnerRecipeCombo.getSelectionModel().select(recipeName);
-            runnerJqlField.setText(key);
-            executeRunnerSearch();
+            if (recipeName != null && !recipeName.isEmpty()) {
+                runnerRecipeCombo.getSelectionModel().select(recipeName);
+            }
+            if (key != null && !key.isEmpty()) {
+                runnerJqlField.setText(key);
+            }
+            updateRunnerInputs();
         });
     }
 
@@ -387,43 +414,13 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
         Platform.runLater(() -> {
             mainFrame.showPanel("Workflow Orchestrator");
             mainTabs.getSelectionModel().select(1);
-            runnerRecipeCombo.getSelectionModel().select(recipeName);
-            runnerJqlField.setText(issueKeys);
-            runnerLog.setText("");
-            executeRunnerSearch();
-        });
-
-        ExecutionService.submit(() -> {
-            try {
-                WorkflowRecipe recipe = workflowManager.loadWorkflow(recipeName);
-                if (recipe == null) {
-                    String val = mainFrame.getJiraConfig().getProperty("workflow." + recipeName);
-                    if (val != null) recipe = WorkflowRecipe.fromJson(val);
-                }
-                if (recipe == null) {
-                    onLog("ERROR: Recipe not found: " + recipeName);
-                    return;
-                }
-
-                String[] keys = issueKeys.split(",");
-                List<JSONObject> issues = new ArrayList<>();
-                for (String key : keys) {
-                    String cleanKey = JiraUtils.cleanIssueKey(key.trim());
-                    if (cleanKey.isEmpty()) continue;
-                    
-                    onLog("Fetching data for " + cleanKey + "...");
-                    String searchUrl = mainFrame.getBaseUrl() + "/rest/api/2/issue/" + cleanKey + "?expand=names,renderedFields&fields=*all,attachment,issuelinks";
-                    String resp = mainFrame.getService().executeRequest(searchUrl, "GET", null);
-                    issues.add(new JSONObject(resp));
-                }
-
-                WorkflowEngine engine = new WorkflowEngine(mainFrame.getService(), mainFrame.getIssueService(), mainFrame.getMetadataService(), mainFrame.getBaseUrl(), this);
-                engine.setVerboseLogging(verboseLogCheck.isSelected());
-                lastResults = engine.execute(recipe, issues, new HashMap<>());
-
-            } catch (Exception e) {
-                onError("Execution Error", e);
+            if (recipeName != null && !recipeName.isEmpty()) {
+                runnerRecipeCombo.getSelectionModel().select(recipeName);
             }
+            if (issueKeys != null && !issueKeys.isEmpty()) {
+                runnerJqlField.setText(issueKeys);
+            }
+            runWorkflow();
         });
     }
 
@@ -431,214 +428,167 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
         BorderPane panel = new BorderPane();
         
         VBox top = new VBox(10);
-        top.setPadding(new Insets(10));
+        top.setPadding(new Insets(10, 10, 5, 10));
         
         GridPane topGrid = new GridPane();
         topGrid.setHgap(10);
         topGrid.setVgap(10);
 
-        topGrid.add(new Label("Select Recipe:"), 0, 0);
+        Label selectRecipeLabel = new Label("Select Recipe:");
+        selectRecipeLabel.setStyle("-fx-text-fill: -fx-text-base-color; -fx-font-weight: bold;");
+        topGrid.add(selectRecipeLabel, 0, 0);
         topGrid.add(runnerRecipeCombo, 1, 0);
         GridPane.setHgrow(runnerRecipeCombo, Priority.ALWAYS);
         runnerRecipeCombo.setMaxWidth(Double.MAX_VALUE);
         
         HBox checkPanel = new HBox(10);
         checkPanel.setAlignment(Pos.CENTER_LEFT);
+        verboseLogCheck.setStyle("-fx-text-fill: -fx-text-base-color;");
+        dryRunCheck.setStyle("-fx-text-fill: -fx-text-base-color;");
         checkPanel.getChildren().addAll(verboseLogCheck, dryRunCheck);
         topGrid.add(checkPanel, 2, 0);
 
-        topGrid.add(new Label("JQL Query / Issue Key:"), 0, 1);
+        Label targetIssuesLabel = new Label("Target Issues:");
+        targetIssuesLabel.setStyle("-fx-text-fill: -fx-text-base-color; -fx-font-weight: bold;");
+        topGrid.add(targetIssuesLabel, 0, 1);
         topGrid.add(runnerJqlField, 1, 1);
         GridPane.setHgrow(runnerJqlField, Priority.ALWAYS);
-        topGrid.add(searchBtn, 2, 1);
+        runnerJqlField.setPromptText("Enter issue key(s) e.g. TSO-101, TSO-102 or transfer from JQL Runner");
+        UiUtils.setupExpandedView(runnerJqlField);
 
-        runnerInputsPanel.setHgap(10);
-        runnerInputsPanel.setVgap(5);
-        
-        top.getChildren().addAll(topGrid, runnerInputsPanel);
+        HBox issueActionBtns = new HBox(5);
+        Button clearIssuesBtn = new Button("Clear");
+        clearIssuesBtn.setOnAction(e -> runnerJqlField.setText(""));
+        Button loadSavedBtn = new Button("Load Saved");
+        loadSavedBtn.setTooltip(new Tooltip("Load default target issues saved with this recipe"));
+        loadSavedBtn.setOnAction(e -> {
+            String rName = runnerRecipeCombo.getSelectionModel().getSelectedItem();
+            if (rName != null) {
+                try {
+                    WorkflowRecipe r = workflowManager.loadWorkflow(rName);
+                    if (r == null) {
+                        String v = mainFrame.getJiraConfig().getProperty("workflow." + rName);
+                        if (v != null) r = WorkflowRecipe.fromJson(v);
+                    }
+                    if (r != null && r.getTargetIssues() != null) {
+                        runnerJqlField.setText(r.getTargetIssues());
+                    }
+                } catch (Exception ex) {
+                    ex.printStackTrace();
+                }
+            }
+        });
+        issueActionBtns.getChildren().addAll(clearIssuesBtn, loadSavedBtn);
+        topGrid.add(issueActionBtns, 2, 1);
+
+        top.getChildren().add(topGrid);
         panel.setTop(top);
 
-        // Runner table setup
-        TableColumn<RunnerIssueRow, String> keyCol = new TableColumn<>("Key");
-        keyCol.setCellValueFactory(cellData -> cellData.getValue().keyProperty());
-        keyCol.setPrefWidth(120);
+        // Center SplitPane: Prompts (Upper) & Execution Log (Lower)
+        runnerInputsPanel.setHgap(10);
+        runnerInputsPanel.setVgap(8);
+        runnerInputsPanel.setPadding(new Insets(5, 5, 5, 5));
 
-        TableColumn<RunnerIssueRow, String> summaryCol = new TableColumn<>("Summary");
-        summaryCol.setCellValueFactory(cellData -> cellData.getValue().summaryProperty());
-        summaryCol.setPrefWidth(350);
+        ScrollPane inputsScroll = new ScrollPane(runnerInputsPanel);
+        inputsScroll.setFitToWidth(true);
+        inputsScroll.setStyle("-fx-background-color: transparent; -fx-padding: 0;");
+        VBox.setVgrow(inputsScroll, Priority.ALWAYS);
 
-        TableColumn<RunnerIssueRow, String> statusCol = new TableColumn<>("Status");
-        statusCol.setCellValueFactory(cellData -> cellData.getValue().statusProperty());
-        statusCol.setPrefWidth(120);
+        VBox promptsBox = new VBox(5);
+        promptsBox.setPadding(new Insets(0, 10, 5, 10));
+        Label promptsHeader = new Label("Recipe Variables & Prompts:");
+        promptsHeader.setStyle("-fx-font-weight: bold; -fx-font-size: 11px; -fx-text-fill: -fx-text-base-color;");
+        promptsBox.getChildren().addAll(promptsHeader, inputsScroll);
+        VBox.setVgrow(promptsBox, Priority.ALWAYS);
 
-        TableColumn<RunnerIssueRow, String> assigneeCol = new TableColumn<>("Assignee");
-        assigneeCol.setCellValueFactory(cellData -> cellData.getValue().assigneeProperty());
-        assigneeCol.setPrefWidth(150);
-
-        runnerTable.getColumns().addAll(keyCol, summaryCol, statusCol, assigneeCol);
-        runnerTable.getSelectionModel().setSelectionMode(SelectionMode.MULTIPLE);
-        runnerTable.getSelectionModel().getSelectedItems().addListener((javafx.collections.ListChangeListener<RunnerIssueRow>) c -> updateRunnerInputs());
-        
-        runnerTable.setRowFactory(tv -> {
-            TableRow<RunnerIssueRow> row = new TableRow<>();
-            row.setOnMouseClicked(event -> {
-                if (event.getClickCount() == 2 && (!row.isEmpty())) {
-                    RunnerIssueRow rowData = row.getItem();
-                    mainFrame.loadAndShowIssue(rowData.getKey());
-                }
-            });
-            return row;
-        });
-
-        SplitPane split = new SplitPane();
-        split.setOrientation(Orientation.VERTICAL);
-        split.getItems().addAll(runnerTable, runnerLog);
-        split.setDividerPositions(0.4);
-        
+        // Execution Log
+        VBox logBox = new VBox(5);
+        logBox.setPadding(new Insets(5, 10, 0, 10));
+        Label logLabel = new Label("Execution Log:");
+        logLabel.setStyle("-fx-font-weight: bold; -fx-font-size: 11px; -fx-text-fill: -fx-text-base-color;");
         runnerLog.setEditable(false);
+        runnerLog.setWrapText(true);
         runnerLog.setStyle("-fx-font-family: monospace; -fx-font-size: 12px;");
-        
-        panel.setCenter(split);
+        VBox.setVgrow(runnerLog, Priority.ALWAYS);
+        logBox.getChildren().addAll(logLabel, runnerLog);
+
+        SplitPane runnerSplit = new SplitPane();
+        runnerSplit.setOrientation(Orientation.VERTICAL);
+        runnerSplit.getItems().addAll(promptsBox, logBox);
+        runnerSplit.setDividerPositions(0.68);
+        SplitPane.setResizableWithParent(promptsBox, true);
+        SplitPane.setResizableWithParent(logBox, false);
+
+        panel.setCenter(runnerSplit);
 
         HBox bottom = new HBox(10);
         bottom.setPadding(new Insets(10));
         bottom.setAlignment(Pos.CENTER_RIGHT);
         
+        runBtn.setText("▶ Run Workflow");
         runBtn.getStyleClass().add("primary-button");
-        exportReportBtn.setDisable(true); // Enable after run
+        exportReportBtn.setDisable(true);
         Button clearLogBtn = new Button("Clear Log");
         
         bottom.getChildren().addAll(clearLogBtn, exportReportBtn, runBtn);
         panel.setBottom(bottom);
 
-        searchBtn.setOnAction(e -> executeRunnerSearch());
-        runBtn.setOnAction(e -> runWorkflowOnSelected());
+        runBtn.setOnAction(e -> runWorkflow());
         exportReportBtn.setOnAction(e -> exportToCsv());
         clearLogBtn.setOnAction(e -> runnerLog.setText(""));
+
+        // Auto-load saved issues when selecting recipe
+        runnerRecipeCombo.getSelectionModel().selectedItemProperty().addListener((obs, oldVal, newVal) -> {
+            if (newVal != null) {
+                try {
+                    WorkflowRecipe r = workflowManager.loadWorkflow(newVal);
+                    if (r == null) {
+                        String v = mainFrame.getJiraConfig().getProperty("workflow." + newVal);
+                        if (v != null) r = WorkflowRecipe.fromJson(v);
+                    }
+                    if (r != null && r.getTargetIssues() != null && !r.getTargetIssues().trim().isEmpty()) {
+                        runnerJqlField.setText(r.getTargetIssues());
+                    }
+                } catch (Exception ex) {
+                    ex.printStackTrace();
+                }
+            }
+            updateRunnerInputs();
+        });
+
+        runnerJqlField.textProperty().addListener((obs, oldV, newV) -> updateRunnerInputs());
 
         return panel;
     }
 
-    private void executeRunnerSearch() {
-        String rawText = runnerJqlField.getText();
-        if (rawText == null) rawText = "";
-        
-        rawText = rawText.replace("\\n", "\n").replace("\\r", "\r");
-        
-        if (isIssueKeyList(rawText)) {
-            String[] parts = rawText.split("[\\r\\n,;\\s]+");
-            List<String> keys = new ArrayList<>();
-            for (String p : parts) {
-                String trimmed = p.trim();
-                if (!trimmed.isEmpty()) {
-                    keys.add(trimmed);
-                }
-            }
-            if (!keys.isEmpty()) {
-                rawText = String.join(", ", keys);
-                final String formattedKeys = rawText;
-                Platform.runLater(() -> runnerJqlField.setText(formattedKeys));
-            }
-        }
-        
-        String finalJql = rawText.trim();
-        if (finalJql.isEmpty()) return;
-
-        int limit = mainFrame.getJiraConfig().getJqlMaxResults();
-        if (isIssueKeyList(finalJql)) {
-            String[] parts = finalJql.split("[\\r\\n,;\\s]+");
-            List<String> keys = new ArrayList<>();
-            for (String p : parts) {
-                String trimmed = p.trim();
-                if (!trimmed.isEmpty()) {
-                    keys.add(trimmed);
-                }
-            }
-            if (keys.size() > 1) {
-                finalJql = "key in (" + String.join(", ", keys) + ")";
-                limit = Math.max(limit, keys.size());
-            } else if (keys.size() == 1) {
-                finalJql = "key = " + keys.get(0);
-            }
-        } else if (!finalJql.contains(" ") && !finalJql.contains("=") && !finalJql.contains("(")) {
-            if (finalJql.contains(",")) {
-                String[] parts = finalJql.split(",");
-                int count = 0;
-                for (String p : parts) {
-                    if (!p.trim().isEmpty()) count++;
-                }
-                limit = Math.max(limit, count);
-                finalJql = "key in (" + finalJql + ")";
-            } else {
-                finalJql = "key = " + finalJql;
-            }
-        } else {
-            java.util.regex.Pattern p = java.util.regex.Pattern.compile("(?i)\\b(key|issuekey|id)\\s+in\\s*\\(([^)]+)\\)");
-            java.util.regex.Matcher m = p.matcher(finalJql);
-            if (m.find()) {
-                String keysStr = m.group(2);
-                String[] parts = keysStr.split(",");
-                int count = 0;
-                for (String part : parts) {
-                    if (!part.trim().isEmpty()) count++;
-                }
-                limit = Math.max(limit, count);
-            }
-        }
-
-        final String jql = finalJql;
-        final int maxResults = limit;
-        onLog("Searching: " + jql);
-        runnerTable.getItems().clear();
-        currentSearchIssues.clear();
-
-        ExecutionService.submit(() -> {
-            try {
-                String encodedJql = java.net.URLEncoder.encode(jql, "UTF-8");
-                String searchUrl = mainFrame.getBaseUrl() + "/rest/api/2/search?jql=" + encodedJql + "&expand=names,renderedFields&fields=*all,attachment,issuelinks&maxResults=" + maxResults;
-                String searchResp = mainFrame.getService().executeRequest(searchUrl, "GET", null);
-                JSONArray issues = new JSONObject(searchResp).getJSONArray("issues");
-                
-                List<RunnerIssueRow> rows = new ArrayList<>();
-                for (int i = 0; i < issues.length(); i++) {
-                    JSONObject issue = issues.getJSONObject(i);
-                    currentSearchIssues.add(issue);
-                    JSONObject fields = issue.getJSONObject("fields");
-                    String key = issue.getString("key");
-                    String summary = fields.optString("summary", "N/A");
-                    String status = fields.optJSONObject("status") != null ? fields.getJSONObject("status").getString("name") : "N/A";
-                    String assignee = fields.optJSONObject("assignee") != null ? fields.getJSONObject("assignee").getString("displayName") : "Unassigned";
-                    rows.add(new RunnerIssueRow(key, summary, status, assignee));
-                }
-
-                Platform.runLater(() -> {
-                    runnerTable.getItems().setAll(rows);
-                    onLog("Found " + issues.length() + " issues.");
-                    
-                    if (!rows.isEmpty()) {
-                        runnerTable.getSelectionModel().selectAll();
-                    }
-                    
-                    updateRunnerInputs();
-                });
-            } catch (Exception e) {
-                onLog("Search Error: " + e.getMessage());
-            }
-        });
-    }
-
-    private void runWorkflowOnSelected() {
-        List<RunnerIssueRow> selectedRows = runnerTable.getSelectionModel().getSelectedItems();
-        if (selectedRows.isEmpty()) {
-            showAlert(Alert.AlertType.WARNING, "No Selection", "Please select one or more issues from the table first.");
+    private void runWorkflow() {
+        onRunnerVariableChanged();
+        String recipeName = runnerRecipeCombo.getSelectionModel().getSelectedItem();
+        if (recipeName == null) {
+            showAlert(Alert.AlertType.WARNING, "No Recipe", "Please select a recipe to run.");
             return;
         }
 
-        String recipeName = runnerRecipeCombo.getSelectionModel().getSelectedItem();
-        if (recipeName == null) return;
+        String rawText = runnerJqlField.getText();
+        if (rawText == null || rawText.trim().isEmpty()) {
+            showAlert(Alert.AlertType.WARNING, "No Target Issues", "Please enter at least one target issue key, or select issues in JQL Runner.");
+            return;
+        }
+
+        List<String> cleanKeys = new ArrayList<>();
+        for (String p : rawText.split("[\\r\\n,;\\s]+")) {
+            String ck = JiraUtils.cleanIssueKey(p);
+            if (!ck.isEmpty() && !cleanKeys.contains(ck)) {
+                cleanKeys.add(ck);
+            }
+        }
+
+        if (cleanKeys.isEmpty()) {
+            showAlert(Alert.AlertType.WARNING, "Invalid Target Issues", "No valid issue keys found in Target Issues.");
+            return;
+        }
 
         Map<String, String> promptValues = new HashMap<>();
-        // Initialize team variables to prevent holdover and handle missing fields
         promptValues.put("team.name", "");
         promptValues.put("team.lead", "");
         promptValues.put("team.component", "");
@@ -685,18 +635,10 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
             promptValues.put(label, val);
         }
 
-        List<JSONObject> issuesToProcess = new ArrayList<>();
-        for (RunnerIssueRow row : selectedRows) {
-            int idx = runnerTable.getItems().indexOf(row);
-            if (idx >= 0 && idx < currentSearchIssues.size()) {
-                issuesToProcess.add(currentSearchIssues.get(idx));
-            }
-        }
-
         runnerLog.setText("");
         runBtn.setDisable(true);
         exportReportBtn.setDisable(true);
-        
+
         ExecutionService.submit(() -> {
             try {
                 WorkflowRecipe recipe = workflowManager.loadWorkflow(recipeName);
@@ -709,17 +651,62 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
                     onComplete();
                     return;
                 }
-                
+
+                // If currently editing this recipe in Designer, sync variables in case they were modified
+                if (recipeName.equals(recipeNameField.getText().trim())) {
+                    List<RecipeVariable> memoryVars = new ArrayList<>();
+                    for (Node c : variablesContainer.getChildren()) {
+                        if (c instanceof RecipeVariablePanel) {
+                            RecipeVariable var = ((RecipeVariablePanel) c).saveToVariable();
+                            if (var != null && var.getName() != null && !var.getName().trim().isEmpty()) {
+                                memoryVars.add(var);
+                            }
+                        }
+                    }
+                    if (!memoryVars.isEmpty()) {
+                        recipe.setVariables(memoryVars);
+                    }
+                }
+
+                // Fetch issues
+                onLog("Fetching issue data for " + cleanKeys.size() + " issue(s)...");
+                List<JSONObject> issuesToProcess = new ArrayList<>();
+                try {
+                    String jql = "key in (" + String.join(",", cleanKeys) + ")";
+                    String searchUrl = mainFrame.getBaseUrl() + "/rest/api/2/search?jql=" + java.net.URLEncoder.encode(jql, "UTF-8") + "&expand=names,renderedFields&fields=*all,attachment,issuelinks&maxResults=" + cleanKeys.size();
+                    String searchResp = mainFrame.getService().executeRequest(searchUrl, "GET", null);
+                    JSONArray issuesArr = new JSONObject(searchResp).getJSONArray("issues");
+                    for (int i = 0; i < issuesArr.length(); i++) {
+                        issuesToProcess.add(issuesArr.getJSONObject(i));
+                    }
+                } catch (Exception ex) {
+                    for (String key : cleanKeys) {
+                        try {
+                            String url = mainFrame.getBaseUrl() + "/rest/api/2/issue/" + key + "?expand=names,renderedFields&fields=*all,attachment,issuelinks";
+                            String resp = mainFrame.getService().executeRequest(url, "GET", null);
+                            issuesToProcess.add(new JSONObject(resp));
+                        } catch (Exception indEx) {
+                            onLog("ERROR: Failed to fetch issue " + key + ": " + indEx.getMessage());
+                        }
+                    }
+                }
+
+                if (issuesToProcess.isEmpty()) {
+                    onLog("ERROR: Could not fetch data for any of the target issues.");
+                    onComplete();
+                    return;
+                }
+
                 final int threads = mainFrame.getJiraConfig().getParallelThreads();
                 String mode = dryRunCheck.isSelected() ? "[DRY RUN - VALIDATE ONLY]" : "[LIVE EXECUTION]";
-                onLog(mode + " Starting workflow: " + recipe.getRecipeName() + " on " + issuesToProcess.size() + " issues using " + threads + " parallel threads.");
-                
+                onLog(mode + " Starting workflow: " + recipe.getRecipeName() + " on " + issuesToProcess.size() + " issue(s) using " + threads + " thread(s).");
+
                 List<WorkflowEngine.ExecutionResult> results = Collections.synchronizedList(new ArrayList<>());
-                
+
                 if (threads > 1 && issuesToProcess.size() > 1) {
                     ExecutorService executor = Executors.newFixedThreadPool(threads);
                     List<java.util.concurrent.Future<?>> futures = new ArrayList<>();
-                    
+
                     for (JSONObject issue : issuesToProcess) {
                         final WorkflowRecipe finalRecipe = recipe;
                         futures.add(executor.submit(() -> {
@@ -735,7 +722,7 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
                             }
                         }));
                     }
-                    
+
                     for (java.util.concurrent.Future<?> f : futures) {
                         try {
                             f.get();
@@ -750,7 +737,7 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
                     engine.setDryRun(dryRunCheck.isSelected());
                     results.addAll(engine.execute(recipe, issuesToProcess, promptValues));
                 }
-                
+
                 lastResults = results;
                 onLog(mode + " Workflow Execution Complete.");
                 onComplete();
@@ -791,14 +778,157 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
         }
     }
 
-    private void updateRunnerInputs() {
-        String recipeName = runnerRecipeCombo.getSelectionModel().getSelectedItem();
-        if (recipeName == null) return;
-        
-        runnerInputsPanel.getChildren().clear();
-        promptFields.clear();
-        
+    private List<RecipeVariable> getActiveRecipeVariables(String recipeName) {
+        List<RecipeVariable> activeVars = new ArrayList<>();
+        if (recipeName == null) return activeVars;
+        if (recipeName.equals(recipeNameField.getText().trim())) {
+            for (Node c : variablesContainer.getChildren()) {
+                if (c instanceof RecipeVariablePanel) {
+                    RecipeVariable var = ((RecipeVariablePanel) c).saveToVariable();
+                    if (var != null && var.getName() != null && !var.getName().trim().isEmpty()) {
+                        activeVars.add(var);
+                    }
+                }
+            }
+            return activeVars;
+        }
+
         try {
+            WorkflowRecipe recipe = workflowManager.loadWorkflow(recipeName);
+            if (recipe == null) {
+                String val = mainFrame.getJiraConfig().getProperty("workflow." + recipeName);
+                if (val != null) recipe = WorkflowRecipe.fromJson(val);
+            }
+            if (recipe != null && recipe.getVariables() != null) {
+                activeVars.addAll(recipe.getVariables());
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return activeVars;
+    }
+
+    private Map<String, String> getCurrentRunnerVariables() {
+        Map<String, String> varMap = new HashMap<>();
+        String recipeName = runnerRecipeCombo.getSelectionModel().getSelectedItem();
+        if (recipeName == null) return varMap;
+
+        List<RecipeVariable> activeVars = getActiveRecipeVariables(recipeName);
+        for (RecipeVariable var : activeVars) {
+            if (var.getName() == null || var.getName().trim().isEmpty()) continue;
+            String vName = var.getName().trim();
+            String val = null;
+
+            Node comp = promptFields.get(vName);
+            if (comp instanceof TextField) {
+                val = ((TextField) comp).getText();
+            } else if (comp instanceof TextArea) {
+                val = ((TextArea) comp).getText();
+            } else if (comp instanceof ComboBox) {
+                Object sel = ((ComboBox<?>) comp).getSelectionModel().getSelectedItem();
+                if (sel != null) val = sel.toString();
+            }
+
+            if (val == null) {
+                val = var.getDefaultValue() != null ? var.getDefaultValue() : "";
+            }
+
+            varMap.put(vName, val);
+            varMap.put(vName + ".value", val);
+        }
+
+        // Also incorporate any other prompt field values or teams
+        for (Map.Entry<String, Node> entry : promptFields.entrySet()) {
+            String key = entry.getKey();
+            Node comp = entry.getValue();
+            String val = null;
+            if (comp instanceof TextField) {
+                val = ((TextField) comp).getText();
+            } else if (comp instanceof TextArea) {
+                val = ((TextArea) comp).getText();
+            } else if (comp instanceof AutocompleteTextField) {
+                val = ((AutocompleteTextField) comp).getText();
+            } else if (comp instanceof ComboBox) {
+                Object sel = ((ComboBox<?>) comp).getSelectionModel().getSelectedItem();
+                if (sel instanceof ConfigOption) {
+                    ConfigOption co = (ConfigOption) sel;
+                    val = co.value;
+                    if (co.teamKey != null) {
+                        String name = mainFrame.getJiraConfig().getTeamProperty(co.teamKey, "name");
+                        String lead = mainFrame.getJiraConfig().getTeamProperty(co.teamKey, "lead");
+                        String component = mainFrame.getJiraConfig().getTeamProperty(co.teamKey, "component");
+                        String id = mainFrame.getJiraConfig().getTeamProperty(co.teamKey, "id");
+                        varMap.put("team.name", name != null ? name : "");
+                        varMap.put("team.lead", lead != null ? lead : "");
+                        varMap.put("team.component", component != null ? component : "");
+                        varMap.put("team.id", id != null ? id : "");
+                    }
+                } else if (sel != null) {
+                    val = sel.toString();
+                }
+            } else if (comp instanceof PromptChoicePanel) {
+                val = ((PromptChoicePanel) comp).getValue();
+            } else if (comp instanceof FilePromptPanel) {
+                val = ((FilePromptPanel) comp).getValue();
+            }
+            if (val != null) {
+                varMap.put(key, val);
+                varMap.put(key + ".value", val);
+            }
+        }
+
+        return varMap;
+    }
+
+    private void registerDynamicPromptBinding(Node control, String rawTemplate, JSONObject contextIssue, String initialEvaluatedValue) {
+        if (control == null || rawTemplate == null || !rawTemplate.contains("{{")) return;
+        dynamicPromptBindings.add(new DynamicPromptBinding(control, rawTemplate, initialEvaluatedValue, contextIssue));
+    }
+
+    private void onRunnerVariableChanged() {
+        if (isUpdatingRunnerInputs || isUpdatingBindings) return;
+        isUpdatingBindings = true;
+        try {
+            for (int iteration = 0; iteration < 3; iteration++) {
+                Map<String, String> currentVars = getCurrentRunnerVariables();
+                boolean anyChanged = false;
+                for (DynamicPromptBinding binding : dynamicPromptBindings) {
+                    if (binding.updateValue(currentVars)) {
+                        anyChanged = true;
+                    }
+                }
+                if (!anyChanged) break;
+            }
+        } finally {
+            isUpdatingBindings = false;
+        }
+    }
+
+    private void updateRunnerInputs() {
+        if (isUpdatingRunnerInputs) return;
+        isUpdatingRunnerInputs = true;
+        try {
+            String recipeName = runnerRecipeCombo.getSelectionModel().getSelectedItem();
+            if (recipeName == null) return;
+            
+            // Preserve user inputs if runner inputs are being reloaded
+            Map<String, String> existingUserInputs = new HashMap<>();
+            for (String k : promptFields.keySet()) {
+                Node comp = promptFields.get(k);
+                if (comp instanceof TextField) {
+                    existingUserInputs.put(k, ((TextField) comp).getText());
+                } else if (comp instanceof TextArea) {
+                    existingUserInputs.put(k, ((TextArea) comp).getText());
+                } else if (comp instanceof ComboBox) {
+                    Object sel = ((ComboBox<?>) comp).getSelectionModel().getSelectedItem();
+                    if (sel != null) existingUserInputs.put(k, sel.toString());
+                }
+            }
+
+            runnerInputsPanel.getChildren().clear();
+            promptFields.clear();
+            dynamicPromptBindings.clear();
+            
             WorkflowRecipe recipe = workflowManager.loadWorkflow(recipeName);
             if (recipe == null) {
                 String val = mainFrame.getJiraConfig().getProperty("workflow." + recipeName);
@@ -806,22 +936,95 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
             }
             
             if (recipe != null) {
-                if (runnerJqlField.getText().isEmpty()) runnerJqlField.setText(recipe.getJqlQuery());
+                if (runnerJqlField.getText().isEmpty() && recipe.getTargetIssues() != null) {
+                    runnerJqlField.setText(recipe.getTargetIssues());
+                }
                 
+                List<String> currentKeys = new ArrayList<>();
+                String rawText = runnerJqlField.getText();
+                if (rawText != null && !rawText.trim().isEmpty()) {
+                    for (String p : rawText.split("[\\r\\n,;\\s]+")) {
+                        String ck = JiraUtils.cleanIssueKey(p);
+                        if (!ck.isEmpty() && !currentKeys.contains(ck)) {
+                            currentKeys.add(ck);
+                        }
+                    }
+                }
+
                 JSONObject contextIssue = null;
-                RunnerIssueRow selected = runnerTable.getSelectionModel().getSelectedItem();
-                int idx = selected != null ? runnerTable.getItems().indexOf(selected) : -1;
-                if (idx >= 0 && idx < currentSearchIssues.size()) {
-                    contextIssue = currentSearchIssues.get(idx);
-                } else if (!currentSearchIssues.isEmpty()) {
-                    contextIssue = currentSearchIssues.get(0);
+                if (!currentKeys.isEmpty()) {
+                    contextIssue = new JSONObject().put("key", currentKeys.get(0));
                 }
 
                 Set<String> labels = new HashSet<>();
+
+                List<RecipeVariable> activeVars = getActiveRecipeVariables(recipeName);
+
+                // Build variable lookup map for prompt resolution
+                Map<String, String> varMap = new HashMap<>();
+                for (RecipeVariable var : activeVars) {
+                    if (var.getName() != null && !var.getName().trim().isEmpty()) {
+                        String vName = var.getName().trim();
+                        String curVal = existingUserInputs.get(vName);
+                        if (curVal == null || curVal.isEmpty()) {
+                            curVal = var.getDefaultValue() != null ? var.getDefaultValue() : "";
+                        }
+                        varMap.put(vName, curVal);
+                        varMap.put(vName + ".value", curVal);
+                    }
+                }
+
+                // Recipe Variables Prompts
+                for (RecipeVariable var : activeVars) {
+                    if (var.isPrompt() && var.getName() != null && !var.getName().trim().isEmpty()) {
+                        String vName = var.getName().trim();
+                        String displayLabel = (var.getLabel() != null && !var.getLabel().trim().isEmpty()) ? var.getLabel() : vName;
+                        String promptTitle = displayLabel + " (" + vName + ")";
+
+                        // Resolve default value if it has tokens
+                        String defaultVal = existingUserInputs.containsKey(vName) ? existingUserInputs.get(vName) : var.getDefaultValue();
+                        String rawTemplate = var.getDefaultValue();
+                        if (defaultVal != null && defaultVal.contains("{{")) {
+                            defaultVal = TokenEngine.replaceTokens(defaultVal, contextIssue, varMap, true);
+                        }
+                        if (defaultVal == null) defaultVal = "";
+
+                        if (var.getOptions() != null && !var.getOptions().trim().isEmpty()) {
+                            ComboBox<String> combo = new ComboBox<>();
+                            for (String opt : var.getOptions().split(",")) {
+                                String trimmed = opt.trim();
+                                if (!trimmed.isEmpty()) combo.getItems().add(trimmed);
+                            }
+                            if (!defaultVal.isEmpty() && combo.getItems().contains(defaultVal)) {
+                                combo.getSelectionModel().select(defaultVal);
+                            } else if (!combo.getItems().isEmpty()) {
+                                combo.getSelectionModel().select(0);
+                            }
+                            addInputRow(promptTitle, combo, labels);
+                            promptFields.put(vName, combo);
+                            promptFields.put(promptTitle, combo);
+
+                            combo.getSelectionModel().selectedItemProperty().addListener((obs, oldV, newV) -> onRunnerVariableChanged());
+                        } else {
+                            TextField inputField = new TextField(defaultVal);
+                            UiUtils.setupExpandedView(inputField);
+                            addInputRow(promptTitle, inputField, labels);
+                            promptFields.put(vName, inputField);
+                            promptFields.put(promptTitle, inputField);
+
+                            inputField.textProperty().addListener((obs, oldV, newV) -> onRunnerVariableChanged());
+
+                            if (rawTemplate != null && rawTemplate.contains("{{")) {
+                                registerDynamicPromptBinding(inputField, rawTemplate, contextIssue, defaultVal);
+                            }
+                        }
+                    }
+                }
+
                 for (WorkflowStep step : recipe.getSteps()) {
                     if (step instanceof CreateStep) {
                         CreateStep cs = (CreateStep) step;
-                        addCreateStepPrompts(labels, cs, contextIssue);
+                        addCreateStepPrompts(labels, cs, contextIssue, varMap);
                     }
                     
                     if (step instanceof AssetStep) {
@@ -839,47 +1042,60 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
                         if (as.isPromptAtRuntime()) {
                             String label = "Attachment File (" + step.getLabel() + ")";
                             String defaultPath = as.getFilePath();
-                            if (defaultPath != null && !defaultPath.trim().isEmpty() && contextIssue != null) {
-                                defaultPath = TokenEngine.replaceTokens(defaultPath, contextIssue);
+                            String rawPath = defaultPath;
+                            if (defaultPath != null && !defaultPath.trim().isEmpty()) {
+                                defaultPath = TokenEngine.replaceTokens(defaultPath, contextIssue, varMap, true);
                             }
                             FilePromptPanel panel = new FilePromptPanel(mainFrame.getPrimaryStage(), defaultPath);
                             addInputRow(label, panel, labels);
                             promptFields.put(label.replaceAll("\\[.*?\\]", "").trim(), panel);
+                            if (rawPath != null && rawPath.contains("{{")) {
+                                registerDynamicPromptBinding(panel, rawPath, contextIssue, defaultPath);
+                            }
                         }
                     }
                     
                     if (step instanceof CommentStep) {
                         CommentStep cs = (CommentStep) step;
                         if (cs.isPromptAtRuntime()) {
+                            String rawComment = cs.getCommentBody();
                             if (cs.isPromptPerIssue()) {
-                                List<RunnerIssueRow> selectedRows = runnerTable.getSelectionModel().getSelectedItems();
-                                if (selectedRows.isEmpty() && contextIssue != null) {
-                                    String key = contextIssue.optString("key");
-                                    String label = "Comment (" + step.getLabel() + ") for " + key;
+                                if (currentKeys.isEmpty()) {
+                                    String label = "Comment (" + step.getLabel() + ")";
                                     TextArea area = new TextArea();
                                     area.setPrefRowCount(3);
                                     area.setWrapText(true);
-                                    if (cs.getCommentBody() != null) {
-                                        String resolvedDefault = TokenEngine.replaceTokens(cs.getCommentBody(), contextIssue);
-                                        area.setText(resolvedDefault);
+                                    UiUtils.setupExpandedView(area);
+                                    String initialVal = "";
+                                    if (rawComment != null) {
+                                        initialVal = TokenEngine.replaceTokens(rawComment, (JSONObject) null, varMap, true);
+                                        area.setText(initialVal != null ? initialVal.replace("\\n", "\n").replace("\\r", "\r") : "");
                                     }
+                                    area.textProperty().addListener((obs, oldV, newV) -> onRunnerVariableChanged());
                                     addInputRow(label, area, labels);
                                     promptFields.put(label, area);
+                                    if (rawComment != null && rawComment.contains("{{")) {
+                                        registerDynamicPromptBinding(area, rawComment, null, initialVal);
+                                    }
                                 } else {
-                                    for (RunnerIssueRow row : selectedRows) {
-                                        String key = row.getKey();
+                                    for (String key : currentKeys) {
                                         String label = "Comment (" + step.getLabel() + ") for " + key;
                                         TextArea area = new TextArea();
                                         area.setPrefRowCount(3);
                                         area.setWrapText(true);
-                                        if (cs.getCommentBody() != null) {
-                                            int rIdx = runnerTable.getItems().indexOf(row);
-                                            JSONObject issueContext = (rIdx >= 0 && rIdx < currentSearchIssues.size()) ? currentSearchIssues.get(rIdx) : contextIssue;
-                                            String resolvedDefault = TokenEngine.replaceTokens(cs.getCommentBody(), issueContext);
-                                            area.setText(resolvedDefault);
+                                        UiUtils.setupExpandedView(area);
+                                        String initialVal = "";
+                                        JSONObject issueContext = new JSONObject().put("key", key);
+                                        if (rawComment != null) {
+                                            initialVal = TokenEngine.replaceTokens(rawComment, issueContext, varMap, true);
+                                            area.setText(initialVal != null ? initialVal.replace("\\n", "\n").replace("\\r", "\r") : "");
                                         }
+                                        area.textProperty().addListener((obs, oldV, newV) -> onRunnerVariableChanged());
                                         addInputRow(label, area, labels);
                                         promptFields.put(label, area);
+                                        if (rawComment != null && rawComment.contains("{{")) {
+                                            registerDynamicPromptBinding(area, rawComment, issueContext, initialVal);
+                                        }
                                     }
                                 }
                             } else {
@@ -887,15 +1103,18 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
                                 TextArea area = new TextArea();
                                 area.setPrefRowCount(3);
                                 area.setWrapText(true);
-                                if (cs.getCommentBody() != null && !cs.getCommentBody().trim().isEmpty()) {
-                                    String resolvedDefault = cs.getCommentBody();
-                                    if (contextIssue != null) {
-                                        resolvedDefault = TokenEngine.replaceTokens(resolvedDefault, contextIssue);
-                                    }
-                                    area.setText(resolvedDefault);
+                                UiUtils.setupExpandedView(area);
+                                String initialVal = "";
+                                if (rawComment != null && !rawComment.trim().isEmpty()) {
+                                    initialVal = TokenEngine.replaceTokens(rawComment, contextIssue, varMap, true);
+                                    area.setText(initialVal != null ? initialVal.replace("\\n", "\n").replace("\\r", "\r") : "");
                                 }
+                                area.textProperty().addListener((obs, oldV, newV) -> onRunnerVariableChanged());
                                 addInputRow(label, area, labels);
                                 promptFields.put(label, area);
+                                if (rawComment != null && rawComment.contains("{{")) {
+                                    registerDynamicPromptBinding(area, rawComment, contextIssue, initialVal);
+                                }
                             }
                         }
                     }
@@ -904,20 +1123,16 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
                         WorklogStep ws = (WorklogStep) step;
                         if (ws.isPromptAtRuntime()) {
                             if (ws.isPromptPerIssue()) {
-                                List<RunnerIssueRow> selectedRows = runnerTable.getSelectionModel().getSelectedItems();
-                                if (selectedRows.isEmpty() && contextIssue != null) {
-                                    String key = contextIssue.optString("key");
-                                    addWorklogPromptsForIssue(labels, ws, key, contextIssue);
+                                if (currentKeys.isEmpty()) {
+                                    addWorklogPromptsOnce(labels, ws, contextIssue, varMap);
                                 } else {
-                                    for (RunnerIssueRow row : selectedRows) {
-                                        String key = row.getKey();
-                                        int rIdx = runnerTable.getItems().indexOf(row);
-                                        JSONObject issueContext = (rIdx >= 0 && rIdx < currentSearchIssues.size()) ? currentSearchIssues.get(rIdx) : contextIssue;
-                                        addWorklogPromptsForIssue(labels, ws, key, issueContext);
+                                    for (String key : currentKeys) {
+                                        JSONObject issueContext = new JSONObject().put("key", key);
+                                        addWorklogPromptsForIssue(labels, ws, key, issueContext, varMap);
                                     }
                                 }
                             } else {
-                                addWorklogPromptsOnce(labels, ws, contextIssue);
+                                addWorklogPromptsOnce(labels, ws, contextIssue, varMap);
                             }
                         }
                     }
@@ -945,33 +1160,37 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
                         NotifyStep ns = (NotifyStep) step;
                         if (ns.isPromptAtRuntime()) {
                             if (ns.isPromptPerIssue()) {
-                                List<RunnerIssueRow> selectedRows = runnerTable.getSelectionModel().getSelectedItems();
-                                if (selectedRows.isEmpty() && contextIssue != null) {
-                                    String key = contextIssue.optString("key");
-                                    addNotifyPromptsForIssue(labels, ns, key, contextIssue);
+                                if (currentKeys.isEmpty()) {
+                                    addNotifyPromptsOnce(labels, ns, contextIssue, varMap);
                                 } else {
-                                    for (RunnerIssueRow row : selectedRows) {
-                                        String key = row.getKey();
-                                        int rIdx = runnerTable.getItems().indexOf(row);
-                                        JSONObject issueContext = (rIdx >= 0 && rIdx < currentSearchIssues.size()) ? currentSearchIssues.get(rIdx) : contextIssue;
-                                        addNotifyPromptsForIssue(labels, ns, key, issueContext);
+                                    for (String key : currentKeys) {
+                                        JSONObject issueContext = new JSONObject().put("key", key);
+                                        addNotifyPromptsForIssue(labels, ns, key, issueContext, varMap);
                                     }
                                 }
                             } else {
-                                addNotifyPromptsOnce(labels, ns, contextIssue);
+                                addNotifyPromptsOnce(labels, ns, contextIssue, varMap);
                             }
                         }
                     }
                     
                     for (FieldAction fa : step.getFieldActions().values()) {
                         if (fa.getMode() == FieldAction.MappingMode.PROMPT) {
-                            addDynamicPrompt(labels, fa.getPromptLabel(), fa.getValue() != null ? fa.getValue().toString() : null, fa.getFieldId(), contextIssue);
+                            addDynamicPrompt(labels, fa.getPromptLabel(), fa.getValue() != null ? fa.getValue().toString() : null, fa.getFieldId(), contextIssue, varMap);
                         }
                     }
                 }
             }
+
+            if (promptFields.isEmpty()) {
+                Label emptyLabel = new Label("No runtime prompts or variables required for this recipe.");
+                emptyLabel.setStyle("-fx-text-fill: -fx-text-base-color; -fx-opacity: 0.7; -fx-font-style: italic;");
+                runnerInputsPanel.add(emptyLabel, 0, 0, 2, 1);
+            }
         } catch (Exception e) {
             e.printStackTrace();
+        } finally {
+            isUpdatingRunnerInputs = false;
         }
     }
 
@@ -984,24 +1203,31 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
         
         Label labelNode = new Label(cleanLabel + ":");
         labelNode.setAlignment(Pos.CENTER_RIGHT);
+        labelNode.getStyleClass().add("prompt-label");
+        labelNode.setStyle("-fx-text-fill: -fx-text-base-color; -fx-font-weight: bold;");
+        
+        input.getStyleClass().add("prompt-input");
+        if (input instanceof AutocompleteTextField) {
+            ((AutocompleteTextField) input).getTextField().getStyleClass().add("prompt-input");
+        }
         
         runnerInputsPanel.add(labelNode, 0, rowCount);
         runnerInputsPanel.add(input, 1, rowCount);
         GridPane.setHgrow(input, Priority.ALWAYS);
     }
 
-    private void addDynamicPrompt(Set<String> labels, String label, String value, String fieldId, JSONObject contextIssue) {
+    private void addDynamicPrompt(Set<String> labels, String label, String value, String fieldId, JSONObject contextIssue, Map<String, String> variables) {
         if (label == null || label.trim().isEmpty()) return;
         String cleanLabel = label.replaceAll("\\[.*?\\]", "").trim();
         if (labels.contains(cleanLabel)) return;
 
-        Node input = createPromptInput(label, value, fieldId, contextIssue);
+        Node input = createPromptInput(label, value, fieldId, contextIssue, variables);
         
         addInputRow(label, input, labels);
         promptFields.put(cleanLabel, input);
     }
 
-    private void addWorklogPromptsForIssue(Set<String> labels, WorklogStep ws, String key, JSONObject issueContext) {
+    private void addWorklogPromptsForIssue(Set<String> labels, WorklogStep ws, String key, JSONObject issueContext, Map<String, String> variables) {
         String timeSpentLabel = "Time Spent (" + ws.getLabel() + ") for " + key;
         String commentLabel = "Comment (" + ws.getLabel() + ") for " + key;
         
@@ -1009,22 +1235,32 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
         tsField.setPrefWidth(200);
         UiUtils.setupExpandedView(tsField);
         if (ws.getTimeSpent() != null) {
-            tsField.setText(TokenEngine.replaceTokens(ws.getTimeSpent(), issueContext));
+            tsField.setText(TokenEngine.replaceTokens(ws.getTimeSpent(), issueContext, variables, true));
         }
+        tsField.textProperty().addListener((obs, oldV, newV) -> onRunnerVariableChanged());
         addInputRow(timeSpentLabel, tsField, labels);
         promptFields.put(timeSpentLabel, tsField);
+        if (ws.getTimeSpent() != null && ws.getTimeSpent().contains("{{")) {
+            registerDynamicPromptBinding(tsField, ws.getTimeSpent(), issueContext, tsField.getText());
+        }
         
         TextArea commentArea = new TextArea();
         commentArea.setPrefRowCount(3);
         commentArea.setWrapText(true);
+        UiUtils.setupExpandedView(commentArea);
         if (ws.getComment() != null) {
-            commentArea.setText(TokenEngine.replaceTokens(ws.getComment(), issueContext));
+            String initialComment = TokenEngine.replaceTokens(ws.getComment(), issueContext, variables, true);
+            commentArea.setText(initialComment != null ? initialComment.replace("\\n", "\n").replace("\\r", "\r") : "");
         }
+        commentArea.textProperty().addListener((obs, oldV, newV) -> onRunnerVariableChanged());
         addInputRow(commentLabel, commentArea, labels);
         promptFields.put(commentLabel, commentArea);
+        if (ws.getComment() != null && ws.getComment().contains("{{")) {
+            registerDynamicPromptBinding(commentArea, ws.getComment(), issueContext, commentArea.getText());
+        }
     }
 
-    private void addWorklogPromptsOnce(Set<String> labels, WorklogStep ws, JSONObject contextIssue) {
+    private void addWorklogPromptsOnce(Set<String> labels, WorklogStep ws, JSONObject contextIssue, Map<String, String> variables) {
         String timeSpentLabel = "Time Spent (" + ws.getLabel() + ")";
         String commentLabel = "Comment (" + ws.getLabel() + ")";
         
@@ -1033,25 +1269,36 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
         UiUtils.setupExpandedView(tsField);
         if (ws.getTimeSpent() != null) {
             String defTs = ws.getTimeSpent();
-            if (contextIssue != null) defTs = TokenEngine.replaceTokens(defTs, contextIssue);
+            if (contextIssue != null) defTs = TokenEngine.replaceTokens(defTs, contextIssue, variables, true);
+            else if (defTs.contains("{{")) defTs = TokenEngine.replaceTokens(defTs, (JSONObject) null, variables, true);
             tsField.setText(defTs);
         }
+        tsField.textProperty().addListener((obs, oldV, newV) -> onRunnerVariableChanged());
         addInputRow(timeSpentLabel, tsField, labels);
         promptFields.put(timeSpentLabel, tsField);
+        if (ws.getTimeSpent() != null && ws.getTimeSpent().contains("{{")) {
+            registerDynamicPromptBinding(tsField, ws.getTimeSpent(), contextIssue, tsField.getText());
+        }
         
         TextArea commentArea = new TextArea();
         commentArea.setPrefRowCount(3);
         commentArea.setWrapText(true);
+        UiUtils.setupExpandedView(commentArea);
         if (ws.getComment() != null) {
             String defComment = ws.getComment();
-            if (contextIssue != null) defComment = TokenEngine.replaceTokens(defComment, contextIssue);
-            commentArea.setText(defComment);
+            if (contextIssue != null) defComment = TokenEngine.replaceTokens(defComment, contextIssue, variables, true);
+            else if (defComment.contains("{{")) defComment = TokenEngine.replaceTokens(defComment, (JSONObject) null, variables, true);
+            commentArea.setText(defComment != null ? defComment.replace("\\n", "\n").replace("\\r", "\r") : "");
         }
+        commentArea.textProperty().addListener((obs, oldV, newV) -> onRunnerVariableChanged());
         addInputRow(commentLabel, commentArea, labels);
         promptFields.put(commentLabel, commentArea);
+        if (ws.getComment() != null && ws.getComment().contains("{{")) {
+            registerDynamicPromptBinding(commentArea, ws.getComment(), contextIssue, commentArea.getText());
+        }
     }
 
-    private void addNotifyPromptsForIssue(Set<String> labels, NotifyStep ns, String key, JSONObject issueContext) {
+    private void addNotifyPromptsForIssue(Set<String> labels, NotifyStep ns, String key, JSONObject issueContext, Map<String, String> variables) {
         String subLabel = "Subject (" + ns.getLabel() + ") for " + key;
         String bodyLabel = "Body (" + ns.getLabel() + ") for " + key;
         String usersLabel = "To Users (" + ns.getLabel() + ") for " + key;
@@ -1070,21 +1317,31 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
             subField.setPrefWidth(200);
             UiUtils.setupExpandedView(subField);
             if (ns.getSubject() != null) {
-                subField.setText(TokenEngine.replaceTokens(ns.getSubject(), issueContext));
+                subField.setText(TokenEngine.replaceTokens(ns.getSubject(), issueContext, variables, true));
             }
+            subField.textProperty().addListener((obs, oldV, newV) -> onRunnerVariableChanged());
             addInputRow(subLabel, subField, labels);
             promptFields.put(subLabel, subField);
+            if (ns.getSubject() != null && ns.getSubject().contains("{{")) {
+                registerDynamicPromptBinding(subField, ns.getSubject(), issueContext, subField.getText());
+            }
         }
 
         if (b) {
             TextArea bodyArea = new TextArea();
             bodyArea.setPrefRowCount(3);
             bodyArea.setWrapText(true);
+            UiUtils.setupExpandedView(bodyArea);
             if (ns.getTextBody() != null) {
-                bodyArea.setText(TokenEngine.replaceTokens(ns.getTextBody(), issueContext));
+                String bodyText = TokenEngine.replaceTokens(ns.getTextBody(), issueContext, variables, true);
+                bodyArea.setText(bodyText != null ? bodyText.replace("\\n", "\n").replace("\\r", "\r") : "");
             }
+            bodyArea.textProperty().addListener((obs, oldV, newV) -> onRunnerVariableChanged());
             addInputRow(bodyLabel, bodyArea, labels);
             promptFields.put(bodyLabel, bodyArea);
+            if (ns.getTextBody() != null && ns.getTextBody().contains("{{")) {
+                registerDynamicPromptBinding(bodyArea, ns.getTextBody(), issueContext, bodyArea.getText());
+            }
         }
 
         if (u) {
@@ -1094,10 +1351,14 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
             usersField.setPrefWidth(200);
             UiUtils.setupExpandedView(usersField);
             if (ns.getToUsers() != null) {
-                usersField.setText(TokenEngine.replaceTokens(ns.getToUsers(), issueContext));
+                usersField.setText(TokenEngine.replaceTokens(ns.getToUsers(), issueContext, variables, true));
             }
+            usersField.textProperty().addListener((obs, oldV, newV) -> onRunnerVariableChanged());
             addInputRow(usersLabel, usersField, labels);
             promptFields.put(usersLabel, usersField);
+            if (ns.getToUsers() != null && ns.getToUsers().contains("{{")) {
+                registerDynamicPromptBinding(usersField, ns.getToUsers(), issueContext, usersField.getText());
+            }
         }
 
         if (g) {
@@ -1105,14 +1366,18 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
             groupsField.setPrefWidth(200);
             UiUtils.setupExpandedView(groupsField);
             if (ns.getToGroups() != null) {
-                groupsField.setText(TokenEngine.replaceTokens(ns.getToGroups(), issueContext));
+                groupsField.setText(TokenEngine.replaceTokens(ns.getToGroups(), issueContext, variables, true));
             }
+            groupsField.textProperty().addListener((obs, oldV, newV) -> onRunnerVariableChanged());
             addInputRow(groupsLabel, groupsField, labels);
             promptFields.put(groupsLabel, groupsField);
+            if (ns.getToGroups() != null && ns.getToGroups().contains("{{")) {
+                registerDynamicPromptBinding(groupsField, ns.getToGroups(), issueContext, groupsField.getText());
+            }
         }
     }
 
-    private void addNotifyPromptsOnce(Set<String> labels, NotifyStep ns, JSONObject contextIssue) {
+    private void addNotifyPromptsOnce(Set<String> labels, NotifyStep ns, JSONObject contextIssue, Map<String, String> variables) {
         String subLabel = "Subject (" + ns.getLabel() + ")";
         String bodyLabel = "Body (" + ns.getLabel() + ")";
         String usersLabel = "To Users (" + ns.getLabel() + ")";
@@ -1132,24 +1397,35 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
             UiUtils.setupExpandedView(subField);
             if (ns.getSubject() != null) {
                 String def = ns.getSubject();
-                if (contextIssue != null) def = TokenEngine.replaceTokens(def, contextIssue);
+                if (contextIssue != null) def = TokenEngine.replaceTokens(def, contextIssue, variables, true);
+                else if (def.contains("{{")) def = TokenEngine.replaceTokens(def, (JSONObject) null, variables, true);
                 subField.setText(def);
             }
+            subField.textProperty().addListener((obs, oldV, newV) -> onRunnerVariableChanged());
             addInputRow(subLabel, subField, labels);
             promptFields.put(subLabel, subField);
+            if (ns.getSubject() != null && ns.getSubject().contains("{{")) {
+                registerDynamicPromptBinding(subField, ns.getSubject(), contextIssue, subField.getText());
+            }
         }
 
         if (b) {
             TextArea bodyArea = new TextArea();
             bodyArea.setPrefRowCount(3);
             bodyArea.setWrapText(true);
+            UiUtils.setupExpandedView(bodyArea);
             if (ns.getTextBody() != null) {
                 String def = ns.getTextBody();
-                if (contextIssue != null) def = TokenEngine.replaceTokens(def, contextIssue);
-                bodyArea.setText(def);
+                if (contextIssue != null) def = TokenEngine.replaceTokens(def, contextIssue, variables, true);
+                else if (def.contains("{{")) def = TokenEngine.replaceTokens(def, (JSONObject) null, variables, true);
+                bodyArea.setText(def != null ? def.replace("\\n", "\n").replace("\\r", "\r") : "");
             }
+            bodyArea.textProperty().addListener((obs, oldV, newV) -> onRunnerVariableChanged());
             addInputRow(bodyLabel, bodyArea, labels);
             promptFields.put(bodyLabel, bodyArea);
+            if (ns.getTextBody() != null && ns.getTextBody().contains("{{")) {
+                registerDynamicPromptBinding(bodyArea, ns.getTextBody(), contextIssue, bodyArea.getText());
+            }
         }
 
         if (u) {
@@ -1160,11 +1436,16 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
             UiUtils.setupExpandedView(usersField);
             if (ns.getToUsers() != null) {
                 String def = ns.getToUsers();
-                if (contextIssue != null) def = TokenEngine.replaceTokens(def, contextIssue);
+                if (contextIssue != null) def = TokenEngine.replaceTokens(def, contextIssue, variables, true);
+                else if (def.contains("{{")) def = TokenEngine.replaceTokens(def, (JSONObject) null, variables, true);
                 usersField.setText(def);
             }
+            usersField.textProperty().addListener((obs, oldV, newV) -> onRunnerVariableChanged());
             addInputRow(usersLabel, usersField, labels);
             promptFields.put(usersLabel, usersField);
+            if (ns.getToUsers() != null && ns.getToUsers().contains("{{")) {
+                registerDynamicPromptBinding(usersField, ns.getToUsers(), contextIssue, usersField.getText());
+            }
         }
 
         if (g) {
@@ -1173,11 +1454,16 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
             UiUtils.setupExpandedView(groupsField);
             if (ns.getToGroups() != null) {
                 String def = ns.getToGroups();
-                if (contextIssue != null) def = TokenEngine.replaceTokens(def, contextIssue);
+                if (contextIssue != null) def = TokenEngine.replaceTokens(def, contextIssue, variables, true);
+                else if (def.contains("{{")) def = TokenEngine.replaceTokens(def, (JSONObject) null, variables, true);
                 groupsField.setText(def);
             }
+            groupsField.textProperty().addListener((obs, oldV, newV) -> onRunnerVariableChanged());
             addInputRow(groupsLabel, groupsField, labels);
             promptFields.put(groupsLabel, groupsField);
+            if (ns.getToGroups() != null && ns.getToGroups().contains("{{")) {
+                registerDynamicPromptBinding(groupsField, ns.getToGroups(), contextIssue, groupsField.getText());
+            }
         }
     }
 
@@ -1211,7 +1497,7 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
         return cachedFullMeta.get(fieldId);
     }
 
-    private Node createPromptInput(String label, String staticOptions, String fieldId, JSONObject contextIssue) {
+    private Node createPromptInput(String label, String staticOptions, String fieldId, JSONObject contextIssue, Map<String, String> variables) {
         Node result = null;
         String effectiveFieldId = fieldId;
 
@@ -1258,7 +1544,7 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
             }
         }
 
-        List<String> customOpts = resolveAndSplitOptions(staticOptions, contextIssue);
+        List<String> customOpts = resolveAndSplitOptions(staticOptions, contextIssue, variables);
         if (customOpts.size() > 1) {
             if (isArray) {
                 ListView<String> list = new ListView<>();
@@ -1290,8 +1576,8 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
                 atf.setAutocompleteEnabled(true);
                 UiUtils.setupExpandedView(atf.getTextField());
                 String resolvedValue = staticOptions;
-                if (contextIssue != null && staticOptions != null && staticOptions.contains("{{")) {
-                    resolvedValue = TokenEngine.replaceTokens(staticOptions, contextIssue);
+                if (staticOptions != null && staticOptions.contains("{{")) {
+                    resolvedValue = TokenEngine.replaceTokens(staticOptions, contextIssue, variables, true);
                 }
                 if (resolvedValue != null) atf.setText(resolvedValue);
                 result = atf;
@@ -1373,7 +1659,9 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
                         if (end > start) {
                             String tokenExpr = tagSource.substring(start, end);
                             String resolved = tokenExpr;
-                            if (contextIssue != null) resolved = TokenEngine.replaceTokens(tokenExpr, contextIssue);
+                            if (tokenExpr.contains("{{")) {
+                                resolved = TokenEngine.replaceTokens(tokenExpr, contextIssue, variables, true);
+                            }
                             result = new PromptChoicePanel(tokenExpr, resolved);
                         }
                     }
@@ -1399,31 +1687,36 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
                                 combo.getItems().addAll(options);
                                 combo.setPrefWidth(200);
                                 if (!options.isEmpty()) combo.getSelectionModel().select(0);
+                                combo.getSelectionModel().selectedItemProperty().addListener((obs, oldV, newV) -> onRunnerVariableChanged());
                                 result = combo;
                             } else if (key.equals("fy_summary")) {
                                 ComboBox<String> combo = new ComboBox<>();
                                 combo.getItems().add(mainFrame.getJiraConfig().getWorkflowFySummaryIssue());
                                 combo.getSelectionModel().select(0);
                                 combo.setPrefWidth(200);
+                                combo.getSelectionModel().selectedItemProperty().addListener((obs, oldV, newV) -> onRunnerVariableChanged());
                                 result = combo;
                             } else {
                                 String val = mainFrame.getJiraConfig().getProperty(key);
                                 if (val != null) {
                                     if (val.contains(",")) {
                                         String[] opts = smartSplit(val);
-                                        if (contextIssue != null) {
-                                            for (int i = 0; i < opts.length; i++) {
-                                                opts[i] = TokenEngine.replaceTokens(opts[i], contextIssue);
+                                        for (int i = 0; i < opts.length; i++) {
+                                            if (opts[i].contains("{{")) {
+                                                opts[i] = TokenEngine.replaceTokens(opts[i], contextIssue, variables, true);
                                             }
                                         }
                                         ComboBox<String> combo = new ComboBox<>();
                                         combo.getItems().addAll(opts);
                                         combo.getSelectionModel().select(0);
                                         combo.setPrefWidth(200);
+                                        combo.getSelectionModel().selectedItemProperty().addListener((obs, oldV, newV) -> onRunnerVariableChanged());
                                         result = combo;
                                     } else {
                                         String resolved = val;
-                                        if (contextIssue != null) resolved = TokenEngine.replaceTokens(val, contextIssue);
+                                        if (val.contains("{{")) {
+                                            resolved = TokenEngine.replaceTokens(val, contextIssue, variables, true);
+                                        }
                                         TextField tf = new TextField(resolved);
                                         tf.setPrefWidth(200);
                                         UiUtils.setupExpandedView(tf);
@@ -1439,12 +1732,10 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
             }
         }
         
-        
-        
         if (result == null) {
             String resolvedValue = staticOptions;
-            if (contextIssue != null && staticOptions != null && staticOptions.contains("{{")) {
-                resolvedValue = TokenEngine.replaceTokens(staticOptions, contextIssue);
+            if (staticOptions != null && staticOptions.contains("{{")) {
+                resolvedValue = TokenEngine.replaceTokens(staticOptions, contextIssue, variables, true);
             }
             
             boolean isUser = isUserField(effectiveFieldId, contextIssue);
@@ -1517,6 +1808,7 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
         } else if (effectiveFieldId != null) {
             debug.append("Not found in metadata cache.");
         }
+        debug.append("\n(Double-click to expand)");
         
         Tooltip tooltip = new Tooltip(debug.toString());
         if (result instanceof Control) {
@@ -1526,10 +1818,41 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
             ((AutocompleteTextField) result).getTextField().setTooltip(tooltip);
         }
 
+        if (result != null) {
+            String templateToBind = null;
+            if (staticOptions != null && staticOptions.contains("{{")) {
+                templateToBind = staticOptions;
+            } else if (result instanceof PromptChoicePanel) {
+                templateToBind = ((PromptChoicePanel) result).getTokenName();
+            }
+            if (templateToBind != null && templateToBind.contains("{{")) {
+                String initVal = null;
+                if (result instanceof TextField) initVal = ((TextField) result).getText();
+                else if (result instanceof TextArea) initVal = ((TextArea) result).getText();
+                else if (result instanceof AutocompleteTextField) initVal = ((AutocompleteTextField) result).getText();
+                else if (result instanceof PromptChoicePanel) initVal = ((PromptChoicePanel) result).getTokenValue();
+                else if (result instanceof ComboBox) {
+                    Object sel = ((ComboBox<?>) result).getSelectionModel().getSelectedItem();
+                    initVal = sel != null ? sel.toString() : "";
+                }
+                registerDynamicPromptBinding(result, templateToBind, contextIssue, initVal);
+            }
+
+            if (result instanceof TextField) {
+                ((TextField) result).textProperty().addListener((obs, oldV, newV) -> onRunnerVariableChanged());
+            } else if (result instanceof TextArea) {
+                ((TextArea) result).textProperty().addListener((obs, oldV, newV) -> onRunnerVariableChanged());
+            } else if (result instanceof AutocompleteTextField) {
+                ((AutocompleteTextField) result).getTextField().textProperty().addListener((obs, oldV, newV) -> onRunnerVariableChanged());
+            } else if (result instanceof ComboBox) {
+                ((ComboBox<?>) result).getSelectionModel().selectedItemProperty().addListener((obs, oldV, newV) -> onRunnerVariableChanged());
+            }
+        }
+
         return result;
     }
 
-    private String[] smartSplit(String input) {
+    private static String[] smartSplit(String input) {
         List<String> result = new ArrayList<>();
         StringBuilder current = new StringBuilder();
         int braceDepth = 0;
@@ -1554,36 +1877,38 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
         return result.toArray(new String[0]);
     }
 
-    private void addCreateStepPrompts(Set<String> labels, CreateStep cs, JSONObject contextIssue) {
+    private void addCreateStepPrompts(Set<String> labels, CreateStep cs, JSONObject contextIssue, Map<String, String> variables) {
         String projVal = cs.getProjectKey();
-        List<String> projOpts = resolveAndSplitOptions(projVal, contextIssue);
+        List<String> projOpts = resolveAndSplitOptions(projVal, contextIssue, variables);
         if (projOpts.size() > 1) {
-            addDynamicPrompt(labels, "Project (" + cs.getLabel() + ")", projVal, "project", contextIssue);
+            addDynamicPrompt(labels, "Project (" + cs.getLabel() + ")", projVal, "project", contextIssue, variables);
         }
         
         String typeVal = cs.getIssueType();
-        List<String> typeOpts = resolveAndSplitOptions(typeVal, contextIssue);
+        List<String> typeOpts = resolveAndSplitOptions(typeVal, contextIssue, variables);
         if (typeOpts.size() > 1) {
-            addDynamicPrompt(labels, "Issue Type (" + cs.getLabel() + ")", typeVal, "issuetype", contextIssue);
+            addDynamicPrompt(labels, "Issue Type (" + cs.getLabel() + ")", typeVal, "issuetype", contextIssue, variables);
         }
 
         String parentVal = cs.getParentIssueKey();
         if (parentVal != null) {
-            List<String> parentOpts = resolveAndSplitOptions(parentVal, contextIssue);
+            List<String> parentOpts = resolveAndSplitOptions(parentVal, contextIssue, variables);
             if (parentOpts.size() > 1) {
-                addDynamicPrompt(labels, "Parent Issue (" + cs.getLabel() + ")", parentVal, "parent", contextIssue);
+                addDynamicPrompt(labels, "Parent Issue (" + cs.getLabel() + ")", parentVal, "parent", contextIssue, variables);
             }
         }
     }
 
-    private List<String> resolveAndSplitOptions(String staticOptions, JSONObject contextIssue) {
+    private static List<String> resolveAndSplitOptions(String staticOptions, JSONObject contextIssue, Map<String, String> variables) {
         if (staticOptions == null || staticOptions.trim().isEmpty()) {
             return Collections.emptyList();
         }
         
         String resolved = staticOptions;
         if (contextIssue != null && staticOptions.contains("{{")) {
-            resolved = TokenEngine.replaceTokens(staticOptions, contextIssue);
+            resolved = TokenEngine.replaceTokens(staticOptions, contextIssue, variables, true);
+        } else if (staticOptions.contains("{{")) {
+            resolved = TokenEngine.replaceTokens(staticOptions, (JSONObject) null, variables, true);
         }
         
         String[] parts = smartSplit(resolved);
@@ -1607,23 +1932,27 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
         private final RadioButton tokenRadio;
         private final RadioButton manualRadio;
         private final TextField manualField;
-        private final String tokenValue;
+        private final String tokenName;
+        private String tokenValue;
 
         PromptChoicePanel(String tokenName, String resolvedValue) {
             setSpacing(10);
             setAlignment(Pos.CENTER_LEFT);
-            this.tokenValue = resolvedValue;
+            this.tokenName = tokenName;
+            this.tokenValue = resolvedValue != null ? resolvedValue : "";
             
-            String displayText = resolvedValue;
-            if (resolvedValue.equals(tokenName)) {
+            String displayText = this.tokenValue;
+            if (this.tokenValue.equals(tokenName)) {
                 displayText = tokenName;
             } else {
-                displayText = resolvedValue + " (" + tokenName + ")";
+                displayText = this.tokenValue + " (" + tokenName + ")";
             }
             
             tokenRadio = new RadioButton(displayText);
             tokenRadio.setSelected(true);
+            tokenRadio.setStyle("-fx-text-fill: -fx-text-base-color;");
             manualRadio = new RadioButton("Manual:");
+            manualRadio.setStyle("-fx-text-fill: -fx-text-base-color;");
             manualField = new TextField();
             manualField.setPrefWidth(150);
             manualField.setDisable(true);
@@ -1643,6 +1972,29 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
             });
         }
 
+        public void setResolvedValue(String newResolvedValue) {
+            this.tokenValue = newResolvedValue != null ? newResolvedValue : "";
+            String displayText = this.tokenValue;
+            if (this.tokenValue.equals(tokenName)) {
+                displayText = tokenName;
+            } else {
+                displayText = this.tokenValue + " (" + tokenName + ")";
+            }
+            tokenRadio.setText(displayText);
+        }
+
+        public String getTokenName() {
+            return tokenName;
+        }
+
+        public String getTokenValue() {
+            return tokenValue;
+        }
+
+        public boolean isManualSelected() {
+            return manualRadio.isSelected();
+        }
+
         public String getValue() {
             return tokenRadio.isSelected() ? tokenValue : manualField.getText();
         }
@@ -1656,17 +2008,22 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
             setAlignment(Pos.CENTER_LEFT);
             att = new CheckBox("Attachments");
             att.setSelected(a);
+            att.setStyle("-fx-text-fill: -fx-text-base-color;");
             links = new CheckBox("Links");
             links.setSelected(l);
+            links.setStyle("-fx-text-fill: -fx-text-base-color;");
             sub = new CheckBox("Sub-tasks");
             sub.setSelected(s);
+            sub.setStyle("-fx-text-fill: -fx-text-base-color;");
             
             fieldsField = new TextField(defaultFields != null ? defaultFields : "");
             fieldsField.setPrefWidth(150);
             fieldsField.setDisable(!s);
             sub.setOnAction(e -> fieldsField.setDisable(!sub.isSelected()));
             
-            getChildren().addAll(att, links, sub, new Label("Fields:"), fieldsField);
+            Label fieldsLabel = new Label("Fields:");
+            fieldsLabel.setStyle("-fx-text-fill: -fx-text-base-color;");
+            getChildren().addAll(att, links, sub, fieldsLabel, fieldsField);
         }
         public String getValue() {
             String fieldsText = fieldsField.getText().trim();
@@ -1719,9 +2076,124 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
             
             getChildren().addAll(pathField, browseBtn);
         }
+
+        public void setPath(String path) {
+            pathField.setText(path != null ? path : "");
+        }
         
         public String getValue() {
             return pathField.getText();
+        }
+    }
+
+    private static class DynamicPromptBinding {
+        final Node control;
+        String rawTemplate;
+        String lastEvaluatedValue;
+        final JSONObject contextIssue;
+
+        DynamicPromptBinding(Node control, String rawTemplate, String initialEvaluatedValue, JSONObject contextIssue) {
+            this.control = control;
+            this.rawTemplate = rawTemplate;
+            this.lastEvaluatedValue = initialEvaluatedValue != null ? initialEvaluatedValue : "";
+            this.contextIssue = contextIssue;
+        }
+
+        boolean updateValue(Map<String, String> currentVariables) {
+            if (rawTemplate == null || !rawTemplate.contains("{{")) return false;
+
+            if (control instanceof PromptChoicePanel) {
+                PromptChoicePanel pcp = (PromptChoicePanel) control;
+                if (pcp.isManualSelected()) {
+                    return false;
+                }
+                String newEvaluatedValue = TokenEngine.replaceTokens(rawTemplate, contextIssue, currentVariables, true);
+                if (newEvaluatedValue == null) newEvaluatedValue = "";
+                if (!newEvaluatedValue.equals(pcp.getTokenValue())) {
+                    pcp.setResolvedValue(newEvaluatedValue);
+                    this.lastEvaluatedValue = newEvaluatedValue;
+                    return true;
+                }
+                return false;
+            }
+
+            String currentControlText = getControlText();
+
+            // If user typed a token directly into the field, adopt it as the new template
+            if (currentControlText != null && currentControlText.contains("{{") && !currentControlText.equals(rawTemplate)) {
+                rawTemplate = currentControlText;
+            }
+
+            // Check if user has unmodified text (still matching lastEvaluatedValue or blank)
+            boolean shouldUpdate = false;
+            if (currentControlText == null || currentControlText.isEmpty()) {
+                shouldUpdate = true;
+            } else if (lastEvaluatedValue == null || lastEvaluatedValue.isEmpty()) {
+                shouldUpdate = true;
+            } else if (currentControlText.equals(lastEvaluatedValue) || currentControlText.trim().equals(lastEvaluatedValue.trim())) {
+                shouldUpdate = true;
+            }
+
+            if (shouldUpdate) {
+                if (control instanceof ComboBox) {
+                    @SuppressWarnings("unchecked")
+                    ComboBox<String> cb = (ComboBox<String>) control;
+                    String selected = cb.getSelectionModel().getSelectedItem();
+                    List<String> newOpts = resolveAndSplitOptions(rawTemplate, contextIssue, currentVariables);
+                    if (!newOpts.isEmpty() && !newOpts.equals(cb.getItems())) {
+                        cb.getItems().setAll(newOpts);
+                        if (selected != null && newOpts.contains(selected)) {
+                            cb.getSelectionModel().select(selected);
+                        } else {
+                            cb.getSelectionModel().select(0);
+                        }
+                        return true;
+                    }
+                    return false;
+                }
+
+                String newEvaluatedValue = TokenEngine.replaceTokens(rawTemplate, contextIssue, currentVariables, true);
+                if (newEvaluatedValue == null) newEvaluatedValue = "";
+
+                if (!newEvaluatedValue.equals(currentControlText)) {
+                    setControlText(newEvaluatedValue);
+                    this.lastEvaluatedValue = newEvaluatedValue;
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private String getControlText() {
+            if (control instanceof TextField) {
+                return ((TextField) control).getText();
+            } else if (control instanceof TextArea) {
+                return ((TextArea) control).getText();
+            } else if (control instanceof AutocompleteTextField) {
+                return ((AutocompleteTextField) control).getText();
+            } else if (control instanceof FilePromptPanel) {
+                return ((FilePromptPanel) control).getValue();
+            } else if (control instanceof PromptChoicePanel) {
+                return ((PromptChoicePanel) control).getValue();
+            } else if (control instanceof ComboBox) {
+                Object sel = ((ComboBox<?>) control).getSelectionModel().getSelectedItem();
+                return sel != null ? sel.toString() : null;
+            }
+            return null;
+        }
+
+        private void setControlText(String text) {
+            if (control instanceof TextField) {
+                ((TextField) control).setText(text);
+            } else if (control instanceof TextArea) {
+                ((TextArea) control).setText(text);
+            } else if (control instanceof AutocompleteTextField) {
+                ((AutocompleteTextField) control).setText(text);
+            } else if (control instanceof FilePromptPanel) {
+                ((FilePromptPanel) control).setPath(text);
+            } else if (control instanceof PromptChoicePanel) {
+                ((PromptChoicePanel) control).setResolvedValue(text);
+            }
         }
     }
 
@@ -2153,9 +2625,17 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
 
             if (recipe != null) {
                 recipeNameField.setText(recipe.getRecipeName());
-                jqlField.setText(recipe.getJqlQuery());
+                jqlField.setText(recipe.getTargetIssues() != null ? recipe.getTargetIssues() : "");
                 stepsContainer.getChildren().clear();
-                
+                variablesContainer.getChildren().clear();
+
+                if (recipe.getVariables() != null) {
+                    for (RecipeVariable var : recipe.getVariables()) {
+                        addVariableUI(var);
+                    }
+                }
+                updateVariablesPaneTitle();
+
                 if (recipe.getMetadataSnapshot() != null) {
                     JSONObject snap = recipe.getMetadataSnapshot();
                     for (String key : snap.keySet()) {
@@ -2174,6 +2654,15 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
     }
 
     private void refreshRecipeList() {
+        refreshRecipeList(null);
+    }
+
+    private void refreshRecipeList(String preferredSelection) {
+        String currentRunnerSel = runnerRecipeCombo.getSelectionModel().getSelectedItem();
+        String currentDesignerSel = recipeList.getSelectionModel().getSelectedItem();
+        String targetSel = preferredSelection != null ? preferredSelection 
+                : (currentRunnerSel != null ? currentRunnerSel : currentDesignerSel);
+
         Set<String> names = new TreeSet<>(workflowManager.listWorkflows());
         String[] configRecipes = mainFrame.getJiraConfig().getWorkflowRecipeKeys();
         if (configRecipes != null) {
@@ -2186,8 +2675,13 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
             recipeList.getItems().add(name);
             runnerRecipeCombo.getItems().add(name);
         }
-        if (!names.isEmpty()) {
+        if (targetSel != null && runnerRecipeCombo.getItems().contains(targetSel)) {
+            runnerRecipeCombo.getSelectionModel().select(targetSel);
+        } else if (!names.isEmpty()) {
             runnerRecipeCombo.getSelectionModel().select(0);
+        }
+        if (targetSel != null && recipeList.getItems().contains(targetSel)) {
+            recipeList.getSelectionModel().select(targetSel);
         }
         updateRunnerInputs();
     }
@@ -2197,7 +2691,17 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
         if (name.isEmpty()) return;
         WorkflowRecipe recipe = new WorkflowRecipe();
         recipe.setRecipeName(name);
-        recipe.setJqlQuery(jqlField.getText());
+        recipe.setTargetIssues(jqlField.getText());
+
+        for (Node c : variablesContainer.getChildren()) {
+            if (c instanceof RecipeVariablePanel) {
+                RecipeVariable var = ((RecipeVariablePanel) c).saveToVariable();
+                if (var != null && var.getName() != null && !var.getName().trim().isEmpty()) {
+                    recipe.addVariable(var);
+                }
+            }
+        }
+
         for (Node c : stepsContainer.getChildren()) {
             if (c instanceof StepEditorPanel) {
                 ((StepEditorPanel) c).saveToStep();
@@ -2207,7 +2711,7 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
 
         try {
             workflowManager.saveWorkflow(recipe);
-            refreshRecipeList();
+            refreshRecipeList(name);
             showAlert(Alert.AlertType.INFORMATION, "Saved", "Recipe saved!");
         } catch (IOException e) {
             showAlert(Alert.AlertType.ERROR, "Save Error", "Error saving: " + e.getMessage());
@@ -2218,7 +2722,33 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
         recipeNameField.setText("");
         jqlField.setText("");
         stepsContainer.getChildren().clear();
+        variablesContainer.getChildren().clear();
+        updateVariablesPaneTitle();
         recipeList.getSelectionModel().clearSelection();
+    }
+
+    private void addVariableUI(RecipeVariable var) {
+        RecipeVariablePanel panel = new RecipeVariablePanel(var, new RecipeVariablePanel.RecipeVariableListener() {
+            @Override
+            public void onRemove(RecipeVariablePanel p) {
+                variablesContainer.getChildren().remove(p);
+                updateVariablesPaneTitle();
+                updateTokensFromCache();
+            }
+
+            @Override
+            public void onChange(RecipeVariablePanel p) {
+                updateTokensFromCache();
+            }
+        });
+        variablesContainer.getChildren().add(panel);
+        updateVariablesPaneTitle();
+        updateTokensFromCache();
+    }
+
+    private void updateVariablesPaneTitle() {
+        int count = variablesContainer.getChildren().size();
+        variablesPane.setText("Recipe Variables (" + count + ")");
     }
 
     private void setAllStepsCollapsed(boolean collapse) {
@@ -2247,7 +2777,19 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
         tokens.add("Smart Key Fallback ({{COALESCE(last.key, issue.key)}})"); tokens.add("Last Created/Mod ID ({{last.id}})");
         tokens.add("Selected Team Name ({{team.name}})"); tokens.add("Selected Team Lead ({{team.lead}})");
         tokens.add("Selected Team Component ({{team.component}})"); tokens.add("Selected Team ID ({{team.id}})");
-        
+
+        // Add custom recipe variables as tokens
+        for (Node c : variablesContainer.getChildren()) {
+            if (c instanceof RecipeVariablePanel) {
+                RecipeVariable var = ((RecipeVariablePanel) c).getVariable();
+                if (var != null && var.getName() != null && !var.getName().trim().isEmpty()) {
+                    String clean = var.getName().replace("{{", "").replace("}}", "").trim();
+                    String lbl = (var.getLabel() != null && !var.getLabel().trim().isEmpty()) ? var.getLabel() : "Custom Variable";
+                    tokens.add(lbl + " ({{" + clean + "}})");
+                }
+            }
+        }
+
         for (String key : cachedFullMeta.keySet()) {
             if (key.startsWith("linktype:")) { cachedLinkTypes.add(key.substring(9)); continue; }
             if (key.startsWith("trans:") || key.startsWith("createmeta:") || key.startsWith("editmeta:") ||
