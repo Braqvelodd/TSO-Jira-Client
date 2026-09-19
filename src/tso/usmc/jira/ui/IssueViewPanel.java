@@ -965,10 +965,6 @@ public class IssueViewPanel extends BorderPane {
     }
 
     private void showError(String title, String content) {
-        Alert alert = new Alert(Alert.AlertType.ERROR);
-        alert.setTitle(title);
-        alert.setHeaderText(null);
-        alert.setContentText(content);
-        alert.showAndWait();
+        UiUtils.showAlert(mainFrame != null ? mainFrame.getPrimaryStage() : null, Alert.AlertType.ERROR, title, content);
     }
 }

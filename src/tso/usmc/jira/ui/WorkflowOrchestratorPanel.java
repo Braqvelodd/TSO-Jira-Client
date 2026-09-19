@@ -2234,6 +2234,7 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
         alert.setTitle("Rebuild Global Metadata Cache");
         alert.setHeaderText(null);
         alert.setContentText(msg + "\n\nContinue?");
+        UiUtils.configureWindowOwner(alert, mainFrame != null ? mainFrame.getPrimaryStage() : null);
         Optional<ButtonType> result = alert.showAndWait();
         
         if (!result.isPresent() || result.get() != ButtonType.OK) return;
@@ -2866,11 +2867,7 @@ public class WorkflowOrchestratorPanel extends BorderPane implements WorkflowPro
 
     private void showAlert(Alert.AlertType type, String title, String content) {
         Platform.runLater(() -> {
-            Alert alert = new Alert(type);
-            alert.setTitle(title);
-            alert.setHeaderText(null);
-            alert.setContentText(content);
-            alert.showAndWait();
+            UiUtils.showAlert(mainFrame != null ? mainFrame.getPrimaryStage() : null, type, title, content);
         });
     }
 }

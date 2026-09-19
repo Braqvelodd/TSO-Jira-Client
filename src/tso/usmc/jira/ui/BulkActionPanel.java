@@ -299,11 +299,7 @@ public class BulkActionPanel extends BorderPane {
     }
 
     private void showAlert(Alert.AlertType type, String title, String content) {
-        Alert alert = new Alert(type);
-        alert.setTitle(title);
-        alert.setHeaderText(null);
-        alert.setContentText(content);
-        alert.showAndWait();
+        UiUtils.showAlert(mainFrame != null ? mainFrame.getPrimaryStage() : null, type, title, content);
     }
 
     private void updatePromptText(String action) {

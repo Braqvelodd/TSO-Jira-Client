@@ -1,12 +1,84 @@
 package tso.usmc.jira.ui;
 
+import javafx.scene.Node;
 import javafx.scene.control.*;
 import javafx.scene.input.MouseButton;
 import javafx.scene.input.MouseEvent;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.Priority;
+import javafx.stage.Stage;
+import javafx.stage.Window;
+import java.util.Optional;
 
 public class UiUtils {
+    /**
+     * Configures a Dialog (or Alert) so that its owner is properly set to the
+     * application window, and it centers directly over the application window
+     * on whichever monitor the app is located on.
+     */
+    public static void configureWindowOwner(Dialog<?> dialog, Window preferredOwner) {
+        Window owner = preferredOwner;
+        if (owner == null) {
+            try {
+                if (tso.usmc.jira.app.JiraApiClientGui.getInstance() != null) {
+                    owner = tso.usmc.jira.app.JiraApiClientGui.getInstance().getPrimaryStage();
+                }
+            } catch (Exception ignored) {}
+        }
+        if (owner == null) {
+            try {
+                java.util.Iterator<Window> it = Window.impl_getWindows();
+                while (it.hasNext()) {
+                    Window w = it.next();
+                    if (w.isShowing()) {
+                        owner = w;
+                        break;
+                    }
+                }
+            } catch (Exception ignored) {}
+        }
+        if (owner != null) {
+            try {
+                dialog.initOwner(owner);
+            } catch (Exception ignored) {}
+            
+            final Window targetOwner = owner;
+            dialog.setOnShown(e -> {
+                try {
+                    if (targetOwner.isShowing()) {
+                        double x = targetOwner.getX() + (targetOwner.getWidth() - dialog.getWidth()) / 2.0;
+                        double y = targetOwner.getY() + (targetOwner.getHeight() - dialog.getHeight()) / 2.0;
+                        dialog.setX(x);
+                        dialog.setY(y);
+                    }
+                } catch (Exception ignored) {}
+            });
+        }
+    }
+
+    /**
+     * Displays an Alert centered directly over the specified owner window on multi-monitor setups.
+     */
+    public static Optional<ButtonType> showAlert(Window owner, Alert.AlertType type, String title, String content) {
+        Alert alert = new Alert(type);
+        alert.setTitle(title);
+        alert.setHeaderText(null);
+        alert.setContentText(content);
+        configureWindowOwner(alert, owner);
+        return alert.showAndWait();
+    }
+
+    /**
+     * Displays an Alert centered directly over the window containing the given node.
+     */
+    public static Optional<ButtonType> showAlert(Node sourceNode, Alert.AlertType type, String title, String content) {
+        Window owner = null;
+        if (sourceNode != null && sourceNode.getScene() != null) {
+            owner = sourceNode.getScene().getWindow();
+        }
+        return showAlert(owner, type, title, content);
+    }
+
     /**
      * Sets up a double-click listener and context menu on a TextInputControl (TextField or TextArea)
      * to show an expanded multi-line editor in a popup dialog.
@@ -57,7 +129,10 @@ public class UiUtils {
         dialog.setTitle("Expanded Input");
         dialog.setHeaderText(null);
         
-        if (field.getScene() != null && field.getScene().getStylesheets() != null) {
+        Window owner = (field != null && field.getScene() != null) ? field.getScene().getWindow() : null;
+        configureWindowOwner(dialog, owner);
+        
+        if (field != null && field.getScene() != null && field.getScene().getStylesheets() != null) {
             dialog.getDialogPane().getStylesheets().addAll(field.getScene().getStylesheets());
         }
         

@@ -35,7 +35,7 @@ public class JqlCustomFunctionsDialog extends Dialog<Void> {
         this.engine = engine;
 
         setTitle("Manage Custom JQL Functions");
-        initOwner(owner);
+        UiUtils.configureWindowOwner(this, owner);
 
         ButtonType closeButtonType = new ButtonType("Close", ButtonBar.ButtonData.CANCEL_CLOSE);
         getDialogPane().getButtonTypes().add(closeButtonType);
@@ -197,6 +197,7 @@ public class JqlCustomFunctionsDialog extends Dialog<Void> {
             ButtonType.YES, ButtonType.NO);
         confirm.setTitle("Confirm Deletion");
         confirm.setHeaderText(null);
+        UiUtils.configureWindowOwner(confirm, getDialogPane().getScene().getWindow());
         confirm.showAndWait().ifPresent(response -> {
             if (response == ButtonType.YES) {
                 engine.removeFunction(selectedFunction.getFunctionName());
@@ -207,10 +208,6 @@ public class JqlCustomFunctionsDialog extends Dialog<Void> {
     }
 
     private void showAlert(String title, String content) {
-        Alert alert = new Alert(Alert.AlertType.ERROR);
-        alert.setTitle(title);
-        alert.setHeaderText(null);
-        alert.setContentText(content);
-        alert.showAndWait();
+        UiUtils.showAlert(getDialogPane().getScene().getWindow(), Alert.AlertType.ERROR, title, content);
     }
 }

@@ -319,11 +319,7 @@ public class WorkflowPanel extends BorderPane implements tso.usmc.jira.util.Conf
 
         WorkflowIssueRow selectedRow = resultsTable.getSelectionModel().getSelectedItem();
         if (selectedRow == null) {
-            Alert alert = new Alert(Alert.AlertType.WARNING);
-            alert.setTitle("No Issue Selected");
-            alert.setHeaderText(null);
-            alert.setContentText("Please select an issue from the table to process.");
-            alert.showAndWait();
+            UiUtils.showAlert(mainFrame != null ? mainFrame.getPrimaryStage() : null, Alert.AlertType.WARNING, "No Issue Selected", "Please select an issue from the table to process.");
             return;
         }
 
@@ -337,11 +333,7 @@ public class WorkflowPanel extends BorderPane implements tso.usmc.jira.util.Conf
         final String manualDueDateValue = manualDueDateField.getText().trim();
 
         if (!useOriginalDueDate && manualDueDateValue.isEmpty()) {
-            Alert alert = new Alert(Alert.AlertType.WARNING);
-            alert.setTitle("Manual Due Date Missing");
-            alert.setHeaderText(null);
-            alert.setContentText("Please enter a manual due date or select 'Use Original Due Date'.");
-            alert.showAndWait();
+            UiUtils.showAlert(mainFrame != null ? mainFrame.getPrimaryStage() : null, Alert.AlertType.WARNING, "Manual Due Date Missing", "Please enter a manual due date or select 'Use Original Due Date'.");
             return;
         }
 

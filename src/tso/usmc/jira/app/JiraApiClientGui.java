@@ -304,11 +304,7 @@ public class JiraApiClientGui extends Application implements ConfigChangeListene
     }
 
     private void showError(String title, String content) {
-        Alert alert = new Alert(Alert.AlertType.ERROR);
-        alert.setTitle(title);
-        alert.setHeaderText(null);
-        alert.setContentText(content);
-        alert.showAndWait();
+        UiUtils.showAlert(primaryStage, Alert.AlertType.ERROR, title, content);
     }
 
     @Override

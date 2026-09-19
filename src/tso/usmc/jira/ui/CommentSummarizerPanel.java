@@ -166,11 +166,7 @@ public class CommentSummarizerPanel extends BorderPane {
     private void startSummarization() {
         String issueKey = issueKeyField.getText().trim().toUpperCase();
         if (issueKey.isEmpty()) {
-            Alert alert = new Alert(Alert.AlertType.WARNING);
-            alert.setTitle("Warning");
-            alert.setHeaderText(null);
-            alert.setContentText("Please enter an issue key.");
-            alert.showAndWait();
+            UiUtils.showAlert(mainFrame != null ? mainFrame.getPrimaryStage() : null, Alert.AlertType.WARNING, "Warning", "Please enter an issue key.");
             return;
         }
 

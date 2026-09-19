@@ -340,6 +340,7 @@ public class JqlRunnerPanel extends BorderPane implements tso.usmc.jira.util.Con
                                     ButtonType.YES, ButtonType.NO);
                                 alert.setTitle("Include Issue Keys");
                                 alert.setHeaderText(null);
+                                UiUtils.configureWindowOwner(alert, mainFrame != null ? mainFrame.getPrimaryStage() : null);
                                 java.util.Optional<ButtonType> result = alert.showAndWait();
                                 boolean includeKeys = result.isPresent() && result.get() == ButtonType.YES;
                                 buildReleaseMgmtWithCIs(keys, includeKeys);
@@ -997,11 +998,7 @@ public class JqlRunnerPanel extends BorderPane implements tso.usmc.jira.util.Con
     }
 
     private void showAlert(Alert.AlertType type, String title, String content) {
-        Alert alert = new Alert(type);
-        alert.setTitle(title);
-        alert.setHeaderText(null);
-        alert.setContentText(content);
-        alert.showAndWait();
+        UiUtils.showAlert(mainFrame != null ? mainFrame.getPrimaryStage() : null, type, title, content);
     }
 
     private void updateDragSelection(int currentRow, int currentCol) {
@@ -1160,6 +1157,7 @@ public class JqlRunnerPanel extends BorderPane implements tso.usmc.jira.util.Con
                                 ButtonType.YES, ButtonType.NO);
                             alert.setTitle("Include Issue Keys");
                             alert.setHeaderText(null);
+                            UiUtils.configureWindowOwner(alert, mainFrame != null ? mainFrame.getPrimaryStage() : null);
                             java.util.Optional<ButtonType> result = alert.showAndWait();
                             boolean includeKeys = result.isPresent() && result.get() == ButtonType.YES;
                             buildReleaseMgmtWithCIs(keys, includeKeys);

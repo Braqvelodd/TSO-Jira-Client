@@ -42,7 +42,7 @@ public class IspwColumnConfigDialog extends Dialog<Void> {
         this.config = config;
         
         setTitle("Configure ISPW Columns (Fixed Width)");
-        initOwner(owner);
+        UiUtils.configureWindowOwner(this, owner);
 
         // Header Instructions
         Label headerLabel = new Label("Instructions: Left-click on the preview to add/remove red split lines. " +
@@ -305,18 +305,10 @@ public class IspwColumnConfigDialog extends Dialog<Void> {
             
             config.saveProperties(props);
             
-            Alert alert = new Alert(Alert.AlertType.INFORMATION);
-            alert.setTitle("Success");
-            alert.setHeaderText(null);
-            alert.setContentText("Settings saved successfully and applied to the Reconciliation panel.");
-            alert.showAndWait();
+            UiUtils.showAlert(getDialogPane().getScene().getWindow(), Alert.AlertType.INFORMATION, "Success", "Settings saved successfully and applied to the Reconciliation panel.");
             return true;
         } catch (Exception ex) {
-            Alert alert = new Alert(Alert.AlertType.ERROR);
-            alert.setTitle("Error");
-            alert.setHeaderText(null);
-            alert.setContentText("Error saving settings: " + ex.getMessage());
-            alert.showAndWait();
+            UiUtils.showAlert(getDialogPane().getScene().getWindow(), Alert.AlertType.ERROR, "Error", "Error saving settings: " + ex.getMessage());
             return false;
         }
     }

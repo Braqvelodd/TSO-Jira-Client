@@ -645,6 +645,7 @@ public class ReconciliationPanel extends BorderPane {
                     alert.setTitle("Append or Overwrite");
                     alert.setHeaderText("Task Builder already has content.");
                     alert.setContentText("Do you want to append the new tasks?\n(Selecting 'No' will overwrite the existing content)");
+                    UiUtils.configureWindowOwner(alert, mainFrame != null ? mainFrame.getPrimaryStage() : null);
                     
                     ButtonType btnAppend = new ButtonType("Append", ButtonBar.ButtonData.YES);
                     ButtonType btnOverwrite = new ButtonType("Overwrite", ButtonBar.ButtonData.NO);
@@ -666,11 +667,7 @@ public class ReconciliationPanel extends BorderPane {
     }
 
     private void showAlert(Alert.AlertType type, String title, String content) {
-        Alert alert = new Alert(type);
-        alert.setTitle(title);
-        alert.setHeaderText(null);
-        alert.setContentText(content);
-        alert.showAndWait();
+        UiUtils.showAlert(mainFrame != null ? mainFrame.getPrimaryStage() : null, type, title, content);
     }
 
     private <T> void setupTableKeys(TableView<T> table) {
