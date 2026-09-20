@@ -9,16 +9,25 @@ import java.security.KeyStore;
 import java.security.Principal;
 import java.security.PrivateKey;
 import java.security.SecureRandom;
+import java.security.cert.Certificate;
 import java.security.cert.X509Certificate;
+import java.util.Enumeration;
+import java.util.List;
+import java.util.function.Consumer;
+import java.util.function.Supplier;
 import javax.net.ssl.*;
 import tso.usmc.jira.util.JiraApiException;
 import tso.usmc.jira.util.JiraConfig;
 
 public class JiraApiService {
     private final JiraConfig config;
-    private String currentAlias;
-    private SSLContext sslContext;
+    private volatile String currentAlias;
+    private volatile SSLContext sslContext;
     private boolean loggingEnabled = false;
+
+    private Supplier<String> aliasSupplier;
+    private Consumer<String> onAliasRefreshed;
+    private Consumer<String> statusListener;
 
     public JiraApiService(JiraConfig config, String selectedAlias) throws Exception {
         this.config = config;
@@ -26,27 +35,69 @@ public class JiraApiService {
         this.sslContext = createSslContext(selectedAlias);
     }
 
-    public void updateSslContext(String selectedAlias) throws Exception {
-        if ((selectedAlias == null && this.currentAlias != null) || 
-            (selectedAlias != null && !selectedAlias.equals(this.currentAlias))) {
+    public synchronized void updateSslContext(String selectedAlias) throws Exception {
+        updateSslContext(selectedAlias, false);
+    }
+
+    public synchronized void updateSslContext(String selectedAlias, boolean force) throws Exception {
+        if (force || (selectedAlias == null && this.currentAlias != null) || 
+            (selectedAlias != null && !selectedAlias.equals(this.currentAlias)) ||
+            this.sslContext == null) {
             this.currentAlias = selectedAlias;
             this.sslContext = createSslContext(selectedAlias);
         }
+    }
+
+    public synchronized void refreshSslContext() throws Exception {
+        String targetAlias = this.currentAlias;
+        if (aliasSupplier != null) {
+            String supplied = aliasSupplier.get();
+            if (supplied != null && !supplied.trim().isEmpty()) {
+                targetAlias = supplied;
+            }
+        }
+        this.currentAlias = targetAlias;
+        this.sslContext = createSslContext(targetAlias);
+    }
+
+    public String getCurrentAlias() {
+        return this.currentAlias;
     }
 
     public void setLoggingEnabled(boolean enabled) {
         this.loggingEnabled = enabled;
     }
 
+    public void setAliasSupplier(Supplier<String> aliasSupplier) {
+        this.aliasSupplier = aliasSupplier;
+    }
+
+    public void setOnAliasRefreshed(Consumer<String> onAliasRefreshed) {
+        this.onAliasRefreshed = onAliasRefreshed;
+    }
+
+    public void setStatusListener(Consumer<String> statusListener) {
+        this.statusListener = statusListener;
+    }
+
     public String executeRequest(String urlString, String method, String jsonBody) throws JiraApiException {
         int maxRetries = 5;
+        int maxAuthRetries = 2; // Allow up to 2 recovery attempts on 401 or network/SSL failure
         int attempt = 0;
-        long waitTime = 2000; // Start with 2s default wait
+        int authAttempts = 0;
+        long waitTime = 2000; // Start with 2s default wait for rate limit
+        boolean forceNewConnection = false;
 
         while (true) {
             attempt++;
             try {
-                return executeRequestInternal(urlString, method, jsonBody);
+                String response = executeRequestInternal(urlString, method, jsonBody, forceNewConnection);
+                if (authAttempts > 0 && statusListener != null) {
+                    try {
+                        statusListener.accept("Reconnected successfully.");
+                    } catch (Exception ignored) {}
+                }
+                return response;
             } catch (RateLimitException e) {
                 if (attempt >= maxRetries) {
                     throw new JiraApiException("Jira API Rate Limit exceeded. Failed after " + maxRetries + " attempts.", e);
@@ -65,33 +116,61 @@ public class JiraApiService {
                 }
                 waitTime *= 2; // Exponential backoff for next time
             } catch (JiraApiException e) {
-                boolean isNetworkOrSslError = e.getCause() instanceof IOException;
+                int statusCode = e.getStatusCode();
+                boolean isAuthError = (statusCode == 401);
+                boolean isNetworkOrSslError = (e.getCause() instanceof IOException);
+                
                 String authMethod = config.getApiAuthMethod();
                 boolean useCert = "mTLS".equalsIgnoreCase(authMethod) || "mTLS+PAT".equalsIgnoreCase(authMethod);
                 
-                if (isNetworkOrSslError && useCert && attempt < 3) {
-                    String retryMsg = "[SSL/NETWORK ERROR] Connection error: " + e.getMessage() + ". Re-initializing SSL Context (attempt " + attempt + ")...";
+                if ((isAuthError || isNetworkOrSslError) && authAttempts < maxAuthRetries) {
+                    authAttempts++;
+                    forceNewConnection = true;
+                    
+                    String reason = isAuthError ? "HTTP 401 Unauthorized" : "Connection/SSL error (" + e.getMessage() + ")";
+                    String retryMsg = "[AUTO-RECONNECT] " + reason + ". Session or certificates may have gone stale. Refreshing credentials and SSL context (attempt " + authAttempts + " of " + maxAuthRetries + ")...";
                     System.err.println(retryMsg);
                     if (loggingEnabled) appendToFile("\n" + retryMsg + "\n");
-                    try {
-                        this.sslContext = createSslContext(this.currentAlias);
-                    } catch (Exception ex) {
-                        System.err.println("Failed to re-initialize SSL Context: " + ex.getMessage());
+                    
+                    if (statusListener != null) {
+                        try {
+                            statusListener.accept("Reconnecting to Jira (refreshing credentials)...");
+                        } catch (Exception ignored) {}
                     }
+                    
+                    if (useCert) {
+                        try {
+                            refreshSslContext();
+                        } catch (Exception ex) {
+                            System.err.println("[AUTO-RECONNECT] Failed to refresh SSL Context: " + ex.getMessage());
+                            if (loggingEnabled) appendToFile("[AUTO-RECONNECT] Failed to refresh SSL Context: " + ex.getMessage() + "\n");
+                        }
+                    }
+                    
                     try {
                         Thread.sleep(1000);
                     } catch (InterruptedException ie) {
                         Thread.currentThread().interrupt();
-                        throw new JiraApiException("API request interrupted during SSL recovery backoff", ie);
+                        throw new JiraApiException("API request interrupted during reconnection backoff", ie);
                     }
                     continue;
+                }
+                
+                if (authAttempts > 0 && statusListener != null) {
+                    try {
+                        statusListener.accept("Authentication failed after reconnect attempts.");
+                    } catch (Exception ignored) {}
                 }
                 throw e;
             }
         }
     }
 
-    private String executeRequestInternal(String urlString, String method, String jsonBody) throws JiraApiException, RateLimitException {
+    public String executeRequestInternal(String urlString, String method, String jsonBody) throws JiraApiException, RateLimitException {
+        return executeRequestInternal(urlString, method, jsonBody, false);
+    }
+
+    private String executeRequestInternal(String urlString, String method, String jsonBody, boolean forceNewConnection) throws JiraApiException, RateLimitException {
         if (loggingEnabled) {
             String logMsg = "\n[" + new java.util.Date() + "] [API REQUEST] " + method + " " + urlString + "\n";
             if (jsonBody != null) {
@@ -100,19 +179,29 @@ public class JiraApiService {
             appendToFile(logMsg);
         }
 
+        HttpURLConnection conn = null;
         try {
             URL url = new URL(urlString);
             URLConnection urlConn = url.openConnection();
-            HttpURLConnection conn;
             if (urlConn instanceof HttpsURLConnection) {
                 conn = (HttpsURLConnection) urlConn;
                 ((HttpsURLConnection) conn).setSSLSocketFactory(this.sslContext.getSocketFactory());
             } else {
                 conn = (HttpURLConnection) urlConn;
             }
+
+            int timeoutMs = config.getApiTimeoutSeconds() * 1000;
+            if (timeoutMs <= 0) timeoutMs = 30000;
+            conn.setConnectTimeout(timeoutMs);
+            conn.setReadTimeout(timeoutMs);
+
             conn.setRequestMethod(method);
             conn.setRequestProperty("Content-Type", "application/json");
             conn.setRequestProperty("Accept", "application/json");
+
+            if (forceNewConnection) {
+                conn.setRequestProperty("Connection", "close");
+            }
 
             String authMethod = config.getApiAuthMethod();
             boolean sendPat = "PAT".equalsIgnoreCase(authMethod) || "mTLS+PAT".equalsIgnoreCase(authMethod);
@@ -158,11 +247,19 @@ public class JiraApiService {
                 appendToFile(respLog);
             }
 
+            if (code == 401) {
+                try { conn.disconnect(); } catch (Exception ignored) {}
+                throw new JiraApiException("Jira API request failed with code 401 (Unauthorized)", 401, response);
+            }
+
             if (code >= 300) {
                 throw new JiraApiException("Jira API request failed with code " + code, code, response);
             }
             return response;
         } catch (IOException e) {
+            if (conn != null) {
+                try { conn.disconnect(); } catch (Exception ignored) {}
+            }
             throw new JiraApiException("Network error during Jira API call: " + e.getMessage(), e);
         }
     }
@@ -216,12 +313,15 @@ public class JiraApiService {
         if (loggingEnabled) appendToFile("\n[" + new java.util.Date() + "] [API ATTACHMENT DOWNLOAD] " + fileUrl);
         int maxRetries = 3;
         int attempt = 0;
+        int authAttempts = 0;
+        boolean forceNewConnection = false;
+
         while (true) {
             attempt++;
+            HttpURLConnection dlConn = null;
             try {
                 URL downloadUrl = new URL(fileUrl);
                 URLConnection urlConn = downloadUrl.openConnection();
-                HttpURLConnection dlConn;
                 if (urlConn instanceof HttpsURLConnection) {
                     dlConn = (HttpsURLConnection) urlConn;
                     ((HttpsURLConnection) dlConn).setSSLSocketFactory(this.sslContext.getSocketFactory());
@@ -229,6 +329,15 @@ public class JiraApiService {
                     dlConn = (HttpURLConnection) urlConn;
                 }
                 
+                int timeoutMs = config.getApiTimeoutSeconds() * 1000;
+                if (timeoutMs <= 0) timeoutMs = 30000;
+                dlConn.setConnectTimeout(timeoutMs);
+                dlConn.setReadTimeout(timeoutMs);
+
+                if (forceNewConnection) {
+                    dlConn.setRequestProperty("Connection", "close");
+                }
+
                 String authMethod = config.getApiAuthMethod();
                 boolean sendPat = "PAT".equalsIgnoreCase(authMethod) || "mTLS+PAT".equalsIgnoreCase(authMethod);
                 if (sendPat) {
@@ -238,6 +347,16 @@ public class JiraApiService {
                     }
                 }
                 
+                int code = dlConn.getResponseCode();
+                if (code == 401) {
+                    try { dlConn.disconnect(); } catch (Exception ignored) {}
+                    throw new JiraApiException("Attachment download unauthorized (HTTP 401)", 401, null);
+                }
+                if (code >= 300) {
+                    try { dlConn.disconnect(); } catch (Exception ignored) {}
+                    throw new JiraApiException("Attachment download failed with HTTP " + code, code, null);
+                }
+
                 File tempFile = File.createTempFile("jira-attachment-", ".tmp");
                 try (InputStream in = dlConn.getInputStream(); FileOutputStream out = new FileOutputStream(tempFile)) {
                     byte[] buffer = new byte[8192];
@@ -248,16 +367,38 @@ public class JiraApiService {
                 }
                 if (loggingEnabled) appendToFile("[API ATTACHMENT DOWNLOAD] Success: " + originalFilename + " -> " + tempFile.getAbsolutePath());
                 return tempFile;
-            } catch (IOException e) {
+            } catch (JiraApiException | IOException e) {
+                if (dlConn != null) {
+                    try { dlConn.disconnect(); } catch (Exception ignored) {}
+                }
+
+                int statusCode = (e instanceof JiraApiException) ? ((JiraApiException) e).getStatusCode() : -1;
+                boolean isAuthError = (statusCode == 401);
+                boolean isNetworkOrSslError = (e instanceof IOException);
+
                 String authMethod = config.getApiAuthMethod();
                 boolean useCert = "mTLS".equalsIgnoreCase(authMethod) || "mTLS+PAT".equalsIgnoreCase(authMethod);
-                if (useCert && attempt < maxRetries) {
-                    System.err.println("[SSL/NETWORK ERROR] Attachment download failed: " + e.getMessage() + ". Re-initializing SSL Context...");
-                    try {
-                        this.sslContext = createSslContext(this.currentAlias);
-                    } catch (Exception ex) {}
+
+                if ((isAuthError || isNetworkOrSslError) && authAttempts < 2) {
+                    authAttempts++;
+                    forceNewConnection = true;
+                    String reason = isAuthError ? "HTTP 401 Unauthorized" : "Connection/SSL error (" + e.getMessage() + ")";
+                    String retryMsg = "[AUTO-RECONNECT] Attachment download: " + reason + ". Refreshing credentials and SSL context (attempt " + authAttempts + " of 2)...";
+                    System.err.println(retryMsg);
+                    if (loggingEnabled) appendToFile("\n" + retryMsg + "\n");
+                    
+                    if (useCert) {
+                        try {
+                            refreshSslContext();
+                        } catch (Exception ex) {
+                            System.err.println("[AUTO-RECONNECT] Failed to refresh SSL Context: " + ex.getMessage());
+                        }
+                    }
                     try { Thread.sleep(1000); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
                     continue;
+                }
+                if (e instanceof JiraApiException) {
+                    throw (JiraApiException) e;
                 }
                 throw new JiraApiException("Failed to download attachment: " + originalFilename, e);
             }
@@ -269,22 +410,35 @@ public class JiraApiService {
         String boundary = "---" + System.currentTimeMillis() + "---";
         int maxRetries = 3;
         int attempt = 0;
+        int authAttempts = 0;
+        boolean forceNewConnection = false;
+
         while (true) {
             attempt++;
+            HttpURLConnection conn = null;
             try {
                 URL url = new URL(urlString);
                 URLConnection urlConn = url.openConnection();
-                HttpURLConnection conn;
                 if (urlConn instanceof HttpsURLConnection) {
                     conn = (HttpsURLConnection) urlConn;
                     ((HttpsURLConnection) conn).setSSLSocketFactory(this.sslContext.getSocketFactory());
                 } else {
                     conn = (HttpURLConnection) urlConn;
                 }
+
+                int timeoutMs = config.getApiTimeoutSeconds() * 1000;
+                if (timeoutMs <= 0) timeoutMs = 30000;
+                conn.setConnectTimeout(timeoutMs);
+                conn.setReadTimeout(timeoutMs);
+
                 conn.setRequestMethod("POST");
                 conn.setDoOutput(true);
                 conn.setRequestProperty("Content-Type", "multipart/form-data; boundary=" + boundary);
                 conn.setRequestProperty("X-Atlassian-Token", "no-check");
+
+                if (forceNewConnection) {
+                    conn.setRequestProperty("Connection", "close");
+                }
 
                 String authMethod = config.getApiAuthMethod();
                 boolean sendPat = "PAT".equalsIgnoreCase(authMethod) || "mTLS+PAT".equalsIgnoreCase(authMethod);
@@ -310,6 +464,11 @@ public class JiraApiService {
                 }
 
                 int code = conn.getResponseCode();
+                if (code == 401) {
+                    try { conn.disconnect(); } catch (Exception ignored) {}
+                    throw new JiraApiException("Attachment upload unauthorized (HTTP 401)", 401, null);
+                }
+
                 InputStream is = (code >= 200 && code < 300) ? conn.getInputStream() : conn.getErrorStream();
                 
                 StringBuilder sb = new StringBuilder();
@@ -329,19 +488,64 @@ public class JiraApiService {
                     throw new JiraApiException("Jira API upload failed with code " + code, code, response);
                 }
                 return response;
-            } catch (IOException e) {
+            } catch (JiraApiException | IOException e) {
+                if (conn != null) {
+                    try { conn.disconnect(); } catch (Exception ignored) {}
+                }
+
+                int statusCode = (e instanceof JiraApiException) ? ((JiraApiException) e).getStatusCode() : -1;
+                boolean isAuthError = (statusCode == 401);
+                boolean isNetworkOrSslError = (e instanceof IOException);
+
                 String authMethod = config.getApiAuthMethod();
                 boolean useCert = "mTLS".equalsIgnoreCase(authMethod) || "mTLS+PAT".equalsIgnoreCase(authMethod);
-                if (useCert && attempt < maxRetries) {
-                    System.err.println("[SSL/NETWORK ERROR] Attachment upload failed: " + e.getMessage() + ". Re-initializing SSL Context...");
-                    try {
-                        this.sslContext = createSslContext(this.currentAlias);
-                    } catch (Exception ex) {}
+
+                if ((isAuthError || isNetworkOrSslError) && authAttempts < 2) {
+                    authAttempts++;
+                    forceNewConnection = true;
+                    String reason = isAuthError ? "HTTP 401 Unauthorized" : "Connection/SSL error (" + e.getMessage() + ")";
+                    String retryMsg = "[AUTO-RECONNECT] Attachment upload: " + reason + ". Refreshing credentials and SSL context (attempt " + authAttempts + " of 2)...";
+                    System.err.println(retryMsg);
+                    if (loggingEnabled) appendToFile("\n" + retryMsg + "\n");
+
+                    if (useCert) {
+                        try {
+                            refreshSslContext();
+                        } catch (Exception ex) {
+                            System.err.println("[AUTO-RECONNECT] Failed to refresh SSL Context: " + ex.getMessage());
+                        }
+                    }
                     try { Thread.sleep(1000); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
                     continue;
                 }
+                if (e instanceof JiraApiException) {
+                    throw (JiraApiException) e;
+                }
                 throw new JiraApiException("Network error during attachment upload", e);
             }
+        }
+    }
+
+    public static String findClientAuthAlias(KeyStore ks) {
+        final String CLIENT_AUTH_OID = "1.3.6.1.5.5.7.3.2";
+        try {
+            Enumeration<String> aliases = ks.aliases();
+            String firstX509Alias = null;
+            while (aliases.hasMoreElements()) {
+                String a = aliases.nextElement();
+                Certificate cert = ks.getCertificate(a);
+                if (cert instanceof X509Certificate) {
+                    if (firstX509Alias == null) firstX509Alias = a;
+                    X509Certificate x509Cert = (X509Certificate) cert;
+                    List<String> extendedKeyUsage = x509Cert.getExtendedKeyUsage();
+                    if (extendedKeyUsage != null && extendedKeyUsage.contains(CLIENT_AUTH_OID)) {
+                        return a;
+                    }
+                }
+            }
+            return firstX509Alias;
+        } catch (Exception e) {
+            return null;
         }
     }
 
@@ -356,26 +560,114 @@ public class JiraApiService {
 
         SSLContext ctx = SSLContext.getInstance("TLSv1.2");
 
-        if (alias != null && !alias.trim().isEmpty()) {
+        String effectiveAlias = alias;
+        if (effectiveAlias == null || effectiveAlias.trim().isEmpty()) {
+            if (aliasSupplier != null) {
+                effectiveAlias = aliasSupplier.get();
+            }
+        }
+
+        String authMethod = config.getApiAuthMethod();
+        boolean useCert = "mTLS".equalsIgnoreCase(authMethod) || "mTLS+PAT".equalsIgnoreCase(authMethod);
+
+        if (useCert) {
             KeyStore identityStore = KeyStore.getInstance("Windows-MY", "SunMSCAPI");
             identityStore.load(null, null);
 
-            KeyManagerFactory kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
-            kmf.init(identityStore, null);
+            if (effectiveAlias != null && !effectiveAlias.trim().isEmpty()) {
+                if (!identityStore.containsAlias(effectiveAlias)) {
+                    String fallback = findClientAuthAlias(identityStore);
+                    if (fallback != null) {
+                        System.err.println("[SSL CONTEXT] Alias '" + effectiveAlias + "' not found in Windows-MY. Falling back to '" + fallback + "'");
+                        effectiveAlias = fallback;
+                        this.currentAlias = fallback;
+                        if (onAliasRefreshed != null) {
+                            try { onAliasRefreshed.accept(fallback); } catch (Exception ignored) {}
+                        }
+                    }
+                }
+            } else {
+                String fallback = findClientAuthAlias(identityStore);
+                if (fallback != null) {
+                    effectiveAlias = fallback;
+                    this.currentAlias = fallback;
+                    if (onAliasRefreshed != null) {
+                        try { onAliasRefreshed.accept(fallback); } catch (Exception ignored) {}
+                    }
+                }
+            }
 
-            KeyManager[] kms = kmf.getKeyManagers();
-            if (kms != null && kms.length > 0 && kms[0] instanceof X509KeyManager) {
-                final X509KeyManager originalKeyManager = (X509KeyManager) kms[0];
-                X509KeyManager customKeyManager = new X509KeyManager() {
-                    @Override public String chooseClientAlias(String[] keyType, Principal[] issuers, Socket socket) { return alias; }
-                    @Override public String chooseServerAlias(String keyType, Principal[] issuers, Socket socket) { return originalKeyManager.chooseServerAlias(keyType, issuers, socket); }
-                    @Override public X509Certificate[] getCertificateChain(String alias) { return originalKeyManager.getCertificateChain(alias); }
-                    @Override public String[] getClientAliases(String keyType, Principal[] issuers) { return originalKeyManager.getClientAliases(keyType, issuers); }
-                    @Override public PrivateKey getPrivateKey(String alias) { return originalKeyManager.getPrivateKey(alias); }
-                    @Override public String[] getServerAliases(String keyType, Principal[] issuers) { return originalKeyManager.getServerAliases(keyType, issuers); }
-                };
-                ctx.init(new KeyManager[]{customKeyManager}, trustAllCerts, new SecureRandom());
-                return ctx;
+            if (effectiveAlias != null && !effectiveAlias.trim().isEmpty()) {
+                final String chosenAlias = effectiveAlias;
+                KeyManagerFactory kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
+                kmf.init(identityStore, null);
+
+                KeyManager[] kms = kmf.getKeyManagers();
+                if (kms != null && kms.length > 0 && kms[0] instanceof X509KeyManager) {
+                    final X509KeyManager originalKeyManager = (X509KeyManager) kms[0];
+                    X509ExtendedKeyManager customKeyManager = new X509ExtendedKeyManager() {
+                        @Override
+                        public String chooseClientAlias(String[] keyType, Principal[] issuers, Socket socket) {
+                            return chosenAlias;
+                        }
+
+                        @Override
+                        public String chooseEngineClientAlias(String[] keyType, Principal[] issuers, SSLEngine engine) {
+                            return chosenAlias;
+                        }
+
+                        @Override
+                        public String chooseServerAlias(String keyType, Principal[] issuers, Socket socket) {
+                            return originalKeyManager.chooseServerAlias(keyType, issuers, socket);
+                        }
+
+                        @Override
+                        public String chooseEngineServerAlias(String keyType, Principal[] issuers, SSLEngine engine) {
+                            if (originalKeyManager instanceof X509ExtendedKeyManager) {
+                                return ((X509ExtendedKeyManager) originalKeyManager).chooseEngineServerAlias(keyType, issuers, engine);
+                            }
+                            return originalKeyManager.chooseServerAlias(keyType, issuers, null);
+                        }
+
+                        @Override
+                        public X509Certificate[] getCertificateChain(String a) {
+                            String target = chosenAlias;
+                            if (a != null) {
+                                try {
+                                    if (identityStore.containsAlias(a)) {
+                                        target = a;
+                                    }
+                                } catch (Exception ignored) {}
+                            }
+                            return originalKeyManager.getCertificateChain(target);
+                        }
+
+                        @Override
+                        public String[] getClientAliases(String keyType, Principal[] issuers) {
+                            return originalKeyManager.getClientAliases(keyType, issuers);
+                        }
+
+                        @Override
+                        public PrivateKey getPrivateKey(String a) {
+                            String target = chosenAlias;
+                            if (a != null) {
+                                try {
+                                    if (identityStore.containsAlias(a)) {
+                                        target = a;
+                                    }
+                                } catch (Exception ignored) {}
+                            }
+                            return originalKeyManager.getPrivateKey(target);
+                        }
+
+                        @Override
+                        public String[] getServerAliases(String keyType, Principal[] issuers) {
+                            return originalKeyManager.getServerAliases(keyType, issuers);
+                        }
+                    };
+                    ctx.init(new KeyManager[]{customKeyManager}, trustAllCerts, new SecureRandom());
+                    return ctx;
+                }
             }
         }
 

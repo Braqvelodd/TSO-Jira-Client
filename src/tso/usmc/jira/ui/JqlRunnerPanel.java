@@ -522,10 +522,8 @@ public class JqlRunnerPanel extends BorderPane implements tso.usmc.jira.util.Con
                 });
 
             } catch (Exception ex) {
-                StringWriter sw = new StringWriter();
-                ex.printStackTrace(new PrintWriter(sw));
                 Platform.runLater(() -> {
-                    showAlert(Alert.AlertType.ERROR, "Execution Error", "API Error:\n" + ex.getMessage() + "\n\n" + sw.toString());
+                    UiUtils.showExceptionAlert(mainFrame != null ? mainFrame.getPrimaryStage() : null, "Execution Error", "API Error:\n" + ex.getMessage(), ex);
                     statusLabel.setText("Error executing JQL.");
                 });
             }

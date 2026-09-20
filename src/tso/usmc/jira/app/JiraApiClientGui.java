@@ -81,6 +81,15 @@ public class JiraApiClientGui extends Application implements ConfigChangeListene
 
         certComboBox.setMaxWidth(Double.MAX_VALUE);
         GridPane.setHgrow(certComboBox, Priority.ALWAYS);
+        certComboBox.valueProperty().addListener((obs, oldVal, newVal) -> {
+            if (newVal != null && apiService != null) {
+                try {
+                    apiService.updateSslContext(newVal, false);
+                } catch (Exception ex) {
+                    System.err.println("Failed to update SSL context on cert selection change: " + ex.getMessage());
+                }
+            }
+        });
         headerPanel.add(certComboBox, 1, 0);
 
         Button refreshBtn = new Button("Refresh Certs");
@@ -215,9 +224,10 @@ public class JiraApiClientGui extends Application implements ConfigChangeListene
         }
     }
 
-    private void loadCertificates() {
+    public void loadCertificates() {
         final String CLIENT_AUTH_OID = "1.3.6.1.5.5.7.3.2";
-        certComboBox.getItems().clear();
+        String currentSelection = certComboBox.getSelectionModel().getSelectedItem();
+        List<String> validAliases = new java.util.ArrayList<>();
         try {
             KeyStore ks = KeyStore.getInstance("Windows-MY", "SunMSCAPI");
             ks.load(null, null);
@@ -229,12 +239,21 @@ public class JiraApiClientGui extends Application implements ConfigChangeListene
                     X509Certificate x509Cert = (X509Certificate) cert;
                     List<String> extendedKeyUsage = x509Cert.getExtendedKeyUsage();
                     if (extendedKeyUsage != null && extendedKeyUsage.contains(CLIENT_AUTH_OID)) {
-                        certComboBox.getItems().add(alias);
+                        validAliases.add(alias);
                     }
                 }
             }
-            if (!certComboBox.getItems().isEmpty()) {
-                certComboBox.getSelectionModel().select(0);
+            certComboBox.getItems().setAll(validAliases);
+            if (!validAliases.isEmpty()) {
+                if (currentSelection != null && validAliases.contains(currentSelection)) {
+                    certComboBox.getSelectionModel().select(currentSelection);
+                } else {
+                    certComboBox.getSelectionModel().select(0);
+                }
+            }
+            if (apiService != null) {
+                String selected = certComboBox.getSelectionModel().getSelectedItem();
+                apiService.updateSslContext(selected, true);
             }
         } catch (Exception e) {
             showError("CAC Certificate Error", "Error loading CAC certificates: " + e.getMessage());
@@ -255,6 +274,25 @@ public class JiraApiClientGui extends Application implements ConfigChangeListene
 
         if (apiService == null) {
             apiService = new JiraApiService(jiraConfig, selectedAlias);
+            apiService.setAliasSupplier(() -> certComboBox != null ? certComboBox.getSelectionModel().getSelectedItem() : null);
+            apiService.setOnAliasRefreshed(newAlias -> {
+                Platform.runLater(() -> {
+                    if (certComboBox != null) {
+                        if (!certComboBox.getItems().contains(newAlias)) {
+                            certComboBox.getItems().add(newAlias);
+                        }
+                        certComboBox.getSelectionModel().select(newAlias);
+                    }
+                });
+            });
+            apiService.setStatusListener(msg -> Platform.runLater(() -> {
+                statusLabel.setText(" " + msg);
+                if ("Reconnected successfully.".equals(msg)) {
+                    javafx.animation.PauseTransition pause = new javafx.animation.PauseTransition(javafx.util.Duration.seconds(4));
+                    pause.setOnFinished(ev -> statusLabel.setText(" Ready"));
+                    pause.play();
+                }
+            }));
         } else {
             apiService.updateSslContext(selectedAlias);
         }
@@ -300,6 +338,13 @@ public class JiraApiClientGui extends Application implements ConfigChangeListene
             String time = new java.text.SimpleDateFormat("HH:mm:ss").format(new java.util.Date());
             statusLabel.setText(" Configuration updated: " + time);
             themeManager.applyTheme(mainScene);
+            if (apiService != null) {
+                String verbose = jiraConfig.getProperty("VERBOSE_API_LOGS");
+                apiService.setLoggingEnabled("YES".equalsIgnoreCase(verbose));
+                try {
+                    apiService.updateSslContext(certComboBox.getSelectionModel().getSelectedItem(), false);
+                } catch (Exception ignored) {}
+            }
         });
     }
 

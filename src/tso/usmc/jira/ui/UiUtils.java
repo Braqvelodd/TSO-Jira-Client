@@ -80,6 +80,43 @@ public class UiUtils {
     }
 
     /**
+     * Displays an Error Alert with a clean user-facing message and an expandable
+     * debug stack trace (so debug details do not overwhelm the dialog).
+     */
+    public static Optional<ButtonType> showExceptionAlert(Window owner, String title, String userMessage, Throwable throwable) {
+        Alert alert = new Alert(Alert.AlertType.ERROR);
+        alert.setTitle(title != null ? title : "Error");
+        alert.setHeaderText(null);
+        alert.setContentText(userMessage != null ? userMessage : (throwable != null ? throwable.getMessage() : "An unexpected error occurred."));
+        configureWindowOwner(alert, owner);
+
+        if (throwable != null) {
+            java.io.StringWriter sw = new java.io.StringWriter();
+            java.io.PrintWriter pw = new java.io.PrintWriter(sw);
+            throwable.printStackTrace(pw);
+            String exceptionText = sw.toString();
+
+            Label label = new Label("Exception Details (Debug Stack Trace):");
+            TextArea textArea = new TextArea(exceptionText);
+            textArea.setEditable(false);
+            textArea.setWrapText(true);
+            textArea.setPrefRowCount(10);
+            textArea.setPrefColumnCount(50);
+            GridPane.setVgrow(textArea, Priority.ALWAYS);
+            GridPane.setHgrow(textArea, Priority.ALWAYS);
+
+            GridPane expContent = new GridPane();
+            expContent.setMaxWidth(Double.MAX_VALUE);
+            expContent.add(label, 0, 0);
+            expContent.add(textArea, 0, 1);
+
+            alert.getDialogPane().setExpandableContent(expContent);
+        }
+
+        return alert.showAndWait();
+    }
+
+    /**
      * Sets up a double-click listener and context menu on a TextInputControl (TextField or TextArea)
      * to show an expanded multi-line editor in a popup dialog.
      */

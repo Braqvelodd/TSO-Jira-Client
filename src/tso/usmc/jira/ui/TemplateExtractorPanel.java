@@ -267,11 +267,8 @@ public class TemplateExtractorPanel extends BorderPane {
     }
 
     private void handleApiError(Exception ex) {
-        StringWriter sw = new StringWriter();
-        ex.printStackTrace(new PrintWriter(sw));
-        String errorMessage = "API Error:\n" + ex.getMessage() + "\n\n" + sw.toString();
         Platform.runLater(() -> {
-             showAlert(Alert.AlertType.ERROR, "Execution Error", errorMessage);
+             UiUtils.showExceptionAlert(mainFrame != null ? mainFrame.getPrimaryStage() : null, "Execution Error", "API Error:\n" + ex.getMessage(), ex);
              setBusyState(false, "Error generating template. Check logs or error dialog.");
         });
     }
