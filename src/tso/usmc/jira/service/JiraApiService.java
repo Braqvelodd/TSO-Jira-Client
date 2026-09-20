@@ -28,6 +28,7 @@ public class JiraApiService {
     private Supplier<String> aliasSupplier;
     private Consumer<String> onAliasRefreshed;
     private Consumer<String> statusListener;
+    private Runnable certReloader;
 
     public JiraApiService(JiraConfig config, String selectedAlias) throws Exception {
         this.config = config;
@@ -49,6 +50,9 @@ public class JiraApiService {
     }
 
     public synchronized void refreshSslContext() throws Exception {
+        if (certReloader != null) {
+            try { certReloader.run(); } catch (Exception ignored) {}
+        }
         String targetAlias = this.currentAlias;
         if (aliasSupplier != null) {
             String supplied = aliasSupplier.get();
@@ -78,6 +82,10 @@ public class JiraApiService {
 
     public void setStatusListener(Consumer<String> statusListener) {
         this.statusListener = statusListener;
+    }
+
+    public void setCertReloader(Runnable certReloader) {
+        this.certReloader = certReloader;
     }
 
     public String executeRequest(String urlString, String method, String jsonBody) throws JiraApiException {
@@ -248,8 +256,9 @@ public class JiraApiService {
             }
 
             if (code == 401) {
+                String errorMsg = extractAuthDiagnostic(conn, "Jira API request failed with code 401 (Unauthorized)");
                 try { conn.disconnect(); } catch (Exception ignored) {}
-                throw new JiraApiException("Jira API request failed with code 401 (Unauthorized)", 401, response);
+                throw new JiraApiException(errorMsg, 401, response);
             }
 
             if (code >= 300) {
@@ -271,6 +280,29 @@ public class JiraApiService {
             this.retryAfterSeconds = retryAfterSeconds;
         }
         public int getRetryAfterSeconds() { return retryAfterSeconds; }
+    }
+
+    private static String extractAuthDiagnostic(HttpURLConnection conn, String defaultMessage) {
+        if (conn == null) return defaultMessage;
+        try {
+            String seraphReason = conn.getHeaderField("X-Seraph-LoginReason");
+            String deniedReason = conn.getHeaderField("X-Authentication-Denied-Reason");
+            String wwwAuth = conn.getHeaderField("WWW-Authenticate");
+            List<String> details = new java.util.ArrayList<>();
+            if (seraphReason != null && !seraphReason.trim().isEmpty()) {
+                details.add("Seraph: " + seraphReason.trim());
+            }
+            if (deniedReason != null && !deniedReason.trim().isEmpty()) {
+                details.add("Denied Reason: " + deniedReason.trim());
+            }
+            if (wwwAuth != null && !wwwAuth.trim().isEmpty()) {
+                details.add("Challenge: " + wwwAuth.trim());
+            }
+            if (!details.isEmpty()) {
+                return defaultMessage + " [" + String.join(", ", details) + "]";
+            }
+        } catch (Exception ignored) {}
+        return defaultMessage;
     }
 
     public String getJqlAutoCompleteData(String baseUrl) throws JiraApiException {
@@ -349,8 +381,9 @@ public class JiraApiService {
                 
                 int code = dlConn.getResponseCode();
                 if (code == 401) {
+                    String errorMsg = extractAuthDiagnostic(dlConn, "Attachment download unauthorized (HTTP 401)");
                     try { dlConn.disconnect(); } catch (Exception ignored) {}
-                    throw new JiraApiException("Attachment download unauthorized (HTTP 401)", 401, null);
+                    throw new JiraApiException(errorMsg, 401, null);
                 }
                 if (code >= 300) {
                     try { dlConn.disconnect(); } catch (Exception ignored) {}
@@ -465,8 +498,9 @@ public class JiraApiService {
 
                 int code = conn.getResponseCode();
                 if (code == 401) {
+                    String errorMsg = extractAuthDiagnostic(conn, "Attachment upload unauthorized (HTTP 401)");
                     try { conn.disconnect(); } catch (Exception ignored) {}
-                    throw new JiraApiException("Attachment upload unauthorized (HTTP 401)", 401, null);
+                    throw new JiraApiException(errorMsg, 401, null);
                 }
 
                 InputStream is = (code >= 200 && code < 300) ? conn.getInputStream() : conn.getErrorStream();
@@ -639,12 +673,54 @@ public class JiraApiService {
                                     }
                                 } catch (Exception ignored) {}
                             }
-                            return originalKeyManager.getCertificateChain(target);
+                            X509Certificate[] chain = null;
+                            try {
+                                chain = originalKeyManager.getCertificateChain(target);
+                            } catch (Exception ignored) {}
+
+                            if (chain == null || chain.length == 0) {
+                                try {
+                                    Certificate[] storeChain = identityStore.getCertificateChain(target);
+                                    if (storeChain != null && storeChain.length > 0) {
+                                        List<X509Certificate> list = new java.util.ArrayList<>();
+                                        for (Certificate c : storeChain) {
+                                            if (c instanceof X509Certificate) list.add((X509Certificate) c);
+                                        }
+                                        if (!list.isEmpty()) {
+                                            chain = list.toArray(new X509Certificate[0]);
+                                        }
+                                    }
+                                    if (chain == null || chain.length == 0) {
+                                        Certificate cert = identityStore.getCertificate(target);
+                                        if (cert instanceof X509Certificate) {
+                                            chain = new X509Certificate[]{(X509Certificate) cert};
+                                        }
+                                    }
+                                } catch (Exception ignored) {}
+                            }
+                            return chain;
                         }
 
                         @Override
                         public String[] getClientAliases(String keyType, Principal[] issuers) {
-                            return originalKeyManager.getClientAliases(keyType, issuers);
+                            String[] aliases = originalKeyManager.getClientAliases(keyType, issuers);
+                            if (aliases == null || aliases.length == 0) {
+                                return new String[]{chosenAlias};
+                            }
+                            boolean found = false;
+                            for (String al : aliases) {
+                                if (chosenAlias.equalsIgnoreCase(al)) {
+                                    found = true;
+                                    break;
+                                }
+                            }
+                            if (!found) {
+                                String[] combined = new String[aliases.length + 1];
+                                System.arraycopy(aliases, 0, combined, 0, aliases.length);
+                                combined[aliases.length] = chosenAlias;
+                                return combined;
+                            }
+                            return aliases;
                         }
 
                         @Override
@@ -657,7 +733,20 @@ public class JiraApiService {
                                     }
                                 } catch (Exception ignored) {}
                             }
-                            return originalKeyManager.getPrivateKey(target);
+                            PrivateKey pk = null;
+                            try {
+                                pk = originalKeyManager.getPrivateKey(target);
+                            } catch (Exception ignored) {}
+
+                            if (pk == null) {
+                                try {
+                                    java.security.Key k = identityStore.getKey(target, null);
+                                    if (k instanceof PrivateKey) {
+                                        pk = (PrivateKey) k;
+                                    }
+                                } catch (Exception ignored) {}
+                            }
+                            return pk;
                         }
 
                         @Override

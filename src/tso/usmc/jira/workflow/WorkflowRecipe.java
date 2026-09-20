@@ -18,6 +18,10 @@ public class WorkflowRecipe {
     public String getTargetIssues() { return targetIssues != null ? targetIssues : ""; }
     public void setTargetIssues(String targetIssues) { this.targetIssues = targetIssues != null ? targetIssues : ""; }
 
+    public boolean hasPredefinedIssues() {
+        return targetIssues != null && !targetIssues.trim().isEmpty();
+    }
+
     public String getJqlQuery() { return getTargetIssues(); }
     public void setJqlQuery(String jqlQuery) { setTargetIssues(jqlQuery); }
 

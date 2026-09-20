@@ -42,6 +42,9 @@ public class JiraApiException extends Exception {
         if (statusCode > 0 && responseBody != null && !responseBody.trim().isEmpty()) {
             String detailed = formatApiError(statusCode, responseBody);
             if (detailed != null && !detailed.isEmpty()) {
+                if (baseMessage != null && !baseMessage.trim().isEmpty() && !detailed.contains(baseMessage.trim())) {
+                    return baseMessage + "\n" + detailed;
+                }
                 return detailed;
             }
         }

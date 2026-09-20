@@ -372,6 +372,9 @@ public class JqlRunnerPanel extends BorderPane implements tso.usmc.jira.util.Con
                     try {
                         tso.usmc.jira.workflow.WorkflowRecipe recipe = wm.loadWorkflow(rName);
                         if (recipe != null) {
+                            if (recipe.hasPredefinedIssues()) {
+                                continue;
+                            }
                             MenuItem item = new MenuItem(rName);
                             item.setOnAction(al -> {
                                 if (hasPrompts(recipe)) {
@@ -903,6 +906,9 @@ public class JqlRunnerPanel extends BorderPane implements tso.usmc.jira.util.Con
             try {
                 tso.usmc.jira.workflow.WorkflowRecipe recipe = wm.loadWorkflow(rName);
                 if (recipe != null) {
+                    if (recipe.hasPredefinedIssues()) {
+                        continue;
+                    }
                     MenuItem item = new MenuItem(rName);
                     item.setOnAction(al -> {
                         if (hasPrompts(recipe)) {

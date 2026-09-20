@@ -275,6 +275,7 @@ public class JiraApiClientGui extends Application implements ConfigChangeListene
         if (apiService == null) {
             apiService = new JiraApiService(jiraConfig, selectedAlias);
             apiService.setAliasSupplier(() -> certComboBox != null ? certComboBox.getSelectionModel().getSelectedItem() : null);
+            apiService.setCertReloader(() -> Platform.runLater(this::loadCertificates));
             apiService.setOnAliasRefreshed(newAlias -> {
                 Platform.runLater(() -> {
                     if (certComboBox != null) {
@@ -342,7 +343,7 @@ public class JiraApiClientGui extends Application implements ConfigChangeListene
                 String verbose = jiraConfig.getProperty("VERBOSE_API_LOGS");
                 apiService.setLoggingEnabled("YES".equalsIgnoreCase(verbose));
                 try {
-                    apiService.updateSslContext(certComboBox.getSelectionModel().getSelectedItem(), false);
+                    apiService.updateSslContext(certComboBox.getSelectionModel().getSelectedItem(), true);
                 } catch (Exception ignored) {}
             }
         });
