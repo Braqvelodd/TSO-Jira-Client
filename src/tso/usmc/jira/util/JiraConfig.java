@@ -430,6 +430,9 @@ public class JiraConfig {
     public File getTemplateFile() {
         return this.templateFile;
     }
+    public File getConfigDir() {
+        return this.configFile.getParentFile();
+    }
     public void saveProperties(Map<String, String> newProps) {
         synchronized (lock) {
             try {

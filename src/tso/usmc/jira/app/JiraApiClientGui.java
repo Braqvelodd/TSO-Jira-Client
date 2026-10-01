@@ -8,6 +8,7 @@ import javafx.scene.control.*;
 import javafx.scene.layout.*;
 import javafx.stage.Stage;
 
+import java.awt.Desktop;
 import java.io.File;
 import java.io.IOException;
 import java.security.KeyStore;
@@ -96,34 +97,31 @@ public class JiraApiClientGui extends Application implements ConfigChangeListene
         refreshBtn.setOnAction(e -> loadCertificates());
         headerPanel.add(refreshBtn, 2, 0);
 
-        Button editConfigButton = new Button("Edit Configuration");
-        editConfigButton.setOnAction(e -> {
+        Button openSettingsButton = new Button("Settings Folder");
+        openSettingsButton.setOnAction(e -> {
             try {
-                File configFile = jiraConfig.getConfigFile();
-                new ProcessBuilder("notepad.exe", configFile.getAbsolutePath()).start();
-            } catch (IOException ex) {
-                showError("Error", "Error opening config file: " + ex.getMessage());
+                File configDir = jiraConfig.getConfigDir();
+                if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.OPEN)) {
+                    Desktop.getDesktop().open(configDir);
+                } else {
+                    new ProcessBuilder("explorer.exe", configDir.getAbsolutePath()).start();
+                }
+            } catch (Exception ex) {
+                try {
+                    new ProcessBuilder("explorer.exe", jiraConfig.getConfigDir().getAbsolutePath()).start();
+                } catch (Exception ex2) {
+                    showError("Error", "Error opening settings folder: " + ex.getMessage());
+                }
             }
         });
-        headerPanel.add(editConfigButton, 3, 0);
-
-        Button editTemplatesButton = new Button("Edit Templates");
-        editTemplatesButton.setOnAction(e -> {
-            try {
-                File templateFile = jiraConfig.getTemplateFile();
-                new ProcessBuilder("notepad.exe", templateFile.getAbsolutePath()).start();
-            } catch (IOException ex) {
-                showError("Error", "Error opening template file: " + ex.getMessage());
-            }
-        });
-        headerPanel.add(editTemplatesButton, 4, 0);
+        headerPanel.add(openSettingsButton, 3, 0);
 
         // Row 1: Base URL
         Label urlLabel = new Label("Jira Base URL:");
         headerPanel.add(urlLabel, 0, 1);
 
         baseUrlField = new TextField(jiraConfig.getJiraBaseUrl());
-        headerPanel.add(baseUrlField, 1, 1, 4, 1); // span 4 columns
+        headerPanel.add(baseUrlField, 1, 1, 3, 1); // span 3 columns
         GridPane.setHgrow(baseUrlField, Priority.ALWAYS);
 
         // --- CENTER: TABS ---

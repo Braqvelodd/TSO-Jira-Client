@@ -122,11 +122,11 @@ public class ReconciliationPanel extends BorderPane {
 
     // UI Components
     private final TextArea jiraParentKeysArea;
-    private final Button fetchJiraBtn = new Button("Fetch Jira Sub-tasks");
     private final TextArea ispwReportArea = new TextArea();
     private final Button configureColumnsBtn = new Button("Configure Columns...");
-    private final Button compareBtn = new Button("Compare Jira vs. ISPW");
-    private final Label statusLabel = new Label("Ready. Fetch Jira tasks and paste ISPW report.");
+    private final Button compareBtn = new Button("Compare Jira & ISPW");
+    private final Button exportExcelBtn = new Button("Export to Excel (.xlsx)");
+    private final Label statusLabel = new Label("Ready. Enter Jira keys, paste ISPW report, and click Compare.");
 
     private final TableView<IspwRow> onlyInIspwTable = new TableView<>();
     private final TableView<JiraRow> onlyInJiraTable = new TableView<>();
@@ -153,24 +153,40 @@ public class ReconciliationPanel extends BorderPane {
         col2.setPercentWidth(50);
         topPanel.getColumnConstraints().addAll(col1, col2);
 
+        // Card 1: Jira Input
         VBox jiraPanel = new VBox(5);
         jiraPanel.getStyleClass().add("card");
         jiraPanel.setPadding(new Insets(10));
+
+        HBox jiraHeader = new HBox(10);
+        jiraHeader.setAlignment(Pos.CENTER_LEFT);
+        jiraHeader.setMinHeight(28);
         Label jiraTitle = new Label("1. Jira Input");
         jiraTitle.getStyleClass().add("card-title");
+        jiraHeader.getChildren().add(jiraTitle);
+
         jiraParentKeysArea.setPrefHeight(150);
-        fetchJiraBtn.setMaxWidth(Double.MAX_VALUE);
-        jiraPanel.getChildren().addAll(jiraTitle, jiraParentKeysArea, fetchJiraBtn);
+        VBox.setVgrow(jiraParentKeysArea, Priority.ALWAYS);
+        jiraPanel.getChildren().addAll(jiraHeader, jiraParentKeysArea);
         topPanel.add(jiraPanel, 0, 0);
 
+        // Card 2: ISPW Report with Option C Header Configuration Action
         VBox ispwPanel = new VBox(5);
         ispwPanel.getStyleClass().add("card");
         ispwPanel.setPadding(new Insets(10));
+
+        HBox ispwHeader = new HBox(10);
+        ispwHeader.setAlignment(Pos.CENTER_LEFT);
+        ispwHeader.setMinHeight(28);
         Label ispwTitle = new Label("2. Paste ISPW Report");
         ispwTitle.getStyleClass().add("card-title");
+        Region headerSpacer = new Region();
+        HBox.setHgrow(headerSpacer, Priority.ALWAYS);
+        ispwHeader.getChildren().addAll(ispwTitle, headerSpacer, configureColumnsBtn);
+
         ispwReportArea.setPrefHeight(150);
-        configureColumnsBtn.setMaxWidth(Double.MAX_VALUE);
-        ispwPanel.getChildren().addAll(ispwTitle, ispwReportArea, configureColumnsBtn);
+        VBox.setVgrow(ispwReportArea, Priority.ALWAYS);
+        ispwPanel.getChildren().addAll(ispwHeader, ispwReportArea);
         topPanel.add(ispwPanel, 1, 0);
 
         setTop(topPanel);
@@ -179,10 +195,9 @@ public class ReconciliationPanel extends BorderPane {
         BorderPane centerContainer = new BorderPane();
         BorderPane.setMargin(centerContainer, new Insets(10, 0, 0, 0));
 
-        HBox comparePanel = new HBox(10);
+        HBox comparePanel = new HBox(12);
         comparePanel.setAlignment(Pos.CENTER);
         comparePanel.setPadding(new Insets(5, 0, 10, 0));
-        Button exportExcelBtn = new Button("Export to Excel (.xlsx)");
         comparePanel.getChildren().addAll(compareBtn, exportExcelBtn);
         centerContainer.setTop(comparePanel);
 
@@ -216,7 +231,6 @@ public class ReconciliationPanel extends BorderPane {
         statusPanel.getChildren().add(statusLabel);
         setBottom(statusPanel);
 
-        fetchJiraBtn.setOnAction(e -> fetchJiraTasks());
         compareBtn.setOnAction(e -> performComparison());
         exportExcelBtn.setOnAction(e -> exportToExcel());
         configureColumnsBtn.setOnAction(e -> {
@@ -370,126 +384,190 @@ public class ReconciliationPanel extends BorderPane {
     }
 
     private void performComparison() {
-        statusLabel.setText("Parsing ISPW report and performing comparison...");
-        this.ispwTaskMap = new HashMap<>();
+        String rawKeys = jiraParentKeysArea.getText().trim();
+        if (rawKeys.isEmpty()) {
+            showAlert(Alert.AlertType.WARNING, "Warning", "Please enter at least one Jira Parent/Epic key.");
+            return;
+        }
+
         String ispwText = ispwReportArea.getText();
-        
-        tso.usmc.jira.util.JiraConfig config = mainFrame.getJiraConfig();
-        int minLenVal = config.getIspwMinLineLength(65);
-        int[] typeBounds = config.getIspwColumnBounds("ci_type", new int[]{0, 4});
-        int[] nameBounds = config.getIspwColumnBounds("ci_name", new int[]{5, 13});
-        int[] envLvlBounds = config.getIspwColumnBounds("env_lvl", new int[]{14, 22});
-        int[] srBounds = config.getIspwColumnBounds("sr", new int[]{30, 40});
-        int[] userBounds = config.getIspwColumnBounds("user", new int[]{41, 47});
-        int[] actionBounds = config.getIspwActionBounds(new int[]{55, 56});
+        if (ispwText.trim().isEmpty()) {
+            showAlert(Alert.AlertType.WARNING, "Warning", "Please paste an ISPW report first.");
+            return;
+        }
 
-        for (String line : ispwText.split("\n")) {
+        String[] topLevelKeys = rawKeys.toUpperCase().split("\\s+");
+        if (topLevelKeys.length == 0 || (topLevelKeys.length == 1 && topLevelKeys[0].isEmpty())) {
+            showAlert(Alert.AlertType.WARNING, "Warning", "Please enter at least one Jira Parent/Epic key.");
+            return;
+        }
+
+        compareBtn.setDisable(true);
+        exportExcelBtn.setDisable(true);
+        statusLabel.setText("Starting reconciliation...");
+
+        ExecutionService.submit(() -> {
             try {
-                if (line.length() < minLenVal) continue;
-                String typePart = (line.length() >= typeBounds[1]) ? line.substring(typeBounds[0], typeBounds[1]).trim() :
-                                  (line.length() > typeBounds[0] ? line.substring(typeBounds[0]).trim() : "");
-                String namePart = (line.length() >= nameBounds[1]) ? line.substring(nameBounds[0], nameBounds[1]).trim() :
-                                  (line.length() > nameBounds[0] ? line.substring(nameBounds[0]).trim() : "");
-                
-                if (!typePart.isEmpty() && !namePart.isEmpty()) {
-                    String rawTaskName = typePart + " " + namePart;
-                    String normalizedName = rawTaskName.trim().replaceAll("\\s+", " ");
-                    IspwReconInfo info = new IspwReconInfo();
-                    info.fullTaskName = normalizedName;
-                    info.envLvl = (line.length() >= envLvlBounds[1]) ? line.substring(envLvlBounds[0], envLvlBounds[1]).trim() :
-                                  (line.length() > envLvlBounds[0] ? line.substring(envLvlBounds[0]).trim() : "");
-                    info.srNumber = (line.length() >= srBounds[1]) ? line.substring(srBounds[0], srBounds[1]).trim() :
-                                    (line.length() > srBounds[0] ? line.substring(srBounds[0]).trim() : "");
-                    info.userId = (line.length() >= userBounds[1]) ? line.substring(userBounds[0], userBounds[1]).trim() :
-                                  (line.length() > userBounds[0] ? line.substring(userBounds[0]).trim() : "");
-                    info.action = (line.length() >= actionBounds[1]) ? line.substring(actionBounds[0], actionBounds[1]).trim() :
-                                  (line.length() > actionBounds[0] ? line.substring(actionBounds[0]).trim() : "");
-                    this.ispwTaskMap.put(normalizedName, info);
+                JiraApiService service = mainFrame.getService();
+                String baseUrl = mainFrame.getBaseUrl();
+                List<JiraIssueInfo> collectedIssues = new ArrayList<>();
+
+                Platform.runLater(() -> statusLabel.setText("Step 1/4: Fetching top-level issues..."));
+                Map<String, String> topLevelSummaries = fetchIssueSummaries(service, baseUrl, topLevelKeys, collectedIssues);
+
+                Platform.runLater(() -> statusLabel.setText("Step 2/4: Fetching stories..."));
+                Map<String, String> storySummaries = fetchStoriesInEpics(service, baseUrl, topLevelKeys, collectedIssues);
+
+                Map<String, String> allParentSummaries = new HashMap<>(topLevelSummaries);
+                allParentSummaries.putAll(storySummaries);
+                Set<String> allPotentialParentKeys = new HashSet<>(allParentSummaries.keySet());
+
+                Platform.runLater(() -> statusLabel.setText("Step 3/4: Fetching all sub-tasks..."));
+                List<JiraReconInfo> fetchedTasks = fetchAllSubtaskInfo(service, baseUrl, allPotentialParentKeys, collectedIssues);
+
+                Map<String, JiraReconInfo> tempJiraTaskMap = new HashMap<>();
+                for (JiraReconInfo task : fetchedTasks) {
+                    task.parentSummary = allParentSummaries.getOrDefault(task.parentKey, "N/A");
+                    tempJiraTaskMap.put(task.subtaskSummary, task);
                 }
-            } catch (Exception e) { 
-                System.err.println("Could not parse line: " + line); 
-            }
-        }
+                this.jiraTaskMap = tempJiraTaskMap;
+                this.jiraAllIssuesList = collectedIssues;
 
-        if (this.jiraTaskMap.isEmpty() && this.jiraAllIssuesList.isEmpty()) {
-            statusLabel.setText("Jira data has not been fetched. Please click 'Fetch Jira Sub-tasks' first.");
-            return;
-        }
-        if (this.ispwTaskMap.isEmpty()) {
-            statusLabel.setText("No valid task names could be parsed from the ISPW report.");
-            return;
-        }
+                Platform.runLater(() -> statusLabel.setText("Step 4/4: Parsing ISPW report and comparing..."));
 
-        Set<String> ispwKeys = ispwTaskMap.keySet();
-        Set<String> matchedJiraCiKeys = new HashSet<>();
-        List<MatchRow> matchRows = new ArrayList<>();
-        List<IspwRow> onlyIspwRows = new ArrayList<>();
+                // Parse ISPW Report
+                Map<String, IspwReconInfo> tempIspwTaskMap = new HashMap<>();
+                tso.usmc.jira.util.JiraConfig config = mainFrame.getJiraConfig();
+                int minLenVal = config.getIspwMinLineLength(65);
+                int[] typeBounds = config.getIspwColumnBounds("ci_type", new int[]{0, 4});
+                int[] nameBounds = config.getIspwColumnBounds("ci_name", new int[]{5, 13});
+                int[] envLvlBounds = config.getIspwEnvLvlBounds(new int[]{14, 22});
+                int[] srBounds = config.getIspwColumnBounds("sr", new int[]{30, 40});
+                int[] userBounds = config.getIspwColumnBounds("user", new int[]{41, 47});
+                int[] actionBounds = config.getIspwActionBounds(new int[]{55, 56});
 
-        for (String ispwKey : ispwKeys) {
-            IspwReconInfo ispw = ispwTaskMap.get(ispwKey);
-            String[] parts = ispw.fullTaskName.split(" ", 2);
-            String type = (parts.length > 0) ? parts[0] : ispw.fullTaskName;
-            String name = (parts.length > 1) ? parts[1] : "";
-            String formattedAction = formatIspwAction(ispw.action);
-
-            // Step 1: Direct summary match against Jira CI subtasks
-            if (jiraTaskMap.containsKey(ispwKey)) {
-                JiraReconInfo jira = jiraTaskMap.get(ispwKey);
-                matchedJiraCiKeys.add(ispwKey);
-                String link = mainFrame.getBaseUrl() + "/browse/" + jira.subtaskKey;
-                matchRows.add(new MatchRow(
-                    type, name, jira.subtaskKey, jira.status, jira.assignee, ispw.envLvl,
-                    formattedAction, ispw.srNumber, ispw.userId, link, ""
-                ));
-            } else {
-                // Step 2: Check if action is Compile only or Delete, and search Jira descriptions
-                boolean isCompileOrDelete = isCompileOrDeleteAction(ispw.action, formattedAction);
-                boolean foundInDesc = false;
-
-                if (isCompileOrDelete) {
-                    for (JiraIssueInfo issue : jiraAllIssuesList) {
-                        // If it is in a Release Management subtask, it is NOT a valid location to find an item
-                        if (issue.isReleaseManagement) {
-                            continue;
+                for (String line : ispwText.split("\n")) {
+                    try {
+                        if (line.length() < minLenVal) continue;
+                        String typePart = (line.length() >= typeBounds[1]) ? line.substring(typeBounds[0], typeBounds[1]).trim() :
+                                          (line.length() > typeBounds[0] ? line.substring(typeBounds[0]).trim() : "");
+                        String namePart = (line.length() >= nameBounds[1]) ? line.substring(nameBounds[0], nameBounds[1]).trim() :
+                                          (line.length() > nameBounds[0] ? line.substring(nameBounds[0]).trim() : "");
+                        
+                        if (!typePart.isEmpty() && !namePart.isEmpty()) {
+                            String rawTaskName = typePart + " " + namePart;
+                            String normalizedName = rawTaskName.trim().replaceAll("\\s+", " ");
+                            IspwReconInfo info = new IspwReconInfo();
+                            info.fullTaskName = normalizedName;
+                            info.envLvl = (line.length() >= envLvlBounds[1]) ? line.substring(envLvlBounds[0], envLvlBounds[1]).trim() :
+                                          (line.length() > envLvlBounds[0] ? line.substring(envLvlBounds[0]).trim() : "");
+                            info.srNumber = (line.length() >= srBounds[1]) ? line.substring(srBounds[0], srBounds[1]).trim() :
+                                            (line.length() > srBounds[0] ? line.substring(srBounds[0]).trim() : "");
+                            info.userId = (line.length() >= userBounds[1]) ? line.substring(userBounds[0], userBounds[1]).trim() :
+                                          (line.length() > userBounds[0] ? line.substring(userBounds[0]).trim() : "");
+                            info.action = (line.length() >= actionBounds[1]) ? line.substring(actionBounds[0], actionBounds[1]).trim() :
+                                          (line.length() > actionBounds[0] ? line.substring(actionBounds[0]).trim() : "");
+                            tempIspwTaskMap.put(normalizedName, info);
                         }
-                        if (isCiInDescription(issue.description, type, name) || isNameInDescription(issue.description, name)) {
-                            foundInDesc = true;
-                            String link = mainFrame.getBaseUrl() + "/browse/" + issue.key;
-                            matchRows.add(new MatchRow(
-                                type, name, issue.key, issue.status, issue.assignee, ispw.envLvl,
-                                formattedAction, ispw.srNumber, ispw.userId, link, "In description"
-                            ));
-                            break;
+                    } catch (Exception e) { 
+                        System.err.println("Could not parse line: " + line); 
+                    }
+                }
+                this.ispwTaskMap = tempIspwTaskMap;
+
+                if (this.ispwTaskMap.isEmpty()) {
+                    Platform.runLater(() -> {
+                        showAlert(Alert.AlertType.WARNING, "Warning", "No valid task names could be parsed from the ISPW report. Please check column configurations.");
+                        statusLabel.setText("No valid task names found in ISPW report.");
+                        compareBtn.setDisable(false);
+                        exportExcelBtn.setDisable(false);
+                    });
+                    return;
+                }
+
+                Set<String> ispwKeys = ispwTaskMap.keySet();
+                Set<String> matchedJiraCiKeys = new HashSet<>();
+                List<MatchRow> matchRows = new ArrayList<>();
+                List<IspwRow> onlyIspwRows = new ArrayList<>();
+
+                for (String ispwKey : ispwKeys) {
+                    IspwReconInfo ispw = ispwTaskMap.get(ispwKey);
+                    String[] parts = ispw.fullTaskName.split(" ", 2);
+                    String type = (parts.length > 0) ? parts[0] : ispw.fullTaskName;
+                    String name = (parts.length > 1) ? parts[1] : "";
+                    String formattedAction = formatIspwAction(ispw.action);
+
+                    // Step 1: Direct summary match against Jira CI subtasks
+                    if (jiraTaskMap.containsKey(ispwKey)) {
+                        JiraReconInfo jira = jiraTaskMap.get(ispwKey);
+                        matchedJiraCiKeys.add(ispwKey);
+                        String link = baseUrl + "/browse/" + jira.subtaskKey;
+                        matchRows.add(new MatchRow(
+                            type, name, jira.subtaskKey, jira.status, jira.assignee, ispw.envLvl,
+                            formattedAction, ispw.srNumber, ispw.userId, link, ""
+                        ));
+                    } else {
+                        // Step 2: Check if action is Compile only or Delete, and search Jira descriptions
+                        boolean isCompileOrDelete = isCompileOrDeleteAction(ispw.action, formattedAction);
+                        boolean foundInDesc = false;
+
+                        if (isCompileOrDelete) {
+                            for (JiraIssueInfo issue : jiraAllIssuesList) {
+                                // If it is in a Release Management subtask, it is NOT a valid location to find an item
+                                if (issue.isReleaseManagement) {
+                                    continue;
+                                }
+                                if (isCiInDescription(issue.description, type, name) || isNameInDescription(issue.description, name)) {
+                                    foundInDesc = true;
+                                    String link = baseUrl + "/browse/" + issue.key;
+                                    matchRows.add(new MatchRow(
+                                        type, name, issue.key, issue.status, issue.assignee, ispw.envLvl,
+                                        formattedAction, ispw.srNumber, ispw.userId, link, "In description"
+                                    ));
+                                    break;
+                                }
+                            }
+                        }
+
+                        if (!foundInDesc) {
+                            onlyIspwRows.add(new IspwRow(type, name, ispw.envLvl, formattedAction, ispw.srNumber, ispw.userId));
                         }
                     }
                 }
 
-                if (!foundInDesc) {
-                    onlyIspwRows.add(new IspwRow(type, name, ispw.envLvl, formattedAction, ispw.srNumber, ispw.userId));
+                // Subtasks only in Jira: Jira CI subtasks that were not matched by summary to an ISPW item
+                List<JiraRow> onlyJiraRows = new ArrayList<>();
+                for (Map.Entry<String, JiraReconInfo> entry : jiraTaskMap.entrySet()) {
+                    if (!matchedJiraCiKeys.contains(entry.getKey())) {
+                        JiraReconInfo info = entry.getValue();
+                        String[] parts = info.subtaskSummary.split(" ", 2);
+                        String type = (parts.length > 0) ? parts[0] : info.subtaskSummary;
+                        String name = (parts.length > 1) ? parts[1] : "";
+                        String link = baseUrl + "/browse/" + info.subtaskKey;
+                        onlyJiraRows.add(new JiraRow(type, name, info.parentSummary, info.assignee, info.status, link));
+                    }
                 }
-            }
-        }
 
-        // Subtasks only in Jira: Jira CI subtasks that were not matched by summary to an ISPW item
-        List<JiraRow> onlyJiraRows = new ArrayList<>();
-        for (Map.Entry<String, JiraReconInfo> entry : jiraTaskMap.entrySet()) {
-            if (!matchedJiraCiKeys.contains(entry.getKey())) {
-                JiraReconInfo info = entry.getValue();
-                String[] parts = info.subtaskSummary.split(" ", 2);
-                String type = (parts.length > 0) ? parts[0] : info.subtaskSummary;
-                String name = (parts.length > 1) ? parts[1] : "";
-                String link = mainFrame.getBaseUrl() + "/browse/" + info.subtaskKey;
-                onlyJiraRows.add(new JiraRow(type, name, info.parentSummary, info.assignee, info.status, link));
+                Platform.runLater(() -> {
+                    onlyInIspwTable.getItems().setAll(onlyIspwRows);
+                    onlyInJiraTable.getItems().setAll(onlyJiraRows);
+                    matchesTable.getItems().setAll(matchRows);
+                    
+                    statusLabel.setText("Comparison Complete: " + matchRows.size() + " matches, " + 
+                        onlyIspwRows.size() + " only in ISPW, " + onlyJiraRows.size() + " only in Jira.");
+                    compareBtn.setDisable(false);
+                    exportExcelBtn.setDisable(false);
+                });
+            } catch (Exception ex) {
+                StringWriter sw = new StringWriter();
+                ex.printStackTrace(new PrintWriter(sw));
+                Platform.runLater(() -> {
+                    showAlert(Alert.AlertType.ERROR, "Execution Error", "Reconciliation Error:\n" + ex.getMessage());
+                    statusLabel.setText("Error during reconciliation.");
+                    compareBtn.setDisable(false);
+                    exportExcelBtn.setDisable(false);
+                });
             }
-        }
-
-        Platform.runLater(() -> {
-            onlyInIspwTable.getItems().setAll(onlyIspwRows);
-            onlyInJiraTable.getItems().setAll(onlyJiraRows);
-            matchesTable.getItems().setAll(matchRows);
-            
-            statusLabel.setText("Comparison Complete: " + matchRows.size() + " matches, " + 
-                onlyIspwRows.size() + " only in ISPW, " + onlyJiraRows.size() + " only in Jira.");
         });
     }
 
@@ -693,56 +771,6 @@ public class ReconciliationPanel extends BorderPane {
         }
         info.isReleaseManagement = isReleaseManagementSummary(info.summary);
         return info;
-    }
-    
-    private void fetchJiraTasks() {
-        String[] topLevelKeys = jiraParentKeysArea.getText().trim().toUpperCase().split("\\s+");
-        if (topLevelKeys.length == 0 || (topLevelKeys.length == 1 && topLevelKeys[0].isEmpty())) {
-            showAlert(Alert.AlertType.WARNING, "Warning", "Please enter at least one Jira Parent/Epic key.");
-            return;
-        }
-        fetchJiraBtn.setDisable(true);
-        statusLabel.setText("Fetching Jira data...");
-        ExecutionService.submit(() -> {
-            try {
-                JiraApiService service = mainFrame.getService();
-                String baseUrl = mainFrame.getBaseUrl();
-                List<JiraIssueInfo> collectedIssues = new ArrayList<>();
-
-                Platform.runLater(() -> statusLabel.setText("Step 1/3: Fetching top-level issues..."));
-                Map<String, String> topLevelSummaries = fetchIssueSummaries(service, baseUrl, topLevelKeys, collectedIssues);
-
-                Platform.runLater(() -> statusLabel.setText("Step 2/3: Fetching stories..."));
-                Map<String, String> storySummaries = fetchStoriesInEpics(service, baseUrl, topLevelKeys, collectedIssues);
-
-                Map<String, String> allParentSummaries = new HashMap<>(topLevelSummaries);
-                allParentSummaries.putAll(storySummaries);
-                Set<String> allPotentialParentKeys = new HashSet<>(allParentSummaries.keySet());
-
-                Platform.runLater(() -> statusLabel.setText("Step 3/3: Fetching all sub-tasks..."));
-                List<JiraReconInfo> fetchedTasks = fetchAllSubtaskInfo(service, baseUrl, allPotentialParentKeys, collectedIssues);
-
-                this.jiraTaskMap = new HashMap<>();
-                for (JiraReconInfo task : fetchedTasks) {
-                    task.parentSummary = allParentSummaries.getOrDefault(task.parentKey, "N/A");
-                    this.jiraTaskMap.put(task.subtaskSummary, task);
-                }
-                this.jiraAllIssuesList = collectedIssues;
-
-                Platform.runLater(() -> {
-                    statusLabel.setText("Success! Fetched " + this.jiraTaskMap.size() + " CI sub-tasks across " + collectedIssues.size() + " Jira issues.");
-                    fetchJiraBtn.setDisable(false);
-                });
-            } catch (Exception ex) {
-                StringWriter sw = new StringWriter();
-                ex.printStackTrace(new PrintWriter(sw));
-                Platform.runLater(() -> {
-                    showAlert(Alert.AlertType.ERROR, "Execution Error", "Jira API Error:\n" + ex.getMessage());
-                    statusLabel.setText("Error fetching Jira data.");
-                    fetchJiraBtn.setDisable(false);
-                });
-            }
-        });
     }
     
     private Map<String, String> fetchIssueSummaries(JiraApiService service, String baseUrl, String[] keys, List<JiraIssueInfo> collectedIssues) throws Exception {
