@@ -347,6 +347,10 @@ public class JiraApiClientGui extends Application implements ConfigChangeListene
         });
     }
 
+    public String getSelectedCertificate() {
+        return certComboBox != null ? certComboBox.getSelectionModel().getSelectedItem() : null;
+    }
+
     private void showError(String title, String content) {
         UiUtils.showAlert(primaryStage, Alert.AlertType.ERROR, title, content);
     }

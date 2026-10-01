@@ -21,7 +21,7 @@ import javax.swing.JOptionPane;
  */
 public class JiraConfig {
     private static final String CURRENT_CONFIG_VERSION = "1.6";
-    private static final String CURRENT_CONSTANTS_VERSION = "1.6";
+    private static final String CURRENT_CONSTANTS_VERSION = "1.7";
     private final Properties properties = new Properties();
     private final File configFile;
     private final File templateFile;
@@ -387,6 +387,7 @@ public class JiraConfig {
                             String fullKey = (currentSection.isEmpty() || 
                                               currentSection.equals("Environment") || 
                                               currentSection.equals("Reconciliation") || 
+                                              currentSection.equals("Companion") || 
                                               currentSection.equals("Teams")) ? key : currentSection + "." + key;
                             properties.setProperty(fullKey, value);
                         }
@@ -1050,6 +1051,67 @@ public class JiraConfig {
         } catch (NumberFormatException e) {
             return 500;
         }
+    }
+
+    // Companion Topaz Mainframe Extractor Settings
+    public boolean isCompanionTopazEnabled() {
+        String val = getProperty("companion.topaz.enabled");
+        return val == null || Boolean.parseBoolean(val.trim());
+    }
+
+    public String getCompanionTopazPath() {
+        String val = getProperty("companion.topaz.path");
+        return val != null ? val.trim() : "";
+    }
+
+    public String getCompanionTopazAuthMode() {
+        String val = getProperty("companion.topaz.auth_mode");
+        return val != null && !val.trim().isEmpty() ? val.trim() : "CERTIFICATE";
+    }
+
+    public String getCompanionTopazUser() {
+        String val = getProperty("companion.topaz.user");
+        return val != null ? val.trim() : "";
+    }
+
+    public String getCompanionTopazPassword() {
+        String val = getProperty("companion.topaz.password");
+        return val != null ? val.trim() : "";
+    }
+
+    public String getCompanionTopazFetchMode() {
+        String val = getProperty("companion.topaz.fetch_mode");
+        return val != null && !val.trim().isEmpty() ? val.trim() : "DATASET";
+    }
+
+    public String getCompanionTopazDataset() {
+        String val = getProperty("companion.topaz.dataset");
+        return val != null ? val.trim() : "";
+    }
+
+    public String getCompanionTopazJobId() {
+        String val = getProperty("companion.topaz.job_id");
+        return val != null ? val.trim() : "";
+    }
+
+    public String getCompanionTopazJobDd() {
+        String val = getProperty("companion.topaz.job_dd");
+        return val != null && !val.trim().isEmpty() ? val.trim() : "SORTOUT";
+    }
+
+    public String getCompanionTopazJclSource() {
+        String val = getProperty("companion.topaz.jcl_source");
+        return val != null ? val.trim() : "";
+    }
+
+    public int getCompanionTopazTimeoutSec() {
+        String val = getProperty("companion.topaz.timeout_sec");
+        if (val != null) {
+            try {
+                return Integer.parseInt(val.trim());
+            } catch (NumberFormatException ignored) {}
+        }
+        return 120;
     }
 }
 

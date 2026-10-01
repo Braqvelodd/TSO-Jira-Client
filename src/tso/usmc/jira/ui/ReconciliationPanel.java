@@ -2,6 +2,7 @@ package tso.usmc.jira.ui;
 
 import tso.usmc.jira.app.JiraApiClientGui;
 import tso.usmc.jira.service.JiraApiService;
+import tso.usmc.jira.service.CompanionRunner;
 import tso.usmc.jira.util.ExecutionService;
 import tso.usmc.jira.util.ExcelExportUtil;
 
@@ -123,6 +124,7 @@ public class ReconciliationPanel extends BorderPane {
     // UI Components
     private final TextArea jiraParentKeysArea;
     private final TextArea ispwReportArea = new TextArea();
+    private final Button fetchMainframeBtn = new Button("Fetch from Mainframe");
     private final Button configureColumnsBtn = new Button("Configure Columns...");
     private final Button compareBtn = new Button("Compare Jira & ISPW");
     private final Button exportExcelBtn = new Button("Export to Excel (.xlsx)");
@@ -175,14 +177,14 @@ public class ReconciliationPanel extends BorderPane {
         ispwPanel.getStyleClass().add("card");
         ispwPanel.setPadding(new Insets(10));
 
-        HBox ispwHeader = new HBox(10);
+        HBox ispwHeader = new HBox(8);
         ispwHeader.setAlignment(Pos.CENTER_LEFT);
         ispwHeader.setMinHeight(28);
         Label ispwTitle = new Label("2. Paste ISPW Report");
         ispwTitle.getStyleClass().add("card-title");
         Region headerSpacer = new Region();
         HBox.setHgrow(headerSpacer, Priority.ALWAYS);
-        ispwHeader.getChildren().addAll(ispwTitle, headerSpacer, configureColumnsBtn);
+        ispwHeader.getChildren().addAll(ispwTitle, headerSpacer, fetchMainframeBtn, configureColumnsBtn);
 
         ispwReportArea.setPrefHeight(150);
         VBox.setVgrow(ispwReportArea, Priority.ALWAYS);
@@ -230,6 +232,13 @@ public class ReconciliationPanel extends BorderPane {
         statusLabel.getStyleClass().add("status-text");
         statusPanel.getChildren().add(statusLabel);
         setBottom(statusPanel);
+
+        fetchMainframeBtn.setOnAction(e -> handleFetchFromMainframe());
+        ContextMenu companionMenu = new ContextMenu();
+        MenuItem configCompanionItem = new MenuItem("Configure Mainframe Settings...");
+        configCompanionItem.setOnAction(e -> openCompanionConfigDialog());
+        companionMenu.getItems().add(configCompanionItem);
+        fetchMainframeBtn.setContextMenu(companionMenu);
 
         compareBtn.setOnAction(e -> performComparison());
         exportExcelBtn.setOnAction(e -> exportToExcel());
@@ -569,6 +578,67 @@ public class ReconciliationPanel extends BorderPane {
                 });
             }
         });
+    }
+
+    private void handleFetchFromMainframe() {
+        tso.usmc.jira.util.JiraConfig config = mainFrame.getJiraConfig();
+        boolean hasPath = config.getCompanionTopazPath() != null && !config.getCompanionTopazPath().isEmpty();
+        String mode = config.getCompanionTopazFetchMode();
+        boolean hasTarget = false;
+        if ("SUBMIT".equalsIgnoreCase(mode)) {
+            hasTarget = config.getCompanionTopazJclSource() != null && !config.getCompanionTopazJclSource().isEmpty();
+        } else if ("JOB_SPOOL".equalsIgnoreCase(mode)) {
+            hasTarget = config.getCompanionTopazJobId() != null && !config.getCompanionTopazJobId().isEmpty();
+        } else {
+            hasTarget = config.getCompanionTopazDataset() != null && !config.getCompanionTopazDataset().isEmpty();
+        }
+
+        // If not fully configured, open settings dialog first
+        if (!hasPath || !hasTarget) {
+            openCompanionConfigDialog();
+            return;
+        }
+
+        executeMainframeFetch();
+    }
+
+    private void openCompanionConfigDialog() {
+        CompanionConfigDialog dialog = new CompanionConfigDialog(mainFrame.getPrimaryStage(), mainFrame.getJiraConfig());
+        Optional<Boolean> result = dialog.showAndWait();
+        if (result.isPresent() && Boolean.TRUE.equals(result.get())) {
+            executeMainframeFetch();
+        }
+    }
+
+    private void executeMainframeFetch() {
+        tso.usmc.jira.util.JiraConfig config = mainFrame.getJiraConfig();
+        String selectedCert = mainFrame.getSelectedCertificate();
+
+        fetchMainframeBtn.setDisable(true);
+        compareBtn.setDisable(true);
+        exportExcelBtn.setDisable(true);
+        statusLabel.setText("Connecting to mainframe via Topaz companion...");
+
+        CompanionRunner.executeTopazFetchAsync(
+            config,
+            selectedCert,
+            msg -> Platform.runLater(() -> statusLabel.setText(msg)),
+            res -> Platform.runLater(() -> {
+                fetchMainframeBtn.setDisable(false);
+                compareBtn.setDisable(false);
+                exportExcelBtn.setDisable(false);
+
+                if (res.success && res.outputContent != null && !res.outputContent.trim().isEmpty()) {
+                    ispwReportArea.setText(res.outputContent);
+                    int lines = res.outputContent.split("\n").length;
+                    statusLabel.setText("Successfully retrieved ISPW report from mainframe (" + lines + " lines). Ready to compare.");
+                } else {
+                    statusLabel.setText("Mainframe companion extraction failed.");
+                    showAlert(Alert.AlertType.ERROR, "Mainframe Fetch Error",
+                            (res.errorMessage != null ? res.errorMessage : "Unknown error occurred while running Topaz companion."));
+                }
+            })
+        );
     }
 
     private void exportToExcel() {
