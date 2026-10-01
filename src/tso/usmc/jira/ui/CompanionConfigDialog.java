@@ -55,7 +55,21 @@ public class CompanionConfigDialog extends Dialog<Boolean> {
 
         // 1. Script Path
         Label scriptLabel = new Label("Topaz Script Path:");
-        scriptPathField.setText(config.getCompanionTopazPath());
+        String configuredPath = config.getCompanionTopazPath();
+        if (configuredPath == null || configuredPath.trim().isEmpty() || !new File(configuredPath.trim()).exists()) {
+            File fallback1 = new File("../Topaz-file-read/run.bat");
+            File fallback2 = new File(System.getProperty("user.home"), "Documents/projects/Topaz-file-read/run.bat");
+            if (fallback1.exists()) {
+                try {
+                    configuredPath = fallback1.getCanonicalPath();
+                } catch (Exception ignored) {
+                    configuredPath = fallback1.getAbsolutePath();
+                }
+            } else if (fallback2.exists()) {
+                configuredPath = fallback2.getAbsolutePath();
+            }
+        }
+        scriptPathField.setText(configuredPath != null ? configuredPath : "");
         Button browseScriptBtn = new Button("Browse...");
         browseScriptBtn.setOnAction(e -> {
             FileChooser chooser = new FileChooser();

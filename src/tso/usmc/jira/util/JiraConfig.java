@@ -399,15 +399,22 @@ public class JiraConfig {
             }
 
             // 2. Load jiratemplate.ini second (contains custom workflows, filters, and templates)
-            if (this.templateFile.exists()) {
-                try (InputStream input = new FileInputStream(this.templateFile)) {
-                    Properties tempProps = new Properties();
-                    tempProps.load(input);
-                    // Only merge template, api_template, workflow, and jql_filter keys
-                    for (String key : tempProps.stringPropertyNames()) {
-                        if (key.startsWith("template.") || key.startsWith("api_template.") || 
-                            key.startsWith("workflow.") || key.startsWith("jql_filter.")) {
-                            properties.setProperty(key, tempProps.getProperty(key));
+            if (this.templateFile != null && this.templateFile.exists()) {
+                try {
+                    List<String> lines = Files.readAllLines(this.templateFile.toPath());
+                    for (String line : lines) {
+                        line = line.trim();
+                        if (line.isEmpty() || line.startsWith("#") || line.startsWith(";")) {
+                            continue;
+                        }
+                        if (line.contains("=")) {
+                            String[] parts = line.split("=", 2);
+                            String key = parts[0].trim();
+                            String value = parts[1].trim();
+                            if (key.startsWith("template.") || key.startsWith("api_template.") || 
+                                key.startsWith("workflow.") || key.startsWith("jql_filter.")) {
+                                properties.setProperty(key, value);
+                            }
                         }
                     }
                     System.out.println("Templates loaded from " + templateFile.getName());
@@ -417,11 +424,25 @@ public class JiraConfig {
             }
 
             // 3. Load JiraConfig.ini last (contains user-specific overrides, settings, and themes)
-            try (InputStream input = new FileInputStream(this.configFile)) {
-                properties.load(input);
-                System.out.println("Configuration reloaded from " + configFile.getName());
-            } catch (IOException ex) {
-                System.err.println("Error reloading configuration: " + ex.getMessage());
+            if (this.configFile != null && this.configFile.exists()) {
+                try {
+                    List<String> lines = Files.readAllLines(this.configFile.toPath());
+                    for (String line : lines) {
+                        line = line.trim();
+                        if (line.isEmpty() || line.startsWith("#") || line.startsWith(";")) {
+                            continue;
+                        }
+                        if (line.contains("=")) {
+                            String[] parts = line.split("=", 2);
+                            String key = parts[0].trim();
+                            String value = parts[1].trim();
+                            properties.setProperty(key, value);
+                        }
+                    }
+                    System.out.println("Configuration reloaded from " + configFile.getName());
+                } catch (IOException ex) {
+                    System.err.println("Error reloading configuration: " + ex.getMessage());
+                }
             }
         }
     }
