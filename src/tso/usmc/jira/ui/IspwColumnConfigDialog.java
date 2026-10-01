@@ -29,6 +29,8 @@ public class IspwColumnConfigDialog extends Dialog<Void> {
     private final TextField typeEnd = new TextField();
     private final TextField nameStart = new TextField();
     private final TextField nameEnd = new TextField();
+    private final TextField envLvlStart = new TextField();
+    private final TextField envLvlEnd = new TextField();
     private final TextField srStart = new TextField();
     private final TextField srEnd = new TextField();
     private final TextField userStart = new TextField();
@@ -86,13 +88,14 @@ public class IspwColumnConfigDialog extends Dialog<Void> {
 
         addMappingRow(mappingPanel, 0, "CI Type Bounds:", typeStart, typeEnd);
         addMappingRow(mappingPanel, 1, "CI Name Bounds:", nameStart, nameEnd);
-        addMappingRow(mappingPanel, 2, "SR Number Bounds:", srStart, srEnd);
-        addMappingRow(mappingPanel, 3, "User ID Bounds:", userStart, userEnd);
-        addMappingRow(mappingPanel, 4, "Action Bounds:", actionStart, actionEnd);
+        addMappingRow(mappingPanel, 2, "ENVlvl Bounds:", envLvlStart, envLvlEnd);
+        addMappingRow(mappingPanel, 3, "SR Number Bounds:", srStart, srEnd);
+        addMappingRow(mappingPanel, 4, "User ID Bounds:", userStart, userEnd);
+        addMappingRow(mappingPanel, 5, "Action Bounds:", actionStart, actionEnd);
         
-        mappingPanel.add(new Label("Min Line Length:"), 0, 5);
+        mappingPanel.add(new Label("Min Line Length:"), 0, 6);
         minLen.setPrefWidth(50);
-        mappingPanel.add(minLen, 1, 5);
+        mappingPanel.add(minLen, 1, 6);
 
         // Layout Assembly
         VBox root = new VBox(10);
@@ -209,6 +212,13 @@ public class IspwColumnConfigDialog extends Dialog<Void> {
             updateMinLineLength();
         });
 
+        MenuItem envLvlItem = new MenuItem("Set as ENVlvl (" + start + " to " + end + ")");
+        envLvlItem.setOnAction(e -> {
+            envLvlStart.setText(String.valueOf(finalStart));
+            envLvlEnd.setText(String.valueOf(finalEnd));
+            updateMinLineLength();
+        });
+
         MenuItem srItem = new MenuItem("Set as SR Number (" + start + " to " + end + ")");
         srItem.setOnAction(e -> {
             srStart.setText(String.valueOf(finalStart));
@@ -230,7 +240,7 @@ public class IspwColumnConfigDialog extends Dialog<Void> {
             updateMinLineLength();
         });
 
-        menu.getItems().addAll(typeItem, nameItem, srItem, userItem, actionItem);
+        menu.getItems().addAll(typeItem, nameItem, envLvlItem, srItem, userItem, actionItem);
         menu.show(invoker, screenX, screenY);
     }
 
@@ -238,6 +248,7 @@ public class IspwColumnConfigDialog extends Dialog<Void> {
         int max = 0;
         try { max = Math.max(max, Integer.parseInt(typeEnd.getText().trim())); } catch (Exception ignored) {}
         try { max = Math.max(max, Integer.parseInt(nameEnd.getText().trim())); } catch (Exception ignored) {}
+        try { max = Math.max(max, Integer.parseInt(envLvlEnd.getText().trim())); } catch (Exception ignored) {}
         try { max = Math.max(max, Integer.parseInt(srEnd.getText().trim())); } catch (Exception ignored) {}
         try { max = Math.max(max, Integer.parseInt(userEnd.getText().trim())); } catch (Exception ignored) {}
         try { max = Math.max(max, Integer.parseInt(actionEnd.getText().trim())); } catch (Exception ignored) {}
@@ -258,6 +269,7 @@ public class IspwColumnConfigDialog extends Dialog<Void> {
     private void loadCurrentConfig() {
         int[] type = config.getIspwColumnBounds("ci_type", new int[]{0, 4});
         int[] name = config.getIspwColumnBounds("ci_name", new int[]{5, 13});
+        int[] envLvl = config.getIspwColumnBounds("env_lvl", new int[]{14, 22});
         int[] sr = config.getIspwColumnBounds("sr", new int[]{30, 40});
         int[] user = config.getIspwColumnBounds("user", new int[]{41, 47});
         int[] action = config.getIspwActionBounds(new int[]{55, 56});
@@ -266,6 +278,8 @@ public class IspwColumnConfigDialog extends Dialog<Void> {
         typeEnd.setText(String.valueOf(type[1]));
         nameStart.setText(String.valueOf(name[0]));
         nameEnd.setText(String.valueOf(name[1]));
+        envLvlStart.setText(String.valueOf(envLvl[0]));
+        envLvlEnd.setText(String.valueOf(envLvl[1]));
         srStart.setText(String.valueOf(sr[0]));
         srEnd.setText(String.valueOf(sr[1]));
         userStart.setText(String.valueOf(user[0]));
@@ -279,6 +293,8 @@ public class IspwColumnConfigDialog extends Dialog<Void> {
         addSplitPoint(type[1]);
         addSplitPoint(name[0]);
         addSplitPoint(name[1]);
+        addSplitPoint(envLvl[0]);
+        addSplitPoint(envLvl[1]);
         addSplitPoint(sr[0]);
         addSplitPoint(sr[1]);
         addSplitPoint(user[0]);
@@ -298,6 +314,7 @@ public class IspwColumnConfigDialog extends Dialog<Void> {
             Map<String, String> props = new HashMap<>();
             props.put("recon.ispw.ci_type.bounds", typeStart.getText().trim() + "," + typeEnd.getText().trim());
             props.put("recon.ispw.ci_name.bounds", nameStart.getText().trim() + "," + nameEnd.getText().trim());
+            props.put("recon.ispw.env_lvl.bounds", envLvlStart.getText().trim() + "," + envLvlEnd.getText().trim());
             props.put("recon.ispw.sr.bounds", srStart.getText().trim() + "," + srEnd.getText().trim());
             props.put("recon.ispw.user.bounds", userStart.getText().trim() + "," + userEnd.getText().trim());
             props.put("recon.ispw.action.bounds", actionStart.getText().trim() + "," + actionEnd.getText().trim());

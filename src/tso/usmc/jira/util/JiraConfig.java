@@ -814,6 +814,10 @@ public class JiraConfig {
         }
     }
 
+    public int[] getIspwEnvLvlBounds(int[] defaultBounds) {
+        return getIspwColumnBounds("env_lvl", defaultBounds);
+    }
+
     public int[] getIspwActionBounds(int[] defaultBounds) {
         String val = getProperty("recon.ispw.action.bounds");
         if (val == null || !val.contains(",")) return defaultBounds;
