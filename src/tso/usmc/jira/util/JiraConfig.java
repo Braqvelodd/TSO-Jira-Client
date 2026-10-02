@@ -1313,6 +1313,30 @@ public class JiraConfig {
             } catch (IOException e) {
                 System.err.println("Failed to create default CSS file: " + e.getMessage());
             }
+        } else {
+            // Sanitize existing CSS file: remove non-JavaFX HTML blocks if present
+            try {
+                String content = new String(Files.readAllBytes(file.toPath()), StandardCharsets.UTF_8);
+                boolean changed = false;
+                if (content.contains("border: 1px solid") || content.contains("border-collapse:")) {
+                    content = content.replaceAll("(?s)/\\* HTML Content styling.*?$", "");
+                    content = content.replaceAll("(?s)table\\s*\\{.*?\\}", "");
+                    content = content.replaceAll("(?s)th,\\s*td\\s*\\{.*?\\}", "");
+                    content = content.replaceAll("(?s)th\\s*\\{.*?\\}", "");
+                    content = content.replaceAll("(?s)\\.comment-card\\s*\\{.*?\\}", "");
+                    content = content.replaceAll("(?s)\\.comment-header\\s*\\{.*?\\}", "");
+                    content = content.replaceAll("(?s)\\.comment-date\\s*\\{.*?\\}", "");
+                    content = content.replaceAll("(?s)\\.comment-body\\s*\\{.*?\\}", "");
+                    changed = true;
+                }
+                if (!content.contains("-custom-accent:")) {
+                    content = content.replaceFirst("(\\.root\\s*\\{)", "$1\n    -custom-accent: #1d4ed8;\n    -fx-color: -fx-base;");
+                    changed = true;
+                }
+                if (changed) {
+                    Files.write(file.toPath(), content.getBytes(StandardCharsets.UTF_8));
+                }
+            } catch (Exception ignored) {}
         }
     }
 

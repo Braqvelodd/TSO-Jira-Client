@@ -41,17 +41,16 @@ public class ThemeManager {
         scene.getStylesheets().clear();
 
         String activeTheme = config.getTheme();
-        String stylesheetUrl = getThemeStylesheetUrl();
+        if ("custom".equals(activeTheme) || "css".equals(activeTheme)) {
+            String accentColor = config.getThemeAccentColor();
+            scene.getRoot().setStyle("-custom-accent: " + accentColor + ";");
+        } else {
+            scene.getRoot().setStyle(""); // Clear inline styles
+        }
 
+        String stylesheetUrl = getThemeStylesheetUrl();
         if (stylesheetUrl != null) {
             scene.getStylesheets().add(stylesheetUrl);
-            if ("custom".equals(activeTheme) || "css".equals(activeTheme)) {
-                String accentColor = config.getThemeAccentColor();
-                scene.getRoot().setStyle("-custom-accent: " + accentColor + ";");
-            } else {
-                scene.getRoot().setStyle(""); // Clear inline styles
-            }
-
             String webViewStylesheetUrl = getThemeStylesheetAsDataUri(activeTheme, stylesheetUrl);
             applyThemeToWebViews(scene.getRoot(), webViewStylesheetUrl);
         }

@@ -1,13 +1,22 @@
 /* custom.css - Custom accent theme */
 .root {
+    -custom-accent: #1d4ed8;
     -fx-background: #0f172a;
     -fx-base: #1e293b;
+    -fx-color: -fx-base;
     -fx-control-inner-background: #1e293b;
     -fx-control-inner-background-alt: #1e293b;
     -fx-accent: -custom-accent;
     -fx-focus-color: -custom-accent;
+    -fx-faint-focus-color: transparent;
     -fx-text-base-color: #f8fafc;
     -fx-text-background-color: #f8fafc;
+    -fx-shadow-highlight-color: transparent;
+    -fx-outer-border: #334155;
+    -fx-inner-border: #1e293b;
+    -fx-body-color: #1e293b;
+    -fx-mark-color: #f8fafc;
+    -fx-mark-highlight-color: transparent;
     -fx-font-family: "Segoe UI", Arial, sans-serif;
     -fx-font-size: 13px;
 }
@@ -224,12 +233,4 @@
 .action-btn-delete:hover {
     -fx-background-color: rgba(239, 68, 68, 0.2);
     -fx-border-color: #ef4444;
-}
-
-/* HTML Content styling for WebViews (Comment Summarizer & Workflow Report) */
-body {
-    background-color: #0f172a;
-    color: #f8fafc;
-    font-family: "Segoe UI", Arial, sans-serif;
-    margin: 10px;
 }
