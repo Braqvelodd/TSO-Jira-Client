@@ -9,6 +9,8 @@ import javafx.stage.Window;
 import tso.usmc.jira.util.JiraConfig;
 
 import java.io.File;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 /**
  * Dialog for configuring and launching the Topaz Mainframe companion tool.
@@ -213,7 +215,8 @@ public class CompanionConfigDialog extends Dialog<Boolean> {
     }
 
     private void saveSettingsToConfig() {
-        config.saveProperty("companion.topaz.path", scriptPathField.getText().trim());
+        Map<String, String> props = new LinkedHashMap<>();
+        props.put("companion.topaz.path", scriptPathField.getText().trim());
 
         String auth;
         if ("User / Password".equals(authModeCombo.getValue())) {
@@ -223,9 +226,9 @@ public class CompanionConfigDialog extends Dialog<Boolean> {
         } else {
             auth = "CERTIFICATE";
         }
-        config.saveProperty("companion.topaz.auth_mode", auth);
-        config.saveProperty("companion.topaz.user", userField.getText().trim());
-        config.saveProperty("companion.topaz.password", passField.getText());
+        props.put("companion.topaz.auth_mode", auth);
+        props.put("companion.topaz.user", userField.getText().trim());
+        props.put("companion.topaz.password", passField.getText());
 
         String fetch;
         if ("JES Job Spool".equals(fetchModeCombo.getValue())) {
@@ -235,11 +238,13 @@ public class CompanionConfigDialog extends Dialog<Boolean> {
         } else {
             fetch = "DATASET";
         }
-        config.saveProperty("companion.topaz.fetch_mode", fetch);
-        config.saveProperty("companion.topaz.dataset", datasetField.getText().trim());
-        config.saveProperty("companion.topaz.job_id", jobIdField.getText().trim());
-        config.saveProperty("companion.topaz.job_dd", jobDdField.getText().trim().isEmpty() ? "SORTOUT" : jobDdField.getText().trim());
-        config.saveProperty("companion.topaz.jcl_source", jclSourceField.getText().trim());
-        config.saveProperty("companion.topaz.timeout_sec", timeoutField.getText().trim());
+        props.put("companion.topaz.fetch_mode", fetch);
+        props.put("companion.topaz.dataset", datasetField.getText().trim());
+        props.put("companion.topaz.job_id", jobIdField.getText().trim());
+        props.put("companion.topaz.job_dd", jobDdField.getText().trim().isEmpty() ? "SORTOUT" : jobDdField.getText().trim());
+        props.put("companion.topaz.jcl_source", jclSourceField.getText().trim());
+        props.put("companion.topaz.timeout_sec", timeoutField.getText().trim());
+
+        config.saveProperties(props);
     }
 }
