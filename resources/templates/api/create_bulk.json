@@ -1,0 +1,38 @@
+﻿{
+  "id": "create_bulk",
+  "label": "[Issue] Create Bulk Issues",
+  "method": "POST",
+  "endpoint": "/rest/api/2/issue/bulk",
+  "body": {
+    "issueUpdates": [
+      {
+        "fields": {
+          "project": {
+            "key": "TFS"
+          },
+          "parent": {
+            "key": "TFS-102"
+          },
+          "summary": "Bulk 1",
+          "issuetype": {
+            "name": "Task"
+          }
+        }
+      },
+      {
+        "fields": {
+          "project": {
+            "key": "TFS"
+          },
+          "parent": {
+            "key": "TFS-103"
+          },
+          "summary": "Bulk 2",
+          "issuetype": {
+            "name": "Task"
+          }
+        }
+      }
+    ]
+  }
+}

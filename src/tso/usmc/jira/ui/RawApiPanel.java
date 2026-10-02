@@ -108,12 +108,17 @@ public class RawApiPanel extends GridPane {
         templateCombo.getItems().add(new ApiTemplate("--- Select Template ---", "", "", ""));
         String[] keys = mainFrame.getJiraConfig().getRawApiTemplateKeys();
         for (String key : keys) {
-            String val = mainFrame.getJiraConfig().getRawApiTemplate(key);
-            if (val != null) {
-                String[] parts = val.split("\\|", -1);
-                if (parts.length >= 4) {
-                    String body = parts[3].replace("\\n", "\n");
-                    templateCombo.getItems().add(new ApiTemplate(parts[0], parts[1], parts[2], body));
+            tso.usmc.jira.util.JiraConfig.RawApiTemplateInfo info = mainFrame.getJiraConfig().getRawApiTemplateInfo(key);
+            if (info != null) {
+                templateCombo.getItems().add(new ApiTemplate(info.label, info.method, info.endpoint, info.body));
+            } else {
+                String val = mainFrame.getJiraConfig().getRawApiTemplate(key);
+                if (val != null) {
+                    String[] parts = val.split("\\|", -1);
+                    if (parts.length >= 4) {
+                        String body = parts[3].replace("\\n", "\n");
+                        templateCombo.getItems().add(new ApiTemplate(parts[0], parts[1], parts[2], body));
+                    }
                 }
             }
         }

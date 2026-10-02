@@ -1,0 +1,9 @@
+﻿{
+  "id": "edit_comment",
+  "label": "[Comment] Edit Comment",
+  "method": "PUT",
+  "endpoint": "/rest/api/2/issue/{issueKey}/comment/{id}",
+  "body": {
+    "body": "Updated comment text."
+  }
+}

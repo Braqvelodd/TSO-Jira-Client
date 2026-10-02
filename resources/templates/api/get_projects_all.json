@@ -1,0 +1,7 @@
+﻿{
+  "id": "get_projects_all",
+  "label": "[Proj] List All Projects",
+  "method": "GET",
+  "endpoint": "/rest/api/2/project",
+  "body": ""
+}

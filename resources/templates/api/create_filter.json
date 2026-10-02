@@ -1,0 +1,11 @@
+﻿{
+  "id": "create_filter",
+  "label": "[Search] Create Filter",
+  "method": "POST",
+  "endpoint": "/rest/api/2/filter",
+  "body": {
+    "name": "My Filter",
+    "jql": "assignee = myself",
+    "favourite": true
+  }
+}

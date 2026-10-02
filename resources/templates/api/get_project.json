@@ -1,0 +1,7 @@
+﻿{
+  "id": "get_project",
+  "label": "[Proj] Get Project Details",
+  "method": "GET",
+  "endpoint": "/rest/api/2/project/{projectKey}",
+  "body": ""
+}

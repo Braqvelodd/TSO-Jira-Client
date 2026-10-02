@@ -1,0 +1,7 @@
+﻿{
+  "id": "get_versions",
+  "label": "[Proj] Get Versions",
+  "method": "GET",
+  "endpoint": "/rest/api/2/project/{projectKey}/versions",
+  "body": ""
+}

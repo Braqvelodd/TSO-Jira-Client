@@ -1,0 +1,13 @@
+﻿{
+  "id": "create_project",
+  "label": "[Proj] Create Project",
+  "method": "POST",
+  "endpoint": "/rest/api/2/project",
+  "body": {
+    "key": "NEW",
+    "name": "New Project",
+    "projectTypeKey": "software",
+    "projectTemplateKey": "com.pyxis.greenhopper.jira:gh-scrum-template",
+    "lead": "lead.id"
+  }
+}

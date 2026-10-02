@@ -742,16 +742,27 @@ public class TaskBuilderPanel extends BorderPane {
         templateSelector.getItems().add("--- Select Template ---");
         
         try {
-            File templateDir = new File(mainFrame.getJiraConfig().getConfigFile().getParentFile(), "template");
-            if (!templateDir.exists()) {
-                templateDir.mkdirs();
+            // 1. Load task templates from JiraConfig (templates/task/*.json)
+            String[] keys = mainFrame.getJiraConfig().getTemplateKeys();
+            for (String k : keys) {
+                String label = mainFrame.getJiraConfig().getTemplateLabel(k);
+                String display = (label != null && !label.trim().isEmpty()) ? label : k;
+                if (!templateSelector.getItems().contains(display)) {
+                    templateSelector.getItems().add(display);
+                }
             }
-            
-            File[] files = templateDir.listFiles((dir, name) -> name.toLowerCase().endsWith(".txt"));
-            if (files != null) {
-                Arrays.sort(files, (f1, f2) -> f1.getName().compareToIgnoreCase(f2.getName()));
-                for (File f : files) {
-                    templateSelector.getItems().add(f.getName());
+
+            // 2. Load legacy .txt templates if any
+            File templateDir = new File(mainFrame.getJiraConfig().getConfigDir(), "template");
+            if (templateDir.exists()) {
+                File[] files = templateDir.listFiles((dir, name) -> name.toLowerCase().endsWith(".txt"));
+                if (files != null) {
+                    Arrays.sort(files, (f1, f2) -> f1.getName().compareToIgnoreCase(f2.getName()));
+                    for (File f : files) {
+                        if (!templateSelector.getItems().contains(f.getName())) {
+                            templateSelector.getItems().add(f.getName());
+                        }
+                    }
                 }
             }
         } catch (Exception ex) {
@@ -766,14 +777,34 @@ public class TaskBuilderPanel extends BorderPane {
         if (selected == null || selected.equals("--- Select Template ---")) return;
         
         try {
-            File templateDir = new File(mainFrame.getJiraConfig().getConfigFile().getParentFile(), "template");
+            // 1. Check JiraConfig task templates first
+            String[] keys = mainFrame.getJiraConfig().getTemplateKeys();
+            String matchedText = null;
+            for (String k : keys) {
+                String label = mainFrame.getJiraConfig().getTemplateLabel(k);
+                if (selected.equals(label) || selected.equals(k)) {
+                    matchedText = mainFrame.getJiraConfig().getTemplateText(k);
+                    break;
+                }
+            }
+
+            if (matchedText != null) {
+                inputArea.setText(matchedText);
+                parseInput();
+                setAllTasksSelected(true);
+                Platform.runLater(() -> templateSelector.getSelectionModel().select(0));
+                return;
+            }
+
+            // 2. Check legacy template/ directory
+            File templateDir = new File(mainFrame.getJiraConfig().getConfigDir(), "template");
             File templateFile = new File(templateDir, selected);
-            String content = new String(Files.readAllBytes(templateFile.toPath()));
-            
-            inputArea.setText(content);
-            parseInput();
-            setAllTasksSelected(true);
-            
+            if (templateFile.exists()) {
+                String content = new String(Files.readAllBytes(templateFile.toPath()), java.nio.charset.StandardCharsets.UTF_8);
+                inputArea.setText(content);
+                parseInput();
+                setAllTasksSelected(true);
+            }
             Platform.runLater(() -> templateSelector.getSelectionModel().select(0));
         } catch (Exception ex) {
             showAlert(Alert.AlertType.ERROR, "Error", "Error reading template: " + ex.getMessage());

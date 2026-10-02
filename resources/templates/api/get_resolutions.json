@@ -1,0 +1,7 @@
+﻿{
+  "id": "get_resolutions",
+  "label": "[Sys] List Resolutions",
+  "method": "GET",
+  "endpoint": "/rest/api/2/resolution",
+  "body": ""
+}

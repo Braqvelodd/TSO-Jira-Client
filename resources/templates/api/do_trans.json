@@ -1,0 +1,11 @@
+﻿{
+  "id": "do_trans",
+  "label": "[Issue] Execute Transition",
+  "method": "POST",
+  "endpoint": "/rest/api/2/issue/{issueKey}/transitions",
+  "body": {
+    "transition": {
+      "id": "121"
+    }
+  }
+}

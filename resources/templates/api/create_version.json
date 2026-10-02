@@ -1,0 +1,11 @@
+﻿{
+  "id": "create_version",
+  "label": "[Proj] Create Version",
+  "method": "POST",
+  "endpoint": "/rest/api/2/version",
+  "body": {
+    "name": "v1.0",
+    "project": "TFS",
+    "released": false
+  }
+}

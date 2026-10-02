@@ -1,0 +1,11 @@
+﻿{
+  "id": "edit_issue",
+  "label": "[Issue] Edit Issue",
+  "method": "PUT",
+  "endpoint": "/rest/api/2/issue/{issueKey}",
+  "body": {
+    "fields": {
+      "summary": "Updated Summary"
+    }
+  }
+}

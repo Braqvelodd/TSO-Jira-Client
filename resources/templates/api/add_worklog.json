@@ -1,0 +1,10 @@
+﻿{
+  "id": "add_worklog",
+  "label": "[Work] Add Worklog",
+  "method": "POST",
+  "endpoint": "/rest/api/2/issue/{issueKey}/worklog",
+  "body": {
+    "timeSpent": "1h",
+    "comment": "Work done."
+  }
+}

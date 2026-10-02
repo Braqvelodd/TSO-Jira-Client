@@ -1,0 +1,5 @@
+{
+  "name": "release_mgmt",
+  "label": "Build release management",
+  "text": "DEFAULT_ASSIGNEE:HULL.JAMES.DOUGLAS\nDEFAULT_TYPE:Sub-task\nDEFAULT_COMPONENT:Team Lifeline\nRelease Management\nnotify:HULL.JAMES.DOUGLAS\nPlease approve and promote\n\nSet:\nRelease:\nCIs:\n{{CI}}\n\n\nDLT:\n{{DLT}}Table cert:\n\n******************************************************************"
+}

@@ -22,7 +22,7 @@ This project is a specialized Java Swing application for automating and streamli
     *   `tso.usmc.jira.util`: Configuration, JSON, and common utilities.
     *   `tso.usmc.jira.workflow`: Engine for the "Workflow Orchestrator".
 *   `lib/`: External dependencies (`json.jar`), AI model parts (`model.gguf.partXXX`), and AI runtime binaries (`llama-cli.exe`, DLLs).
-*   `resources/`: Default `.ini` configuration and template files.
+*   `resources/`: Default modular `.properties`, templates (`templates/api/`, `templates/task/`), and filters (`filters/`).
 *   `embedding/`: Build staging area for binaries and reassembled models.
 *   `bin/`: Compilation output directory.
 
@@ -41,15 +41,30 @@ The project uses a Windows Batch script for building. It does not use Maven or G
 
 ### Running
 ```cmd
+run.bat
+```
+or
+```cmd
 java -jar JiraApiClient.jar
 ```
 *   **Note:** Requires a CAC reader and card for most features.
-*   **Config Location:** Settings are stored in `%USERPROFILE%\.JiraApiClient\JiraConfig.ini`.
+*   **Config Location:** Settings are stored in `%USERPROFILE%\.JiraApiClient\` across modular files:
+    *   `connection.properties`: Jira base URL, auth method, PAT token, timeouts.
+    *   `teams.properties`: Team names, leads, components, and member lists.
+    *   `ui.properties`: Themes, accent colors, autocomplete, and tab visibility.
+    *   `defaults.properties`: System defaults, custom field mappings, CI types, threads.
+    *   `companion.properties`: Topaz mainframe companion execution settings.
+    *   `llm.properties`: llama-cli and GGUF model paths and timeouts.
+    *   `reconciliation.properties`: ISPW report bounding coordinates and line parser settings.
+    *   `templates/api/*.json`: Raw REST API templates.
+    *   `templates/task/*.json`: Task Builder templates.
+    *   `filters/*.json`: JQL Runner saved filters.
+    *   `workflows/*.json`: Workflow Orchestrator recipes.
 
 ## Development Conventions
 
 *   **Swing GUI:** Uses the system look and feel (`UIManager.getSystemLookAndFeelClassName()`). Most UI components are organized into `JPanel` subclasses within the `ui` package.
-*   **Configuration:** All settings must be manageable via `JiraConfig.java`. It supports live reloading via a `WatchService`.
+*   **Configuration:** All settings are manageable via `JiraConfig.java`. It supports live reloading via a `WatchService` and automatically migrates legacy `.ini` files to the modular `.properties` and JSON format.
 *   **Authentication:** mTLS is strictly handled via `SunMSCAPI` using the "Windows-MY" keystore.
 *   **Error Handling:** Use `JOptionPane` for user-facing errors. Core logic should throw exceptions to be caught by the UI layer.
 *   **Source Management:** `sources.txt` is automatically generated dynamically by the build script (`compile and build.bat`). Developers do not need to manually edit it when adding new Java files.
@@ -58,5 +73,5 @@ java -jar JiraApiClient.jar
 
 *   **Workflow Recipe Generation:** Gemini can help design JSON-based recipes for the `Workflow Orchestrator`.
 *   **JQL Drafting:** Assistance with complex Jira Query Language strings.
-*   **API Template Creation:** Creating new `api_template.` entries for `jiratemplate.ini`.
+*   **API Template Creation:** Creating new API template JSON entries in `resources/templates/api/*.json`.
 *   **Token Mapping:** Helping users map Jira field paths to tokens used in the `Workflow Orchestrator`.

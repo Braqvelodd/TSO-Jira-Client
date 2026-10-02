@@ -65,7 +65,7 @@ public class CompanionRunner {
     public static CompanionResult executeTopazFetch(JiraConfig config, String certAlias, Consumer<String> statusLogger) throws Exception {
         String scriptPath = config.getCompanionTopazPath();
         if (scriptPath == null || scriptPath.trim().isEmpty()) {
-            throw new IllegalArgumentException("Topaz companion script path is not configured. Please set companion.topaz.path in constants.ini.");
+            throw new IllegalArgumentException("Topaz companion script path is not configured. Please set companion.topaz.path in companion.properties.");
         }
 
         File scriptFile = new File(scriptPath.trim());

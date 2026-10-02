@@ -1,0 +1,17 @@
+﻿{
+  "id": "link_issue",
+  "label": "[Link] Create Link",
+  "method": "POST",
+  "endpoint": "/rest/api/2/issueLink",
+  "body": {
+    "type": {
+      "name": "Relates"
+    },
+    "inwardIssue": {
+      "key": "ISSUE-1"
+    },
+    "outwardIssue": {
+      "key": "ISSUE-2"
+    }
+  }
+}

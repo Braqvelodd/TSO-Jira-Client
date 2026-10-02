@@ -1,0 +1,9 @@
+﻿{
+  "id": "add_user_to_group",
+  "label": "[User] Add User to Group",
+  "method": "POST",
+  "endpoint": "/rest/api/2/group/user?groupname={group}",
+  "body": {
+    "name": "user.id"
+  }
+}

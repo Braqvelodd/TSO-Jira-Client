@@ -1,0 +1,7 @@
+﻿{
+  "id": "get_attachments",
+  "label": "[File] Get Attachment Metadata",
+  "method": "GET",
+  "endpoint": "/rest/api/2/attachment/{id}",
+  "body": ""
+}

@@ -1,0 +1,7 @@
+﻿{
+  "id": "del_comment",
+  "label": "[Comment] Delete Comment",
+  "method": "DELETE",
+  "endpoint": "/rest/api/2/issue/{issueKey}/comment/{id}",
+  "body": ""
+}

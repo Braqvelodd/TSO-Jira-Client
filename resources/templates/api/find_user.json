@@ -1,0 +1,7 @@
+﻿{
+  "id": "find_user",
+  "label": "[User] Search User",
+  "method": "GET",
+  "endpoint": "/rest/api/2/user/search?username={query}",
+  "body": ""
+}

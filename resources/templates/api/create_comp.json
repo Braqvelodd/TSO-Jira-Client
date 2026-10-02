@@ -1,0 +1,10 @@
+﻿{
+  "id": "create_comp",
+  "label": "[Proj] Create Component",
+  "method": "POST",
+  "endpoint": "/rest/api/2/component",
+  "body": {
+    "name": "New Component",
+    "project": "TFS"
+  }
+}

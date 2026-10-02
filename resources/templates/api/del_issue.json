@@ -1,0 +1,7 @@
+﻿{
+  "id": "del_issue",
+  "label": "[Issue] Delete Issue",
+  "method": "DELETE",
+  "endpoint": "/rest/api/2/issue/{issueKey}",
+  "body": ""
+}

@@ -1,0 +1,16 @@
+﻿{
+  "id": "search_jql",
+  "label": "[Search] JQL Query",
+  "method": "POST",
+  "endpoint": "/rest/api/2/search",
+  "body": {
+    "jql": "project = TSO",
+    "startAt": 0,
+    "maxResults": 50,
+    "fields": [
+      "key",
+      "summary",
+      "status"
+    ]
+  }
+}

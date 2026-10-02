@@ -48,7 +48,7 @@ public class IspwColumnConfigDialog extends Dialog<Void> {
 
         // Header Instructions
         Label headerLabel = new Label("Instructions: Left-click on the preview to add/remove red split lines. " +
-                "Right-click to quickly map fields. Use the numbers to fill the mapping fields below. Values are saved to your JiraConfig.ini.");
+                "Right-click to quickly map fields. Use the numbers to fill the mapping fields below. Values are saved to your reconciliation.properties.");
         headerLabel.setWrapText(true);
         headerLabel.setPadding(new Insets(10));
 

@@ -1,0 +1,9 @@
+﻿{
+  "id": "add_comment",
+  "label": "[Comment] Add Comment",
+  "method": "POST",
+  "endpoint": "/rest/api/2/issue/{issueKey}/comment",
+  "body": {
+    "body": "New comment text."
+  }
+}

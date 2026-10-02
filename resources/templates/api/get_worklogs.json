@@ -1,0 +1,7 @@
+﻿{
+  "id": "get_worklogs",
+  "label": "[Work] Get Worklogs",
+  "method": "GET",
+  "endpoint": "/rest/api/2/issue/{issueKey}/worklog",
+  "body": ""
+}

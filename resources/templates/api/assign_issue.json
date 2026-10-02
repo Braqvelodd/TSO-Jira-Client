@@ -1,0 +1,9 @@
+﻿{
+  "id": "assign_issue",
+  "label": "[Issue] Assign Issue",
+  "method": "PUT",
+  "endpoint": "/rest/api/2/issue/{issueKey}/assignee",
+  "body": {
+    "name": "user.id"
+  }
+}

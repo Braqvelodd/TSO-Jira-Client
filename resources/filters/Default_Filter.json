@@ -1,0 +1,5 @@
+{
+  "name": "Default Filter",
+  "fields": "key, summary, status, assignee, issuelinks",
+  "jql": "issuetype = Bug AND status = 'To Do' ORDER BY created DESC"
+}

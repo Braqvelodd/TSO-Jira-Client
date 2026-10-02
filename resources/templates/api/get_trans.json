@@ -1,0 +1,7 @@
+﻿{
+  "id": "get_trans",
+  "label": "[Issue] Get Transitions",
+  "method": "GET",
+  "endpoint": "/rest/api/2/issue/{issueKey}/transitions",
+  "body": ""
+}

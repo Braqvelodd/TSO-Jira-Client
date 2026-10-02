@@ -1,0 +1,7 @@
+﻿{
+  "id": "server_health",
+  "label": "[Sys] Health Check",
+  "method": "GET",
+  "endpoint": "/rest/healthcheck/health",
+  "body": ""
+}

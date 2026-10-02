@@ -1,0 +1,7 @@
+﻿{
+  "id": "get_comments",
+  "label": "[Comment] Get Comments",
+  "method": "GET",
+  "endpoint": "/rest/api/2/issue/{issueKey}/comment",
+  "body": ""
+}

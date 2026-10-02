@@ -1,0 +1,7 @@
+﻿{
+  "id": "add_watcher",
+  "label": "[Watch] Add Watcher",
+  "method": "POST",
+  "endpoint": "/rest/api/2/issue/{issueKey}/watchers",
+  "body": "user.id"
+}
