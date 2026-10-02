@@ -273,7 +273,7 @@ public class ReconciliationPanel extends BorderPane {
         colAction.setCellValueFactory(cellData -> cellData.getValue().action);
         colAction.setPrefWidth(100);
 
-        TableColumn<IspwRow, String> colSr = new TableColumn<>("SR Number");
+        TableColumn<IspwRow, String> colSr = new TableColumn<>("Release ID");
         colSr.setCellValueFactory(cellData -> cellData.getValue().srNumber);
         colSr.setPrefWidth(100);
 
@@ -342,7 +342,7 @@ public class ReconciliationPanel extends BorderPane {
         colAction.setCellValueFactory(cellData -> cellData.getValue().ispwAction);
         colAction.setPrefWidth(100);
 
-        TableColumn<MatchRow, String> colSr = new TableColumn<>("SR Number");
+        TableColumn<MatchRow, String> colSr = new TableColumn<>("Release ID");
         colSr.setCellValueFactory(cellData -> cellData.getValue().srNumber);
         colSr.setPrefWidth(100);
 
@@ -662,8 +662,8 @@ public class ReconciliationPanel extends BorderPane {
             try {
                 List<ExcelExportUtil.SheetData> sheets = new ArrayList<>();
 
-                // Sheet 1: Only in ISPW (with Notes column and yellow highlight if SR is blank)
-                List<String> ispwHeaders = Arrays.asList("Type", "Name", "ENVlvl", "Action", "SR Number", "User ID", "Notes");
+                // Sheet 1: Only in ISPW (with Notes column and yellow highlight if Release ID is blank)
+                List<String> ispwHeaders = Arrays.asList("Type", "Name", "ENVlvl", "Action", "Release ID", "User ID", "Notes");
                 ExcelExportUtil.SheetData ispwSheet = new ExcelExportUtil.SheetData("Only in ISPW", ispwHeaders);
                 for (IspwRow row : onlyInIspwTable.getItems()) {
                     String type = row.type.get() != null ? row.type.get() : "";
@@ -677,7 +677,7 @@ public class ReconciliationPanel extends BorderPane {
                     List<String> rowValues = Arrays.asList(type, name, envLvl, action, sr, user, notes);
                     List<Integer> styles = new ArrayList<>();
                     for (int c = 0; c < rowValues.size(); c++) {
-                        // SR Number is column index 4: if blank, highlight yellow!
+                        // Release ID is column index 4: if blank, highlight yellow!
                         if (c == 4 && sr.trim().isEmpty()) {
                             styles.add(ExcelExportUtil.STYLE_YELLOW);
                         } else {
@@ -704,8 +704,8 @@ public class ReconciliationPanel extends BorderPane {
                 }
                 sheets.add(jiraSheet);
 
-                // Sheet 3: Matches (with ENVlvl and Notes)
-                List<String> matchHeaders = Arrays.asList("Type", "Name", "Jira Key", "Status", "Assignee", "ENVlvl", "ISPW Action", "SR Number", "ISPW User", "Link", "Notes");
+                // Sheet 3: Matches (with ENVlvl, Notes, and yellow highlight if Release ID is blank)
+                List<String> matchHeaders = Arrays.asList("Type", "Name", "Jira Key", "Status", "Assignee", "ENVlvl", "ISPW Action", "Release ID", "ISPW User", "Link", "Notes");
                 ExcelExportUtil.SheetData matchSheet = new ExcelExportUtil.SheetData("Matches", matchHeaders);
                 for (MatchRow row : matchesTable.getItems()) {
                     String type = row.type.get() != null ? row.type.get() : "";
@@ -720,7 +720,17 @@ public class ReconciliationPanel extends BorderPane {
                     String link = row.link.get() != null ? row.link.get() : "";
                     String notes = row.notes.get() != null ? row.notes.get() : "";
 
-                    matchSheet.addRow(Arrays.asList(type, name, jiraKey, status, assignee, envLvl, action, sr, user, link, notes));
+                    List<String> rowValues = Arrays.asList(type, name, jiraKey, status, assignee, envLvl, action, sr, user, link, notes);
+                    List<Integer> styles = new ArrayList<>();
+                    for (int c = 0; c < rowValues.size(); c++) {
+                        // Release ID is column index 7: if blank, highlight yellow!
+                        if (c == 7 && sr.trim().isEmpty()) {
+                            styles.add(ExcelExportUtil.STYLE_YELLOW);
+                        } else {
+                            styles.add(ExcelExportUtil.STYLE_NORMAL);
+                        }
+                    }
+                    matchSheet.addRow(rowValues, styles);
                 }
                 sheets.add(matchSheet);
 
