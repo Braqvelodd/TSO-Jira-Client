@@ -1,13 +1,22 @@
 /* glass.css - Glassmorphic theme overriding JavaFX Modena colors */
 .root {
-    -fx-background: linear-gradient(to bottom right, #0a0f1d, #111827);
-    -fx-base: rgba(255, 255, 255, 0.08);
+    -fx-background: #0a0f1d;
+    -fx-background-color: linear-gradient(to bottom right, #0a0f1d, #111827);
+    -fx-base: #111827;
+    -fx-color: -fx-base;
     -fx-control-inner-background: rgba(15, 23, 42, 0.4);
     -fx-control-inner-background-alt: rgba(15, 23, 42, 0.35);
-    -fx-accent: rgba(59, 130, 246, 0.8);
-    -fx-focus-color: rgba(59, 130, 246, 0.8);
+    -fx-accent: #3b82f6;
+    -fx-focus-color: #3b82f6;
+    -fx-faint-focus-color: transparent;
     -fx-text-base-color: #ffffff;
     -fx-text-background-color: #ffffff;
+    -fx-shadow-highlight-color: transparent;
+    -fx-outer-border: rgba(255, 255, 255, 0.15);
+    -fx-inner-border: transparent;
+    -fx-body-color: rgba(255, 255, 255, 0.08);
+    -fx-mark-color: #ffffff;
+    -fx-mark-highlight-color: transparent;
     -fx-font-family: "Segoe UI", Arial, sans-serif;
     -fx-font-size: 13px;
 }
@@ -77,6 +86,19 @@
 }
 
 .text-input:focused, .text-area:focused {
+    -fx-border-color: rgba(59, 130, 246, 0.6);
+}
+
+/* Combo boxes */
+.combo-box-base, .combo-box {
+    -fx-background-color: rgba(15, 23, 42, 0.45);
+    -fx-border-color: rgba(255, 255, 255, 0.12);
+    -fx-border-width: 1px;
+    -fx-border-radius: 6px;
+    -fx-background-radius: 6px;
+}
+
+.combo-box-base:hover, .combo-box:hover {
     -fx-border-color: rgba(59, 130, 246, 0.6);
 }
 
@@ -207,14 +229,6 @@
 .action-btn-delete:hover {
     -fx-background-color: rgba(239, 68, 68, 0.2);
     -fx-border-color: rgba(239, 68, 68, 0.5);
-}
-
-/* HTML Content styling for WebViews (Comment Summarizer & Workflow Report) */
-body {
-    background-color: #0a0f1d;
-    color: #ffffff;
-    font-family: "Segoe UI", Arial, sans-serif;
-    margin: 10px;
 }
 
 .primary-button {

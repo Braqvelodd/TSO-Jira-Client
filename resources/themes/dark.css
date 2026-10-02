@@ -2,12 +2,20 @@
 .root {
     -fx-background: #0f172a; /* Slate 900 */
     -fx-base: #1e293b;       /* Slate 800 */
+    -fx-color: -fx-base;
     -fx-control-inner-background: #1e293b;
     -fx-control-inner-background-alt: #1e293b;
     -fx-accent: #3b82f6;     /* Blue 500 */
     -fx-focus-color: #3b82f6;
+    -fx-faint-focus-color: transparent;
     -fx-text-base-color: #f8fafc; /* White text */
     -fx-text-background-color: #f8fafc;
+    -fx-shadow-highlight-color: transparent;
+    -fx-outer-border: #334155;
+    -fx-inner-border: #1e293b;
+    -fx-body-color: #1e293b;
+    -fx-mark-color: #f8fafc;
+    -fx-mark-highlight-color: transparent;
     -fx-font-family: "Segoe UI", Arial, sans-serif;
     -fx-font-size: 13px;
 }
@@ -53,6 +61,19 @@
 }
 
 .text-input:focused, .text-area:focused {
+    -fx-border-color: #3b82f6;
+}
+
+/* Combo boxes */
+.combo-box-base, .combo-box {
+    -fx-background-color: #1e293b;
+    -fx-border-color: #334155;
+    -fx-border-width: 1px;
+    -fx-border-radius: 4px;
+    -fx-background-radius: 4px;
+}
+
+.combo-box-base:hover, .combo-box:hover {
     -fx-border-color: #3b82f6;
 }
 
@@ -179,14 +200,6 @@
 .action-btn-delete:hover {
     -fx-background-color: rgba(239, 68, 68, 0.2);
     -fx-border-color: #ef4444;
-}
-
-/* HTML Content styling for WebViews (Comment Summarizer & Workflow Report) */
-body {
-    background-color: #0f172a;
-    color: #f8fafc;
-    font-family: "Segoe UI", Arial, sans-serif;
-    margin: 10px;
 }
 
 .primary-button {

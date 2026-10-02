@@ -102,7 +102,17 @@
     -fx-background-color: transparent;
     -fx-text-fill: #f8fafc;
 }
-.combo-box, .table-view, .list-view {
+.combo-box-base, .combo-box {
+    -fx-background-color: #1e293b;
+    -fx-border-color: #334155;
+    -fx-border-width: 1px;
+    -fx-border-radius: 4px;
+    -fx-background-radius: 4px;
+}
+.combo-box-base:hover, .combo-box:hover {
+    -fx-border-color: -custom-accent;
+}
+.table-view, .list-view {
     -fx-background-color: rgba(15, 23, 42, 0.6);
     -fx-text-fill: #f1f5f9;
 }
