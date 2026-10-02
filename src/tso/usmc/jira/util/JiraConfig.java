@@ -405,6 +405,24 @@ public class JiraConfig {
                 }
             }
 
+            // 4. Migrate legacy singular 'template' directory if present
+            File legacyTemplateDir = new File(configDir, "template");
+            if (legacyTemplateDir.exists() && legacyTemplateDir.isDirectory()) {
+                File[] txtFiles = legacyTemplateDir.listFiles((dir, name) -> name.toLowerCase().endsWith(".txt"));
+                if (txtFiles != null) {
+                    for (File txtFile : txtFiles) {
+                        String name = txtFile.getName().replace(".txt", "");
+                        File targetJson = new File(taskTemplatesDir, name + ".json");
+                        if (!targetJson.exists()) {
+                            String content = new String(Files.readAllBytes(txtFile.toPath()), StandardCharsets.UTF_8);
+                            saveTaskTemplate(name, name, content);
+                        }
+                        txtFile.delete();
+                    }
+                }
+                legacyTemplateDir.delete();
+            }
+
             // Save non-template properties into their respective modular .properties files
             if (!migratedProps.isEmpty()) {
                 savePropertiesInternal(migratedProps);
@@ -415,9 +433,9 @@ public class JiraConfig {
             renameToMigrated(legacyConstantsFile);
             renameToMigrated(legacyTemplateFile);
 
-            System.out.println("Migration complete! Legacy .ini files renamed to *.migrated.");
+            System.out.println("Migration complete! Legacy files migrated.");
         } catch (Exception e) {
-            System.err.println("Warning: Error during legacy .ini migration: " + e.getMessage());
+            System.err.println("Warning: Error during legacy migration: " + e.getMessage());
             e.printStackTrace();
         }
     }
@@ -482,18 +500,32 @@ public class JiraConfig {
                 }
             }
 
-            // Load Task Templates
+            // Load Task Templates (support both .json and .txt)
             if (taskTemplatesDir.exists()) {
-                File[] files = taskTemplatesDir.listFiles((dir, name) -> name.toLowerCase().endsWith(".json"));
+                File[] files = taskTemplatesDir.listFiles((dir, name) -> {
+                    String lower = name.toLowerCase();
+                    return lower.endsWith(".json") || lower.endsWith(".txt");
+                });
                 if (files != null) {
                     for (File f : files) {
                         try {
-                            String content = stripBom(new String(Files.readAllBytes(f.toPath()), StandardCharsets.UTF_8).trim());
-                            JSONObject json = new JSONObject(content);
-                            String fileBase = f.getName().replace(".json", "");
-                            String name = json.optString("name", fileBase);
-                            String label = json.optString("label", name);
-                            String text = json.optString("text", "");
+                            String fileName = f.getName();
+                            String name;
+                            String label;
+                            String text;
+                            if (fileName.toLowerCase().endsWith(".json")) {
+                                String content = stripBom(new String(Files.readAllBytes(f.toPath()), StandardCharsets.UTF_8).trim());
+                                JSONObject json = new JSONObject(content);
+                                String fileBase = fileName.substring(0, fileName.length() - 5);
+                                name = json.optString("name", fileBase);
+                                label = json.optString("label", name);
+                                text = json.optString("text", "");
+                            } else {
+                                String fileBase = fileName.substring(0, fileName.length() - 4);
+                                name = fileBase;
+                                label = fileBase;
+                                text = stripBom(new String(Files.readAllBytes(f.toPath()), StandardCharsets.UTF_8).trim());
+                            }
                             TaskTemplateInfo info = new TaskTemplateInfo(name, label, text);
                             taskTemplates.put(name, info);
 
