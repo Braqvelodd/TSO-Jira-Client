@@ -650,21 +650,30 @@ public class TaskBuilderPanel extends BorderPane {
     private void updateStatus(String msg) { Platform.runLater(() -> statusBar.setText(" " + msg)); }
 
     private void addSyncListener(TextField field, String prefix) {
-        field.textProperty().addListener((obs, oldV, newV) -> syncToText(prefix, newV));
+        field.textProperty().addListener((obs, oldV, newV) -> {
+            if (!isUpdating) {
+                syncToText(prefix, newV);
+            }
+        });
     }
 
     private void syncToText(String prefix, String newValue) {
         if (isUpdating) return;
         isUpdating = true;
-        String content = inputArea.getText();
-        String lineStart = prefix + ":";
-        if (content.contains(lineStart)) {
-            content = content.replaceAll("(?m)^" + lineStart + ".*$", lineStart + newValue);
-        } else {
-            content = lineStart + newValue + "\n" + content;
+        try {
+            String content = inputArea.getText();
+            String lineStart = prefix + ":";
+            String safeVal = newValue != null ? newValue : "";
+            if (content.contains(lineStart)) {
+                content = content.replaceAll("(?m)^" + java.util.regex.Pattern.quote(lineStart) + ".*$", 
+                    java.util.regex.Matcher.quoteReplacement(lineStart + safeVal));
+            } else {
+                content = lineStart + safeVal + "\n" + content;
+            }
+            inputArea.setText(content);
+        } finally {
+            isUpdating = false;
         }
-        inputArea.setText(content);
-        isUpdating = false;
     }
 
     private void parseInput() {
@@ -818,7 +827,14 @@ public class TaskBuilderPanel extends BorderPane {
         if (!t.overTrans) t.transition = defTransField.getText();
     }
 
-    private String val(String s) { return s.contains(":") ? s.substring(s.indexOf(":") + 1).trim() : ""; }
+    private String val(String s) {
+        if (!s.contains(":")) return "";
+        String v = s.substring(s.indexOf(":") + 1).trim();
+        while (v.endsWith("\\")) {
+            v = v.substring(0, v.length() - 1).trim();
+        }
+        return v;
+    }
 
     private void executeTasks() {
         resultsTable.getItems().clear();

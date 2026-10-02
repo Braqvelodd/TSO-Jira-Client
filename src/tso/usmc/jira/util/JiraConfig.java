@@ -77,6 +77,10 @@ public class JiraConfig {
         public TaskTemplateInfo(String name, String label, String text) {
             this.name = name;
             this.label = label;
+            if (text != null) {
+                text = text.replace("\\\\n", "\n").replace("\\\n", "\n").replace("\\n", "\n");
+                text = text.replaceAll("(?m)\\\\\\s*$", "");
+            }
             this.text = text != null ? text : "";
         }
     }
