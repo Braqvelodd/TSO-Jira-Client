@@ -254,13 +254,70 @@ public class JiraConfig {
     private void upgradePropertiesFile(File userFile, String resourcePath) {
         if (!userFile.exists()) return;
         try {
-            List<String> existingLines = Files.readAllLines(userFile.toPath(), StandardCharsets.UTF_8);
+            List<String> rawLines = Files.readAllLines(userFile.toPath(), StandardCharsets.UTF_8);
+            Set<String> declaredPriorKeys = new HashSet<>();
+            List<String> existingLines = new ArrayList<>();
+            boolean insideAddedSection = false;
+            boolean cleanedAny = false;
+
+            // 1. Pass: clean up any settings under "# Added missing settings" that were already defined or commented earlier
+            for (String line : rawLines) {
+                String trimmed = line.trim();
+                if (trimmed.equalsIgnoreCase("# Added missing settings from application update")) {
+                    insideAddedSection = true;
+                    existingLines.add(line);
+                    continue;
+                }
+
+                String candidate = (trimmed.startsWith("#") || trimmed.startsWith(";"))
+                        ? trimmed.replaceAll("^[#;\\s]+", "")
+                        : trimmed;
+                String key = null;
+                if (candidate.contains("=")) {
+                    String candidateKey = candidate.split("=", 2)[0].trim().toLowerCase();
+                    if (candidateKey.matches("^[a-zA-Z0-9_.-]+$")) {
+                        key = candidateKey;
+                    }
+                }
+
+                if (insideAddedSection) {
+                    if (key != null && declaredPriorKeys.contains(key)) {
+                        cleanedAny = true;
+                        continue; // Skip re-adding key that was already present or hashed out
+                    }
+                } else if (key != null) {
+                    declaredPriorKeys.add(key);
+                }
+
+                existingLines.add(line);
+            }
+
+            // Remove trailing "# Added missing settings from application update" if nothing follows it
+            while (!existingLines.isEmpty()) {
+                String last = existingLines.get(existingLines.size() - 1).trim();
+                if (last.isEmpty()) {
+                    existingLines.remove(existingLines.size() - 1);
+                } else if (last.equalsIgnoreCase("# Added missing settings from application update")) {
+                    existingLines.remove(existingLines.size() - 1);
+                    cleanedAny = true;
+                } else {
+                    break;
+                }
+            }
+
+            // Collect all existing keys (including commented ones) across the sanitized lines
             Set<String> existingKeys = new HashSet<>();
             for (String line : existingLines) {
                 String trimmed = line.trim();
-                if (trimmed.isEmpty() || trimmed.startsWith("#") || trimmed.startsWith(";")) continue;
-                if (trimmed.contains("=")) {
-                    existingKeys.add(trimmed.split("=", 2)[0].trim().toLowerCase());
+                if (trimmed.isEmpty()) continue;
+                String candidate = (trimmed.startsWith("#") || trimmed.startsWith(";"))
+                        ? trimmed.replaceAll("^[#;\\s]+", "")
+                        : trimmed;
+                if (candidate.contains("=")) {
+                    String key = candidate.split("=", 2)[0].trim().toLowerCase();
+                    if (key.matches("^[a-zA-Z0-9_.-]+$")) {
+                        existingKeys.add(key);
+                    }
                 }
             }
 
@@ -273,7 +330,12 @@ public class JiraConfig {
                     }
                 }
             }
-            if (defaultLines.isEmpty()) return;
+            if (defaultLines.isEmpty()) {
+                if (cleanedAny) {
+                    Files.write(userFile.toPath(), existingLines, StandardCharsets.UTF_8);
+                }
+                return;
+            }
 
             List<String> toAdd = new ArrayList<>();
             for (String defLine : defaultLines) {
@@ -294,6 +356,8 @@ public class JiraConfig {
                 existingLines.addAll(toAdd);
                 Files.write(userFile.toPath(), existingLines, StandardCharsets.UTF_8);
                 System.out.println("Upgraded " + userFile.getName() + " with " + toAdd.size() + " new settings.");
+            } else if (cleanedAny) {
+                Files.write(userFile.toPath(), existingLines, StandardCharsets.UTF_8);
             }
         } catch (Exception e) {
             System.err.println("Error checking upgrade for " + userFile.getName() + ": " + e.getMessage());
