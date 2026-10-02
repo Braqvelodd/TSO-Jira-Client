@@ -128,10 +128,13 @@ public class JiraConfig {
         // 3. Upgrade properties if newer application defaults add missing keys
         upgradeAllPropertiesIfNeeded();
 
-        // 4. Load all properties and JSON records into memory
+        // 4. Clean up any obsolete properties that might have been saved in .properties files
+        cleanupObsoletePropertiesFromFiles();
+
+        // 5. Load all properties and JSON records into memory
         loadProperties();
 
-        // 5. Start file watcher for live reloading
+        // 6. Start file watcher for live reloading
         startFileWatcher();
     }
 
@@ -297,6 +300,54 @@ public class JiraConfig {
         }
     }
 
+    private boolean isObsoleteOrTemplateKey(String key) {
+        if (key == null) return false;
+        String lower = key.toLowerCase();
+        return lower.equals("config_version") ||
+               lower.equals("constants_version") ||
+               lower.startsWith("template.") ||
+               lower.startsWith("api_template.") ||
+               lower.startsWith("jql_filter.") ||
+               lower.startsWith("workflow.");
+    }
+
+    private void cleanupObsoletePropertiesFromFiles() {
+        File[] propFiles = new File[]{
+            connectionFile, teamsFile, uiFile, defaultsFile,
+            companionFile, llmFile, reconciliationFile
+        };
+
+        for (File f : propFiles) {
+            if (f == null || !f.exists()) continue;
+            try {
+                List<String> lines = Files.readAllLines(f.toPath(), StandardCharsets.UTF_8);
+                List<String> cleanedLines = new ArrayList<>();
+                boolean modified = false;
+
+                for (String line : lines) {
+                    String trimmed = line.trim();
+                    if (!trimmed.isEmpty() && !trimmed.startsWith("#") && !trimmed.startsWith(";")) {
+                        if (trimmed.contains("=")) {
+                            String key = trimmed.split("=", 2)[0].trim();
+                            if (isObsoleteOrTemplateKey(key)) {
+                                modified = true;
+                                continue;
+                            }
+                        }
+                    }
+                    cleanedLines.add(line);
+                }
+
+                if (modified) {
+                    Files.write(f.toPath(), cleanedLines, StandardCharsets.UTF_8);
+                    System.out.println("Cleaned obsolete properties from " + f.getName());
+                }
+            } catch (Exception e) {
+                System.err.println("Warning: Could not clean obsolete properties from " + f.getName() + ": " + e.getMessage());
+            }
+        }
+    }
+
     /**
      * Automatic seamless migration from legacy .ini files to modular .properties and JSON.
      */
@@ -329,6 +380,7 @@ public class JiraConfig {
                                           currentSection.equalsIgnoreCase("Reconciliation") ||
                                           currentSection.equalsIgnoreCase("Companion") ||
                                           currentSection.equalsIgnoreCase("Teams")) ? key : currentSection + "." + key;
+                        if (isObsoleteOrTemplateKey(fullKey)) continue;
                         migratedProps.put(fullKey, val);
                     }
                 }
@@ -342,7 +394,9 @@ public class JiraConfig {
                     if (line.isEmpty() || line.startsWith("#") || line.startsWith(";")) continue;
                     if (line.contains("=")) {
                         String[] parts = line.split("=", 2);
-                        migratedProps.put(parts[0].trim(), parts[1].trim());
+                        String key = parts[0].trim();
+                        if (isObsoleteOrTemplateKey(key)) continue;
+                        migratedProps.put(key, parts[1].trim());
                     }
                 }
             }
@@ -641,6 +695,7 @@ public class JiraConfig {
     private void savePropertiesInternal(Map<String, String> newProps) {
         Map<File, Map<String, String>> fileUpdates = new LinkedHashMap<>();
         for (Map.Entry<String, String> entry : newProps.entrySet()) {
+            if (isObsoleteOrTemplateKey(entry.getKey())) continue;
             File targetFile = getTargetFileForKey(entry.getKey());
             fileUpdates.computeIfAbsent(targetFile, k -> new LinkedHashMap<>()).put(entry.getKey(), entry.getValue());
         }
