@@ -133,6 +133,9 @@ public class CompanionRunner {
                     command.add("--dd");
                     command.add(dd.trim());
                 }
+                int waitTimeout = config.getCompanionTopazTimeoutSec();
+                command.add("--wait-timeout");
+                command.add(String.valueOf(waitTimeout > 0 ? waitTimeout : 0));
                 break;
 
             case JOB_SPOOL:
@@ -189,7 +192,13 @@ public class CompanionRunner {
         }
 
         int timeoutSec = config.getCompanionTopazTimeoutSec();
-        boolean completed = process.waitFor(timeoutSec, TimeUnit.SECONDS);
+        boolean completed;
+        if (timeoutSec <= 0) {
+            process.waitFor();
+            completed = true;
+        } else {
+            completed = process.waitFor(timeoutSec, TimeUnit.SECONDS);
+        }
 
         if (!completed) {
             process.destroyForcibly();

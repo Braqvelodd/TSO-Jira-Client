@@ -197,8 +197,9 @@ public class CompanionConfigDialog extends Dialog<Boolean> {
         }
 
         // 5. Timeout
-        Label timeoutLabel = new Label("Timeout (seconds):");
+        Label timeoutLabel = new Label("Timeout (sec, 0=infinite):");
         timeoutField.setText(String.valueOf(config.getCompanionTopazTimeoutSec()));
+        timeoutField.setPromptText("0 = infinite");
         timeoutField.setPrefWidth(80);
         grid.add(timeoutLabel, 0, 5);
         grid.add(timeoutField, 1, 5);
