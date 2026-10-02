@@ -106,6 +106,10 @@ public class ThemeManager {
                 return originalUrl;
             }
 
+            // Append HTML/WebView specific styling (tables, comment-cards) dynamically so
+            // the main JavaFX Scene stylesheet remains 100% compliant with the JavaFX CSS parser.
+            cssContent += getHtmlStylesForTheme(activeTheme);
+
             // Replace custom accent variable with its actual color code for WebView compatibility
             if (cssContent.contains("-custom-accent")) {
                 String accentColor = config.getThemeAccentColor();
@@ -118,6 +122,48 @@ public class ThemeManager {
             System.err.println("Error generating data URI for WebView stylesheet: " + e.getMessage());
             return originalUrl;
         }
+    }
+
+    private String getHtmlStylesForTheme(String activeTheme) {
+        StringBuilder sb = new StringBuilder("\n/* HTML/WebView Theme Styles */\n");
+        if ("dark".equals(activeTheme)) {
+            sb.append("h2, h3 { color: #3b82f6; margin-top: 5px; }\n")
+              .append("table { border-collapse: collapse; width: 100%; background-color: #1e293b; color: #f8fafc; margin-top: 10px; }\n")
+              .append("th, td { border: 1px solid #334155; padding: 8px; }\n")
+              .append("th { background-color: #334155; }\n")
+              .append(".comment-card { border: 1px solid #334155; border-radius: 8px; padding: 10px; margin-bottom: 10px; background-color: #1e293b; }\n")
+              .append(".comment-header { font-weight: bold; font-size: 12px; margin-bottom: 5px; color: #3b82f6; }\n")
+              .append(".comment-date { font-weight: normal; font-size: 11px; margin-left: 10px; color: #94a3b8; }\n")
+              .append(".comment-body { font-size: 13px; line-height: 1.4; color: #f8fafc; }\n");
+        } else if ("glass".equals(activeTheme)) {
+            sb.append("h2, h3 { color: #60a5fa; margin-top: 5px; }\n")
+              .append("table { border-collapse: collapse; width: 100%; background-color: rgba(255, 255, 255, 0.05); color: #ffffff; margin-top: 10px; }\n")
+              .append("th, td { border: 1px solid rgba(255, 255, 255, 0.1); padding: 8px; }\n")
+              .append("th { background-color: rgba(255, 255, 255, 0.08); }\n")
+              .append(".comment-card { border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; padding: 10px; margin-bottom: 10px; background-color: rgba(255, 255, 255, 0.05); }\n")
+              .append(".comment-header { font-weight: bold; font-size: 12px; margin-bottom: 5px; color: #60a5fa; }\n")
+              .append(".comment-date { font-weight: normal; font-size: 11px; margin-left: 10px; color: #9ca3af; }\n")
+              .append(".comment-body { font-size: 13px; line-height: 1.4; color: #ffffff; }\n");
+        } else if ("custom".equals(activeTheme) || "css".equals(activeTheme)) {
+            sb.append("h2, h3 { color: -custom-accent; margin-top: 5px; }\n")
+              .append("table { border-collapse: collapse; width: 100%; background-color: #1e293b; color: #f8fafc; margin-top: 10px; }\n")
+              .append("th, td { border: 1px solid #334155; padding: 8px; }\n")
+              .append("th { background-color: #334155; }\n")
+              .append(".comment-card { border: 1px solid #334155; border-radius: 8px; padding: 10px; margin-bottom: 10px; background-color: #1e293b; }\n")
+              .append(".comment-header { font-weight: bold; font-size: 12px; margin-bottom: 5px; color: -custom-accent; }\n")
+              .append(".comment-date { font-weight: normal; font-size: 11px; margin-left: 10px; color: #94a3b8; }\n")
+              .append(".comment-body { font-size: 13px; line-height: 1.4; color: #f8fafc; }\n");
+        } else { // default / light
+            sb.append("h2, h3 { color: #1d4ed8; margin-top: 5px; }\n")
+              .append("table { border-collapse: collapse; width: 100%; background-color: #ffffff; color: #1f2937; margin-top: 10px; }\n")
+              .append("th, td { border: 1px solid #e5e7eb; padding: 8px; }\n")
+              .append("th { background-color: #f3f4f6; }\n")
+              .append(".comment-card { border: 1px solid #e5e7eb; border-radius: 8px; padding: 10px; margin-bottom: 10px; background-color: #f3f4f6; }\n")
+              .append(".comment-header { font-weight: bold; font-size: 12px; margin-bottom: 5px; color: #1d4ed8; }\n")
+              .append(".comment-date { font-weight: normal; font-size: 11px; margin-left: 10px; color: #6b7280; }\n")
+              .append(".comment-body { font-size: 13px; line-height: 1.4; color: #1f2937; }\n");
+        }
+        return sb.toString();
     }
 
     private void applyThemeToWebViews(javafx.scene.Parent root, String stylesheetUrl) {

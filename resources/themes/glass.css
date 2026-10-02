@@ -216,24 +216,6 @@ body {
     font-family: "Segoe UI", Arial, sans-serif;
     margin: 10px;
 }
-h2, h3 {
-    color: #60a5fa;
-    margin-top: 5px;
-}
-table {
-    border-collapse: collapse;
-    width: 100%;
-    background-color: rgba(255, 255, 255, 0.05);
-    color: #ffffff;
-    margin-top: 10px;
-}
-th, td {
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    padding: 8px;
-}
-th {
-    background-color: rgba(255, 255, 255, 0.08);
-}
 
 .primary-button {
     -fx-background-color: rgba(16, 185, 129, 0.6);
@@ -245,31 +227,3 @@ th {
     -fx-border-color: rgba(5, 150, 105, 0.6);
     -fx-effect: dropshadow(three-pass-box, rgba(16, 185, 129, 0.5), 10, 0, 0, 0);
 }
-
-/* WebView Comment Cards Styling */
-.comment-card {
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 8px;
-    padding: 10px;
-    margin-bottom: 10px;
-    background-color: rgba(255, 255, 255, 0.05);
-}
-.comment-header {
-    font-weight: bold;
-    font-size: 12px;
-    margin-bottom: 5px;
-    color: #60a5fa;
-}
-.comment-date {
-    font-weight: normal;
-    font-size: 11px;
-    margin-left: 10px;
-    color: #9ca3af;
-}
-.comment-body {
-    font-size: 13px;
-    line-height: 1.4;
-    color: #ffffff;
-}
-
-
