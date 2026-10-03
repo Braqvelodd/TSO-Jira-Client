@@ -60,5 +60,21 @@ This document tracks the phased implementation of the **Companion Architecture**
 
 ## Current Progress Notes
 - **State**: Phases 1, 2, and 3 are COMPLETED.
-- **Active Task**: Ready to commit and push changes across both repositories, and conduct Phase 4 runtime testing with mainframe datasets/jobs.
+- **Active Task**: Ready to conduct Phase 4 runtime testing with mainframe datasets/jobs.
+
+---
+
+## Future Architectural Roadmap: Standalone Topaz Microservice & Multi-Threaded Fetcher
+
+### Core Concept: Service / UI Decoupling
+* **Decoupled Architecture**: Break out the raw BMC Topaz Java API calls (`zos-connection.jar`) into an independent headless service / microservice module. 
+* **Front-Ends as Pure UIs**: 
+  * `Topaz-file-read` becomes a dedicated UI consumer that calls this underlying service.
+  * Other companion apps (e.g. `TSO-Jira-Client`, or a future multi-threaded batch mainframe fetcher) can call the exact same service.
+
+### Invisible Managed Sidecar Pattern
+* **Single-Click User Experience**: Desktop applications launch the service invisibly on `127.0.0.1` (loopback) on-demand (lazy-loaded). Users never see a second window or command prompt.
+* **Pure In-Memory API**: Communication is strictly via local REST/JSON HTTP calls with **zero temporary files or disk footprint**.
+* **High-Throughput Multi-Threading**: The service can maintain persistent, authenticated HCI sessions / connection pools, enabling companion applications to execute concurrent mainframe fetches across multiple worker threads with near-zero latency.
+* **Auto-Teardown**: Controlled via application shutdown hooks (`Runtime.getRuntime().addShutdownHook`) to ensure zero orphan background processes upon closing the parent application.
 
