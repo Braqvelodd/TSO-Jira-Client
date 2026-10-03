@@ -18,7 +18,7 @@ import java.util.Map;
 public class CompanionConfigDialog extends Dialog<Boolean> {
 
     private final JiraConfig config;
-    private final TextField scriptPathField = new TextField();
+    private final TextField jarPathField = new TextField();
     private final ComboBox<String> authModeCombo = new ComboBox<>();
     private final TextField userField = new TextField();
     private final PasswordField passField = new PasswordField();
@@ -55,12 +55,25 @@ public class CompanionConfigDialog extends Dialog<Boolean> {
         grid.setVgap(12);
         grid.setPadding(new Insets(15));
 
-        // 1. Script Path
-        Label scriptLabel = new Label("Topaz Script Path:");
+        // 1. Topaz JAR Path
+        Label jarLabel = new Label("Topaz JAR Path:");
         String configuredPath = config.getCompanionTopazPath();
+        if (configuredPath != null && (configuredPath.toLowerCase().endsWith(".bat") || configuredPath.toLowerCase().endsWith(".cmd"))) {
+            File batFile = new File(configuredPath.trim());
+            if (batFile.getParentFile() != null) {
+                File distJar = new File(batFile.getParentFile(), "dist" + File.separator + "topaz-pds-reader.jar");
+                if (distJar.exists()) {
+                    try {
+                        configuredPath = distJar.getCanonicalPath();
+                    } catch (Exception ignored) {
+                        configuredPath = distJar.getAbsolutePath();
+                    }
+                }
+            }
+        }
         if (configuredPath == null || configuredPath.trim().isEmpty() || !new File(configuredPath.trim()).exists()) {
-            File fallback1 = new File("../Topaz-file-read/run.bat");
-            File fallback2 = new File(System.getProperty("user.home"), "Documents/projects/Topaz-file-read/run.bat");
+            File fallback1 = new File("../Topaz-file-read/dist/topaz-pds-reader.jar");
+            File fallback2 = new File(System.getProperty("user.home"), "Documents/projects/Topaz-file-read/dist/topaz-pds-reader.jar");
             if (fallback1.exists()) {
                 try {
                     configuredPath = fallback1.getCanonicalPath();
@@ -71,27 +84,29 @@ public class CompanionConfigDialog extends Dialog<Boolean> {
                 configuredPath = fallback2.getAbsolutePath();
             }
         }
-        scriptPathField.setText(configuredPath != null ? configuredPath : "");
-        Button browseScriptBtn = new Button("Browse...");
-        browseScriptBtn.setOnAction(e -> {
+        jarPathField.setText(configuredPath != null ? configuredPath : "");
+        jarPathField.setPromptText("Path to topaz-pds-reader.jar");
+        Button browseJarBtn = new Button("Browse...");
+        browseJarBtn.setOnAction(e -> {
             FileChooser chooser = new FileChooser();
-            chooser.setTitle("Select Topaz run.bat Script");
-            chooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("Batch or Command Scripts (*.bat, *.cmd)", "*.bat", "*.cmd"));
-            if (!scriptPathField.getText().trim().isEmpty()) {
-                File cur = new File(scriptPathField.getText().trim());
+            chooser.setTitle("Select Topaz Extractor JAR");
+            chooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("Executable JAR Files (*.jar)", "*.jar"));
+            chooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("All Files (*.*)", "*.*"));
+            if (!jarPathField.getText().trim().isEmpty()) {
+                File cur = new File(jarPathField.getText().trim());
                 if (cur.getParentFile() != null && cur.getParentFile().exists()) {
                     chooser.setInitialDirectory(cur.getParentFile());
                 }
             }
             File selected = chooser.showOpenDialog(getDialogPane().getScene().getWindow());
             if (selected != null) {
-                scriptPathField.setText(selected.getAbsolutePath());
+                jarPathField.setText(selected.getAbsolutePath());
             }
         });
-        HBox scriptBox = new HBox(8, scriptPathField, browseScriptBtn);
-        HBox.setHgrow(scriptPathField, Priority.ALWAYS);
-        grid.add(scriptLabel, 0, 0);
-        grid.add(scriptBox, 1, 0);
+        HBox jarBox = new HBox(8, jarPathField, browseJarBtn);
+        HBox.setHgrow(jarPathField, Priority.ALWAYS);
+        grid.add(jarLabel, 0, 0);
+        grid.add(jarBox, 1, 0);
 
         // 2. Authentication Mode
         Label authLabel = new Label("Authentication Mode:");
@@ -217,7 +232,7 @@ public class CompanionConfigDialog extends Dialog<Boolean> {
 
     private void saveSettingsToConfig() {
         Map<String, String> props = new LinkedHashMap<>();
-        props.put("companion.topaz.path", scriptPathField.getText().trim());
+        props.put("companion.topaz.path", jarPathField.getText().trim());
 
         String auth;
         if ("User / Password".equals(authModeCombo.getValue())) {

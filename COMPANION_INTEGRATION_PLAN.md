@@ -31,9 +31,11 @@ This document tracks the phased implementation of the **Companion Architecture**
 
 ### Phase 2: Companion Integration Framework in `TSO-Jira-Client`
 - [x] **2.1 Configuration Extensions**
-  - Add `[Companion]` section in `resources/constants.ini`.
+  - Add `companion.topaz.*` properties in `resources/companion.properties`.
   - Add companion getter/setter methods in `JiraConfig.java`.
 - [x] **2.2 Build `CompanionRunner.java` Service**
+  - Direct execution of `topaz-pds-reader.jar` via detected Java 21+ runtime (`java -jar <jar> --batch`).
+  - Automatic fallback and backwards compatibility for legacy paths pointing to `run.bat` or directories.
   - Implement async subprocess execution with timeout handling.
   - Support mode dispatch: `DATASET` (sequential), `JOB_SPOOL` (spool fetch), and `SUBMIT` (JCL submission).
   - Handle CAC cert alias alignment and user/pass fallback.

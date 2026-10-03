@@ -60,26 +60,161 @@ public class CompanionRunner {
     }
 
     /**
+     * Resolves the Topaz companion JAR file from configuration, with backwards compatibility
+     * for configurations that pointed to run.bat or the project root directory.
+     */
+    public static File resolveJarFile(String configuredPath) {
+        if (configuredPath == null || configuredPath.trim().isEmpty()) {
+            throw new IllegalArgumentException("Topaz companion JAR path is not configured. Please set companion.topaz.path in companion.properties.");
+        }
+
+        File target = new File(configuredPath.trim());
+
+        // If target exists and is a JAR file, return it
+        if (target.exists() && target.isFile() && target.getName().toLowerCase().endsWith(".jar")) {
+            return target;
+        }
+
+        // If target points to a .bat / .cmd script, check for dist/topaz-pds-reader.jar or topaz-pds-reader.jar in same directory tree
+        if (target.getName().toLowerCase().endsWith(".bat") || target.getName().toLowerCase().endsWith(".cmd")) {
+            File parent = target.getParentFile();
+            if (parent != null) {
+                File distJar = new File(parent, "dist" + File.separator + "topaz-pds-reader.jar");
+                if (distJar.exists()) {
+                    return distJar;
+                }
+                File localJar = new File(parent, "topaz-pds-reader.jar");
+                if (localJar.exists()) {
+                    return localJar;
+                }
+            }
+        }
+
+        // If target is a directory, check for dist/topaz-pds-reader.jar or topaz-pds-reader.jar
+        if (target.isDirectory()) {
+            File distJar = new File(target, "dist" + File.separator + "topaz-pds-reader.jar");
+            if (distJar.exists()) {
+                return distJar;
+            }
+            File localJar = new File(target, "topaz-pds-reader.jar");
+            if (localJar.exists()) {
+                return localJar;
+            }
+        }
+
+        if (target.exists() && target.isFile()) {
+            return target;
+        }
+
+        // Check fallback locations relative to working dir or user home
+        File fallback1 = new File("../Topaz-file-read/dist/topaz-pds-reader.jar");
+        if (fallback1.exists()) {
+            return fallback1;
+        }
+        File fallback2 = new File(System.getProperty("user.home"), "Documents/projects/Topaz-file-read/dist/topaz-pds-reader.jar");
+        if (fallback2.exists()) {
+            return fallback2;
+        }
+
+        throw new IllegalArgumentException("Topaz companion JAR not found: " + target.getAbsolutePath()
+                + "\nPlease configure companion.topaz.path to point to topaz-pds-reader.jar.");
+    }
+
+    /**
+     * Resolves the Java runtime executable path (preferring Java 21+ for Topaz compatibility).
+     */
+    public static String resolveJavaExecutable() {
+        boolean isWindows = System.getProperty("os.name", "").toLowerCase().contains("win");
+        String exeName = isWindows ? "java.exe" : "java";
+
+        // 1. Check custom JAVA21_HOME or JAVA_21_HOME environment variables
+        String java21Home = System.getenv("JAVA21_HOME");
+        if (java21Home == null || java21Home.trim().isEmpty()) {
+            java21Home = System.getenv("JAVA_21_HOME");
+        }
+        if (java21Home != null && !java21Home.trim().isEmpty()) {
+            File java21Bin = new File(java21Home.trim(), "bin" + File.separator + exeName);
+            if (java21Bin.exists()) {
+                return java21Bin.getAbsolutePath();
+            }
+        }
+
+        // 2. Check standard USMC TSO JDK 21 installation path
+        File tsoJdk21 = new File("C:\\Program Files\\Java\\jdk21\\TSO\\bin" + File.separator + exeName);
+        if (tsoJdk21.exists()) {
+            return tsoJdk21.getAbsolutePath();
+        }
+
+        // 3. Check C:\Program Files\Java\latest\jdk-21\bin\java.exe
+        File latestJdk21 = new File("C:\\Program Files\\Java\\latest\\jdk-21\\bin" + File.separator + exeName);
+        if (latestJdk21.exists()) {
+            return latestJdk21.getAbsolutePath();
+        }
+
+        // 4. Scan C:\Program Files\Java for jdk21* or modern JDKs
+        File javaDir = new File("C:\\Program Files\\Java");
+        if (javaDir.exists() && javaDir.isDirectory()) {
+            File[] files = javaDir.listFiles();
+            if (files != null) {
+                // Priority: JDK 21+ directories
+                for (File dir : files) {
+                    String name = dir.getName().toLowerCase();
+                    if (name.startsWith("jdk21") || name.startsWith("jdk-21") || name.startsWith("jdk-25") || name.startsWith("jdk25")) {
+                        File exe = new File(dir, "bin" + File.separator + exeName);
+                        if (exe.exists()) return exe.getAbsolutePath();
+                        File tsoExe = new File(dir, "TSO" + File.separator + "bin" + File.separator + exeName);
+                        if (tsoExe.exists()) return tsoExe.getAbsolutePath();
+                    }
+                }
+                // Secondary: JDK 17+ directories
+                for (File dir : files) {
+                    String name = dir.getName().toLowerCase();
+                    if (name.startsWith("jdk17") || name.startsWith("jdk-17") || name.startsWith("jdk11") || name.startsWith("jdk-11")) {
+                        File exe = new File(dir, "bin" + File.separator + exeName);
+                        if (exe.exists()) return exe.getAbsolutePath();
+                        File tsoExe = new File(dir, "TSO" + File.separator + "bin" + File.separator + exeName);
+                        if (tsoExe.exists()) return tsoExe.getAbsolutePath();
+                    }
+                }
+            }
+        }
+
+        // 5. Check JAVA_HOME
+        String javaHome = System.getenv("JAVA_HOME");
+        if (javaHome != null && !javaHome.trim().isEmpty()) {
+            File exe = new File(javaHome.trim(), "bin" + File.separator + exeName);
+            if (exe.exists()) {
+                return exe.getAbsolutePath();
+            }
+        }
+
+        // 6. Check current JVM java.home
+        String currentJavaHome = System.getProperty("java.home");
+        if (currentJavaHome != null && !currentJavaHome.trim().isEmpty()) {
+            File exe = new File(currentJavaHome.trim(), "bin" + File.separator + exeName);
+            if (exe.exists()) {
+                return exe.getAbsolutePath();
+            }
+        }
+
+        // 7. System fallback
+        return "java";
+    }
+
+    /**
      * Executes the Topaz companion application synchronously.
      */
     public static CompanionResult executeTopazFetch(JiraConfig config, String certAlias, Consumer<String> statusLogger) throws Exception {
-        String scriptPath = config.getCompanionTopazPath();
-        if (scriptPath == null || scriptPath.trim().isEmpty()) {
-            throw new IllegalArgumentException("Topaz companion script path is not configured. Please set companion.topaz.path in companion.properties.");
-        }
-
-        File scriptFile = new File(scriptPath.trim());
-        if (!scriptFile.exists()) {
-            throw new IllegalArgumentException("Topaz companion script not found: " + scriptFile.getAbsolutePath());
-        }
+        File jarFile = resolveJarFile(config.getCompanionTopazPath());
+        String javaExe = resolveJavaExecutable();
 
         File tempOutputFile = File.createTempFile("topaz_ispw_report_", ".txt");
         tempOutputFile.deleteOnExit();
 
         List<String> command = new ArrayList<>();
-        command.add("cmd.exe");
-        command.add("/c");
-        command.add(scriptFile.getAbsolutePath());
+        command.add(javaExe);
+        command.add("-jar");
+        command.add(jarFile.getAbsolutePath());
         command.add("--batch");
 
         // 1. Configure Authentication
@@ -169,12 +304,16 @@ public class CompanionRunner {
         command.add(tempOutputFile.getAbsolutePath());
 
         if (statusLogger != null) {
-            statusLogger.accept("Launching Topaz companion process (" + mode + " mode)...");
+            statusLogger.accept("Launching Topaz companion process (" + mode + " mode) via " + jarFile.getName() + "...");
         }
 
         ProcessBuilder pb = new ProcessBuilder(command);
-        if (scriptFile.getParentFile() != null) {
-            pb.directory(scriptFile.getParentFile());
+        File workDir = jarFile.getParentFile();
+        if (workDir != null && "dist".equalsIgnoreCase(workDir.getName()) && workDir.getParentFile() != null) {
+            workDir = workDir.getParentFile();
+        }
+        if (workDir != null && workDir.exists()) {
+            pb.directory(workDir);
         }
         pb.redirectErrorStream(true);
 
